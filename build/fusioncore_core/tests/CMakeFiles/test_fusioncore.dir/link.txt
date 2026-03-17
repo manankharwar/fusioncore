@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o -o test_fusioncore  ../libfusioncore_core.a ../../lib/libgtest_main.a ../../lib/libgtest.a 

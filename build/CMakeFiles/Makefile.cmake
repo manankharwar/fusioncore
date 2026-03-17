@@ -92,6 +92,7 @@ set(CMAKE_DEPEND_INFO_FILES
   "fusioncore_core/tests/CMakeFiles/test_ukf.dir/DependInfo.cmake"
   "fusioncore_core/tests/CMakeFiles/test_imu.dir/DependInfo.cmake"
   "fusioncore_core/tests/CMakeFiles/test_encoder.dir/DependInfo.cmake"
+  "fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/DependInfo.cmake"
   "_deps/googletest-build/googlemock/CMakeFiles/gmock.dir/DependInfo.cmake"
   "_deps/googletest-build/googlemock/CMakeFiles/gmock_main.dir/DependInfo.cmake"
   "_deps/googletest-build/googletest/CMakeFiles/gtest.dir/DependInfo.cmake"

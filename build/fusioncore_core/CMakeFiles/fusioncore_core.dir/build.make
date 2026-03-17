@@ -83,17 +83,33 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/fusioncore_core.dir/src/ukf.cpp.s"
 	cd /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/ukf.cpp -o CMakeFiles/fusioncore_core.dir/src/ukf.cpp.s
 
+fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o: fusioncore_core/CMakeFiles/fusioncore_core.dir/flags.make
+fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o: /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/fusioncore.cpp
+fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o: fusioncore_core/CMakeFiles/fusioncore_core.dir/compiler_depend.ts
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o"
+	cd /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o -MF CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o.d -o CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o -c /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/fusioncore.cpp
+
+fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.i: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Preprocessing CXX source to CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.i"
+	cd /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/fusioncore.cpp > CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.i
+
+fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.s: cmake_force
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green "Compiling CXX source to assembly CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.s"
+	cd /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/fusioncore.cpp -o CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.s
+
 # Object files for target fusioncore_core
 fusioncore_core_OBJECTS = \
-"CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o"
+"CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o" \
+"CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o"
 
 # External object files for target fusioncore_core
 fusioncore_core_EXTERNAL_OBJECTS =
 
 fusioncore_core/libfusioncore_core.a: fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o
+fusioncore_core/libfusioncore_core.a: fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o
 fusioncore_core/libfusioncore_core.a: fusioncore_core/CMakeFiles/fusioncore_core.dir/build.make
 fusioncore_core/libfusioncore_core.a: fusioncore_core/CMakeFiles/fusioncore_core.dir/link.txt
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Linking CXX static library libfusioncore_core.a"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --green --bold --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Linking CXX static library libfusioncore_core.a"
 	cd /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core && $(CMAKE_COMMAND) -P CMakeFiles/fusioncore_core.dir/cmake_clean_target.cmake
 	cd /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core && $(CMAKE_COMMAND) -E cmake_link_script CMakeFiles/fusioncore_core.dir/link.txt --verbose=$(VERBOSE)
 

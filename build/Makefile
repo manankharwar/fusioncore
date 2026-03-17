@@ -214,6 +214,19 @@ test_encoder/fast:
 .PHONY : test_encoder/fast
 
 #=============================================================================
+# Target rules for targets named test_fusioncore
+
+# Build rule for target.
+test_fusioncore: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_fusioncore
+.PHONY : test_fusioncore
+
+# fast build rule for target.
+test_fusioncore/fast:
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build.make fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build
+.PHONY : test_fusioncore/fast
+
+#=============================================================================
 # Target rules for targets named gmock
 
 # Build rule for target.
@@ -283,6 +296,7 @@ help:
 	@echo "... gtest"
 	@echo "... gtest_main"
 	@echo "... test_encoder"
+	@echo "... test_fusioncore"
 	@echo "... test_imu"
 	@echo "... test_ukf"
 .PHONY : help

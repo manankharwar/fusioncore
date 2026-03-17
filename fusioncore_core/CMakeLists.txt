@@ -4,6 +4,7 @@ find_package(Eigen3 REQUIRED)
 
 add_library(fusioncore_core STATIC
   src/ukf.cpp
+  src/fusioncore.cpp
 )
 
 target_include_directories(fusioncore_core PUBLIC

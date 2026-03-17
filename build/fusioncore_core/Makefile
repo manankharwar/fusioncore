@@ -175,6 +175,30 @@ fusioncore_core/fast:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/CMakeFiles/fusioncore_core.dir/build.make fusioncore_core/CMakeFiles/fusioncore_core.dir/build
 .PHONY : fusioncore_core/fast
 
+src/fusioncore.o: src/fusioncore.cpp.o
+.PHONY : src/fusioncore.o
+
+# target to build an object file
+src/fusioncore.cpp.o:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/CMakeFiles/fusioncore_core.dir/build.make fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o
+.PHONY : src/fusioncore.cpp.o
+
+src/fusioncore.i: src/fusioncore.cpp.i
+.PHONY : src/fusioncore.i
+
+# target to preprocess a source file
+src/fusioncore.cpp.i:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/CMakeFiles/fusioncore_core.dir/build.make fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.i
+.PHONY : src/fusioncore.cpp.i
+
+src/fusioncore.s: src/fusioncore.cpp.s
+.PHONY : src/fusioncore.s
+
+# target to generate assembly for a file
+src/fusioncore.cpp.s:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/CMakeFiles/fusioncore_core.dir/build.make fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.s
+.PHONY : src/fusioncore.cpp.s
+
 src/ukf.o: src/ukf.cpp.o
 .PHONY : src/ukf.o
 
@@ -212,6 +236,9 @@ help:
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
 	@echo "... fusioncore_core"
+	@echo "... src/fusioncore.o"
+	@echo "... src/fusioncore.i"
+	@echo "... src/fusioncore.s"
 	@echo "... src/ukf.o"
 	@echo "... src/ukf.i"
 	@echo "... src/ukf.s"

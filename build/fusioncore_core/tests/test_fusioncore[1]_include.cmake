@@ -1,0 +1,5 @@
+if(EXISTS "/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_fusioncore[1]_tests.cmake")
+  include("/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_fusioncore[1]_tests.cmake")
+else()
+  add_test(test_fusioncore_NOT_BUILT test_fusioncore_NOT_BUILT)
+endif()

@@ -1,2 +1,2 @@
-/usr/bin/ar qc libfusioncore_core.a CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o
+/usr/bin/ar qc libfusioncore_core.a CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o
 /usr/bin/ranlib libfusioncore_core.a

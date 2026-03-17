@@ -1,4 +1,6 @@
 file(REMOVE_RECURSE
+  "CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o"
+  "CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o.d"
   "CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o"
   "CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o.d"
   "libfusioncore_core.a"

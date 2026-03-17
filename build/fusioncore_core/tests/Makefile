@@ -203,6 +203,20 @@ test_encoder/fast:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_encoder.dir/build.make fusioncore_core/tests/CMakeFiles/test_encoder.dir/build
 .PHONY : test_encoder/fast
 
+# Convenience name for target.
+fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/rule:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/rule
+.PHONY : fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/rule
+
+# Convenience name for target.
+test_fusioncore: fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/rule
+.PHONY : test_fusioncore
+
+# fast build rule for target.
+test_fusioncore/fast:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build.make fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build
+.PHONY : test_fusioncore/fast
+
 test_encoder.o: test_encoder.cpp.o
 .PHONY : test_encoder.o
 
@@ -226,6 +240,30 @@ test_encoder.s: test_encoder.cpp.s
 test_encoder.cpp.s:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_encoder.dir/build.make fusioncore_core/tests/CMakeFiles/test_encoder.dir/test_encoder.cpp.s
 .PHONY : test_encoder.cpp.s
+
+test_fusioncore.o: test_fusioncore.cpp.o
+.PHONY : test_fusioncore.o
+
+# target to build an object file
+test_fusioncore.cpp.o:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build.make fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o
+.PHONY : test_fusioncore.cpp.o
+
+test_fusioncore.i: test_fusioncore.cpp.i
+.PHONY : test_fusioncore.i
+
+# target to preprocess a source file
+test_fusioncore.cpp.i:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build.make fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.i
+.PHONY : test_fusioncore.cpp.i
+
+test_fusioncore.s: test_fusioncore.cpp.s
+.PHONY : test_fusioncore.s
+
+# target to generate assembly for a file
+test_fusioncore.cpp.s:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/build.make fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.s
+.PHONY : test_fusioncore.cpp.s
 
 test_imu.o: test_imu.cpp.o
 .PHONY : test_imu.o
@@ -288,11 +326,15 @@ help:
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
 	@echo "... test_encoder"
+	@echo "... test_fusioncore"
 	@echo "... test_imu"
 	@echo "... test_ukf"
 	@echo "... test_encoder.o"
 	@echo "... test_encoder.i"
 	@echo "... test_encoder.s"
+	@echo "... test_fusioncore.o"
+	@echo "... test_fusioncore.i"
+	@echo "... test_fusioncore.s"
 	@echo "... test_imu.o"
 	@echo "... test_imu.i"
 	@echo "... test_imu.s"
