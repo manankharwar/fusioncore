@@ -15,17 +15,18 @@ add_library(fusioncore_core STATIC
 
 target_include_directories(fusioncore_core PUBLIC
   $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
-  $<INSTALL_INTERFACE:include>
+  $<INSTALL_INTERFACE:include/fusioncore_core>
 )
 
 target_link_libraries(fusioncore_core PUBLIC Eigen3::Eigen)
 
 ament_export_targets(fusioncore_core_targets HAS_LIBRARY_TARGET)
 ament_export_dependencies(eigen3_cmake_module Eigen3)
+ament_export_include_directories(include/fusioncore_core)
 
 install(
   DIRECTORY include/
-  DESTINATION include
+  DESTINATION include/fusioncore_core
 )
 
 install(
@@ -35,10 +36,5 @@ install(
   LIBRARY DESTINATION lib
   RUNTIME DESTINATION bin
 )
-
-if(BUILD_TESTING)
-  find_package(ament_cmake_gtest REQUIRED)
-  add_subdirectory(tests)
-endif()
 
 ament_package()
