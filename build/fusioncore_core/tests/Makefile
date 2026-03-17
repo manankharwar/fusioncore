@@ -189,6 +189,44 @@ test_imu/fast:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/build
 .PHONY : test_imu/fast
 
+# Convenience name for target.
+fusioncore_core/tests/CMakeFiles/test_encoder.dir/rule:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fusioncore_core/tests/CMakeFiles/test_encoder.dir/rule
+.PHONY : fusioncore_core/tests/CMakeFiles/test_encoder.dir/rule
+
+# Convenience name for target.
+test_encoder: fusioncore_core/tests/CMakeFiles/test_encoder.dir/rule
+.PHONY : test_encoder
+
+# fast build rule for target.
+test_encoder/fast:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_encoder.dir/build.make fusioncore_core/tests/CMakeFiles/test_encoder.dir/build
+.PHONY : test_encoder/fast
+
+test_encoder.o: test_encoder.cpp.o
+.PHONY : test_encoder.o
+
+# target to build an object file
+test_encoder.cpp.o:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_encoder.dir/build.make fusioncore_core/tests/CMakeFiles/test_encoder.dir/test_encoder.cpp.o
+.PHONY : test_encoder.cpp.o
+
+test_encoder.i: test_encoder.cpp.i
+.PHONY : test_encoder.i
+
+# target to preprocess a source file
+test_encoder.cpp.i:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_encoder.dir/build.make fusioncore_core/tests/CMakeFiles/test_encoder.dir/test_encoder.cpp.i
+.PHONY : test_encoder.cpp.i
+
+test_encoder.s: test_encoder.cpp.s
+.PHONY : test_encoder.s
+
+# target to generate assembly for a file
+test_encoder.cpp.s:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_encoder.dir/build.make fusioncore_core/tests/CMakeFiles/test_encoder.dir/test_encoder.cpp.s
+.PHONY : test_encoder.cpp.s
+
 test_imu.o: test_imu.cpp.o
 .PHONY : test_imu.o
 
@@ -249,8 +287,12 @@ help:
 	@echo "... install/strip"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
+	@echo "... test_encoder"
 	@echo "... test_imu"
 	@echo "... test_ukf"
+	@echo "... test_encoder.o"
+	@echo "... test_encoder.i"
+	@echo "... test_encoder.s"
 	@echo "... test_imu.o"
 	@echo "... test_imu.i"
 	@echo "... test_imu.s"

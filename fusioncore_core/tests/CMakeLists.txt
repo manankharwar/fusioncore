@@ -16,6 +16,11 @@ target_link_libraries(test_ukf fusioncore_core GTest::gtest_main Eigen3::Eigen)
 add_executable(test_imu test_imu.cpp)
 target_link_libraries(test_imu fusioncore_core GTest::gtest_main Eigen3::Eigen)
 
+# Encoder sensor tests
+add_executable(test_encoder test_encoder.cpp)
+target_link_libraries(test_encoder fusioncore_core GTest::gtest_main Eigen3::Eigen)
+
 include(GoogleTest)
 gtest_discover_tests(test_ukf)
 gtest_discover_tests(test_imu)
+gtest_discover_tests(test_encoder)

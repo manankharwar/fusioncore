@@ -1,0 +1,1 @@
+/usr/bin/c++ CMakeFiles/test_encoder.dir/test_encoder.cpp.o -o test_encoder  ../libfusioncore_core.a ../../lib/libgtest_main.a ../../lib/libgtest.a 
