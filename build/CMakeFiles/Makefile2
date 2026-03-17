@@ -151,6 +151,7 @@ fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_imu.dir/all
 fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_encoder.dir/all
 fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/all
 fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_gnss.dir/all
+fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/all
 fusioncore_core/tests/all: _deps/googletest-build/all
 .PHONY : fusioncore_core/tests/all
 
@@ -164,6 +165,7 @@ fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_imu.dir/clean
 fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_encoder.dir/clean
 fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/clean
 fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_gnss.dir/clean
+fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/clean
 fusioncore_core/tests/clean: _deps/googletest-build/clean
 .PHONY : fusioncore_core/tests/clean
 
@@ -202,7 +204,7 @@ fusioncore_core/tests/CMakeFiles/test_ukf.dir/all: _deps/googletest-build/google
 fusioncore_core/tests/CMakeFiles/test_ukf.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/all
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_ukf.dir/build.make fusioncore_core/tests/CMakeFiles/test_ukf.dir/depend
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_ukf.dir/build.make fusioncore_core/tests/CMakeFiles/test_ukf.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=20,21 "Built target test_ukf"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=22,23 "Built target test_ukf"
 .PHONY : fusioncore_core/tests/CMakeFiles/test_ukf.dir/all
 
 # Build rule for subdir invocation for target.
@@ -230,7 +232,7 @@ fusioncore_core/tests/CMakeFiles/test_imu.dir/all: _deps/googletest-build/google
 fusioncore_core/tests/CMakeFiles/test_imu.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/all
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/depend
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=18,19 "Built target test_imu"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=20,21 "Built target test_imu"
 .PHONY : fusioncore_core/tests/CMakeFiles/test_imu.dir/all
 
 # Build rule for subdir invocation for target.
@@ -332,6 +334,34 @@ test_gnss: fusioncore_core/tests/CMakeFiles/test_gnss.dir/rule
 fusioncore_core/tests/CMakeFiles/test_gnss.dir/clean:
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss.dir/clean
 .PHONY : fusioncore_core/tests/CMakeFiles/test_gnss.dir/clean
+
+#=============================================================================
+# Target rules for target fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir
+
+# All Build rule for target.
+fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/all: fusioncore_core/CMakeFiles/fusioncore_core.dir/all
+fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest.dir/all
+fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/all
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/depend
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=18,19 "Built target test_gnss_manager"
+.PHONY : fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/all
+
+# Build rule for subdir invocation for target.
+fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /mnt/c/stealth/ROS/fusioncore/build/CMakeFiles 9
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /mnt/c/stealth/ROS/fusioncore/build/CMakeFiles 0
+.PHONY : fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule
+
+# Convenience name for target.
+test_gnss_manager: fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule
+.PHONY : test_gnss_manager
+
+# clean rule for target.
+fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/clean:
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/clean
+.PHONY : fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/clean
 
 #=============================================================================
 # Target rules for target _deps/googletest-build/googlemock/CMakeFiles/gmock.dir

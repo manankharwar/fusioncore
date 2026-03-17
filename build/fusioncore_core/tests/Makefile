@@ -231,6 +231,20 @@ test_gnss/fast:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss.dir/build
 .PHONY : test_gnss/fast
 
+# Convenience name for target.
+fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule
+.PHONY : fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule
+
+# Convenience name for target.
+test_gnss_manager: fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/rule
+.PHONY : test_gnss_manager
+
+# fast build rule for target.
+test_gnss_manager/fast:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build
+.PHONY : test_gnss_manager/fast
+
 test_encoder.o: test_encoder.cpp.o
 .PHONY : test_encoder.o
 
@@ -303,6 +317,30 @@ test_gnss.cpp.s:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss.dir/test_gnss.cpp.s
 .PHONY : test_gnss.cpp.s
 
+test_gnss_manager.o: test_gnss_manager.cpp.o
+.PHONY : test_gnss_manager.o
+
+# target to build an object file
+test_gnss_manager.cpp.o:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/test_gnss_manager.cpp.o
+.PHONY : test_gnss_manager.cpp.o
+
+test_gnss_manager.i: test_gnss_manager.cpp.i
+.PHONY : test_gnss_manager.i
+
+# target to preprocess a source file
+test_gnss_manager.cpp.i:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/test_gnss_manager.cpp.i
+.PHONY : test_gnss_manager.cpp.i
+
+test_gnss_manager.s: test_gnss_manager.cpp.s
+.PHONY : test_gnss_manager.s
+
+# target to generate assembly for a file
+test_gnss_manager.cpp.s:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/test_gnss_manager.cpp.s
+.PHONY : test_gnss_manager.cpp.s
+
 test_imu.o: test_imu.cpp.o
 .PHONY : test_imu.o
 
@@ -366,6 +404,7 @@ help:
 	@echo "... test_encoder"
 	@echo "... test_fusioncore"
 	@echo "... test_gnss"
+	@echo "... test_gnss_manager"
 	@echo "... test_imu"
 	@echo "... test_ukf"
 	@echo "... test_encoder.o"
@@ -377,6 +416,9 @@ help:
 	@echo "... test_gnss.o"
 	@echo "... test_gnss.i"
 	@echo "... test_gnss.s"
+	@echo "... test_gnss_manager.o"
+	@echo "... test_gnss_manager.i"
+	@echo "... test_gnss_manager.s"
 	@echo "... test_imu.o"
 	@echo "... test_imu.i"
 	@echo "... test_imu.s"

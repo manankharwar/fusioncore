@@ -13,6 +13,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_timestamp_    = timestamp_seconds;
   last_imu_time_     = -1.0;
   last_encoder_time_ = -1.0;
+  last_gnss_time_    = -1.0;
   update_count_      = 0;
   initialized_       = true;
 }
@@ -22,21 +23,17 @@ void FusionCore::reset() {
   last_timestamp_    = 0.0;
   last_imu_time_     = -1.0;
   last_encoder_time_ = -1.0;
+  last_gnss_time_    = -1.0;
   update_count_      = 0;
 }
 
 void FusionCore::predict_to(double timestamp_seconds) {
   double dt = timestamp_seconds - last_timestamp_;
-
-  // Ignore duplicate or out-of-order timestamps
   if (dt < config_.min_dt) return;
-
-  // Sensor dropout — gap too large, skip predict
   if (dt > config_.max_dt) {
     last_timestamp_ = timestamp_seconds;
     return;
   }
-
   ukf_.predict(dt);
   last_timestamp_ = timestamp_seconds;
 }
@@ -46,9 +43,8 @@ void FusionCore::update_imu(
   double wx, double wy, double wz,
   double ax, double ay, double az
 ) {
-  if (!initialized_) {
+  if (!initialized_)
     throw std::runtime_error("FusionCore: update_imu() called before init()");
-  }
 
   predict_to(timestamp_seconds);
 
@@ -57,7 +53,6 @@ void FusionCore::update_imu(
   z[3] = ax; z[4] = ay; z[5] = az;
 
   sensors::ImuNoiseMatrix R = sensors::imu_noise_matrix(config_.imu);
-
   ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R);
 
   last_imu_time_ = timestamp_seconds;
@@ -68,9 +63,8 @@ void FusionCore::update_encoder(
   double timestamp_seconds,
   double vx, double vy, double wz
 ) {
-  if (!initialized_) {
+  if (!initialized_)
     throw std::runtime_error("FusionCore: update_encoder() called before init()");
-  }
 
   predict_to(timestamp_seconds);
 
@@ -78,11 +72,65 @@ void FusionCore::update_encoder(
   z[0] = vx; z[1] = vy; z[2] = wz;
 
   sensors::EncoderNoiseMatrix R = sensors::encoder_noise_matrix(config_.encoder);
-
   ukf_.update<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R);
 
   last_encoder_time_ = timestamp_seconds;
   ++update_count_;
+}
+
+bool FusionCore::update_gnss(
+  double timestamp_seconds,
+  const sensors::GnssFix& fix
+) {
+  if (!initialized_)
+    throw std::runtime_error("FusionCore: update_gnss() called before init()");
+
+  // Reject poor quality fixes silently
+  if (!fix.is_valid(config_.gnss)) return false;
+
+  predict_to(timestamp_seconds);
+
+  sensors::GnssPosMeasurement z;
+  z[0] = fix.x;
+  z[1] = fix.y;
+  z[2] = fix.z;
+
+  sensors::GnssPosNoiseMatrix R =
+    sensors::gnss_pos_noise_matrix(config_.gnss, fix);
+
+  ukf_.update<sensors::GNSS_POS_DIM>(
+    z, sensors::gnss_pos_measurement_function, R
+  );
+
+  last_gnss_time_ = timestamp_seconds;
+  ++update_count_;
+  return true;
+}
+
+bool FusionCore::update_gnss_heading(
+  double timestamp_seconds,
+  const sensors::GnssHeading& heading
+) {
+  if (!initialized_)
+    throw std::runtime_error("FusionCore: update_gnss_heading() called before init()");
+
+  if (!heading.valid) return false;
+
+  predict_to(timestamp_seconds);
+
+  sensors::GnssHdgMeasurement z;
+  z[0] = heading.heading_rad;
+
+  sensors::GnssHdgNoiseMatrix R =
+    sensors::gnss_hdg_noise_matrix(config_.gnss, heading);
+
+  ukf_.update<sensors::GNSS_HDG_DIM>(
+    z, sensors::gnss_hdg_measurement_function, R
+  );
+
+  last_gnss_time_ = timestamp_seconds;
+  ++update_count_;
+  return true;
 }
 
 const State& FusionCore::get_state() const {
@@ -96,24 +144,23 @@ FusionCoreStatus FusionCore::get_status() const {
 
   if (!initialized_) return status;
 
-  // Sensor health — stale if no data in 1 second
-  double stale_threshold = 1.0;
+  double stale = 1.0;
 
-  if (last_imu_time_ < 0.0)
-    status.imu_health = SensorHealth::NOT_INIT;
-  else if ((last_timestamp_ - last_imu_time_) > stale_threshold)
-    status.imu_health = SensorHealth::STALE;
-  else
-    status.imu_health = SensorHealth::OK;
+  status.imu_health =
+    last_imu_time_ < 0.0 ? SensorHealth::NOT_INIT :
+    (last_timestamp_ - last_imu_time_) > stale ? SensorHealth::STALE :
+    SensorHealth::OK;
 
-  if (last_encoder_time_ < 0.0)
-    status.encoder_health = SensorHealth::NOT_INIT;
-  else if ((last_timestamp_ - last_encoder_time_) > stale_threshold)
-    status.encoder_health = SensorHealth::STALE;
-  else
-    status.encoder_health = SensorHealth::OK;
+  status.encoder_health =
+    last_encoder_time_ < 0.0 ? SensorHealth::NOT_INIT :
+    (last_timestamp_ - last_encoder_time_) > stale ? SensorHealth::STALE :
+    SensorHealth::OK;
 
-  // Position uncertainty — trace of top-left 3x3 of P
+  status.gnss_health =
+    last_gnss_time_ < 0.0 ? SensorHealth::NOT_INIT :
+    (last_timestamp_ - last_gnss_time_) > stale ? SensorHealth::STALE :
+    SensorHealth::OK;
+
   const StateMatrix& P = ukf_.state().P;
   status.position_uncertainty = P(0,0) + P(1,1) + P(2,2);
 

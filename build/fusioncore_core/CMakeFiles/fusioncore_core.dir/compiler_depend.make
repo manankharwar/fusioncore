@@ -4,6 +4,7 @@
 fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o: /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/fusioncore.cpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/fusioncore.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/encoder.hpp \
+  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/gnss.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/imu.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/state.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp \
@@ -1193,7 +1194,7 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/eigen3/Eigen/src/Core/products/SelfadjointMatrixMatrix.h:
 
-/usr/include/c++/13/pstl/execution_defs.h:
+/usr/include/eigen3/Eigen/src/Core/products/GeneralMatrixMatrixTriangular.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/wint_t.h:
 
@@ -1307,10 +1308,6 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/c++/13/bits/functexcept.h:
 
-/usr/include/eigen3/Eigen/src/Core/EigenBase.h:
-
-/usr/include/c++/13/bits/stl_construct.h:
-
 /usr/include/c++/13/cstdlib:
 
 /usr/include/eigen3/Eigen/src/Core/PermutationMatrix.h:
@@ -1367,12 +1364,6 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/c++/13/iosfwd:
 
-/usr/include/c++/13/cassert:
-
-/usr/include/c++/13/bits/cpp_type_traits.h:
-
-/usr/include/c++/13/bits/move.h:
-
 /usr/include/c++/13/bits/atomic_lockfree_defines.h:
 
 /usr/include/c++/13/bits/locale_facets.h:
@@ -1399,10 +1390,6 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/c++/13/new:
 
-/usr/include/x86_64-linux-gnu/bits/long-double.h:
-
-/usr/include/c++/13/bits/algorithmfwd.h:
-
 /usr/include/c++/13/bits/basic_ios.h:
 
 /usr/include/c++/13/bit:
@@ -1414,6 +1401,20 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 /usr/include/x86_64-linux-gnu/bits/posix2_lim.h:
 
 /usr/include/c++/13/bits/enable_special_members.h:
+
+/usr/include/x86_64-linux-gnu/bits/endianness.h:
+
+/usr/include/c++/13/bits/chrono.h:
+
+/usr/include/x86_64-linux-gnu/c++/13/bits/ctype_inline.h:
+
+/usr/include/c++/13/bits/std_function.h:
+
+/usr/include/c++/13/bits/char_traits.h:
+
+/usr/include/c++/13/bits/hashtable_policy.h:
+
+/usr/include/c++/13/bits/stl_bvector.h:
 
 /usr/include/c++/13/bits/uses_allocator_args.h:
 
@@ -1431,19 +1432,17 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/c++/13/algorithm:
 
-/usr/include/x86_64-linux-gnu/bits/endianness.h:
+/usr/include/x86_64-linux-gnu/bits/long-double.h:
 
-/usr/include/c++/13/bits/chrono.h:
+/usr/include/c++/13/bits/algorithmfwd.h:
 
-/usr/include/x86_64-linux-gnu/c++/13/bits/ctype_inline.h:
+/usr/include/eigen3/Eigen/src/SVD/UpperBidiagonalization.h:
 
-/usr/include/c++/13/bits/std_function.h:
+/usr/include/eigen3/Eigen/src/SVD/JacobiSVD.h:
 
-/usr/include/c++/13/bits/char_traits.h:
+/usr/include/eigen3/Eigen/src/Core/ProductEvaluators.h:
 
-/usr/include/c++/13/bits/hashtable_policy.h:
-
-/usr/include/c++/13/bits/stl_bvector.h:
+/usr/include/eigen3/Eigen/src/Core/Replicate.h:
 
 /usr/include/eigen3/Eigen/src/Core/Inverse.h:
 
@@ -1453,9 +1452,9 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/eigen3/Eigen/src/Core/arch/Default/BFloat16.h:
 
-/usr/include/eigen3/Eigen/src/Core/products/Parallelizer.h:
+/usr/include/x86_64-linux-gnu/sys/select.h:
 
-/usr/include/c++/13/debug/assertions.h:
+/usr/include/c++/13/cwchar:
 
 /usr/include/c++/13/array:
 
@@ -1463,11 +1462,17 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/c++/13/bits/hash_bytes.h:
 
-/usr/include/x86_64-linux-gnu/sys/select.h:
+/usr/include/eigen3/Eigen/src/Core/products/Parallelizer.h:
 
-/usr/include/c++/13/cwchar:
+/usr/include/c++/13/debug/assertions.h:
 
 /usr/include/alloca.h:
+
+/usr/include/c++/13/cassert:
+
+/usr/include/c++/13/bits/cpp_type_traits.h:
+
+/usr/include/c++/13/bits/move.h:
 
 /usr/include/eigen3/Eigen/src/Geometry/AngleAxis.h:
 
@@ -1510,6 +1515,12 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 /usr/include/eigen3/Eigen/src/Core/functors/AssignmentFunctors.h:
 
 /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/encoder.hpp:
+
+/usr/include/c++/13/pstl/execution_defs.h:
+
+/usr/include/c++/13/bits/stl_construct.h:
+
+/usr/include/eigen3/Eigen/src/Core/EigenBase.h:
 
 /usr/include/c++/13/ctime:
 
@@ -1715,6 +1726,8 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/eigen3/Eigen/src/Core/DenseStorage.h:
 
+/mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/gnss.hpp:
+
 /usr/include/eigen3/Eigen/src/Core/Diagonal.h:
 
 /usr/include/c++/13/bits/nested_exception.h:
@@ -1777,14 +1790,6 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 
 /usr/include/eigen3/Eigen/src/Core/Product.h:
 
-/usr/include/eigen3/Eigen/src/SVD/UpperBidiagonalization.h:
-
-/usr/include/eigen3/Eigen/src/SVD/JacobiSVD.h:
-
-/usr/include/eigen3/Eigen/src/Core/ProductEvaluators.h:
-
-/usr/include/eigen3/Eigen/src/Core/Replicate.h:
-
 /usr/include/x86_64-linux-gnu/bits/stdint-intn.h:
 
 /usr/include/c++/13/string:
@@ -1822,8 +1827,6 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/ukf.cpp.o: /mnt/c/stealth/ROS
 /usr/include/c++/13/tr1/ell_integral.tcc:
 
 /usr/include/eigen3/Eigen/src/Core/functors/TernaryFunctors.h:
-
-/usr/include/eigen3/Eigen/src/Core/products/GeneralMatrixMatrixTriangular.h:
 
 /usr/include/eigen3/Eigen/src/Core/arch/Default/ConjHelper.h:
 

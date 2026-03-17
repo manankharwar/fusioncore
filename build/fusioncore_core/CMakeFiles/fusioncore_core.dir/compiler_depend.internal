@@ -5,6 +5,7 @@ fusioncore_core/CMakeFiles/fusioncore_core.dir/src/fusioncore.cpp.o
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/src/fusioncore.cpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/fusioncore.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/encoder.hpp
+ /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/gnss.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/imu.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/state.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp

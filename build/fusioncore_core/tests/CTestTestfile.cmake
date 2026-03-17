@@ -9,4 +9,5 @@ include("/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_imu[1]_i
 include("/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_encoder[1]_include.cmake")
 include("/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_fusioncore[1]_include.cmake")
 include("/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_gnss[1]_include.cmake")
+include("/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/test_gnss_manager[1]_include.cmake")
 subdirs("../../_deps/googletest-build")

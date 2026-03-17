@@ -29,3 +29,7 @@ gtest_discover_tests(test_imu)
 gtest_discover_tests(test_encoder)
 gtest_discover_tests(test_fusioncore)
 gtest_discover_tests(test_gnss)
+
+add_executable(test_gnss_manager test_gnss_manager.cpp)
+target_link_libraries(test_gnss_manager fusioncore_core GTest::gtest_main Eigen3::Eigen)
+gtest_discover_tests(test_gnss_manager)

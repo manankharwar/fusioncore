@@ -240,6 +240,19 @@ test_gnss/fast:
 .PHONY : test_gnss/fast
 
 #=============================================================================
+# Target rules for targets named test_gnss_manager
+
+# Build rule for target.
+test_gnss_manager: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_gnss_manager
+.PHONY : test_gnss_manager
+
+# fast build rule for target.
+test_gnss_manager/fast:
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build.make fusioncore_core/tests/CMakeFiles/test_gnss_manager.dir/build
+.PHONY : test_gnss_manager/fast
+
+#=============================================================================
 # Target rules for targets named gmock
 
 # Build rule for target.
@@ -311,6 +324,7 @@ help:
 	@echo "... test_encoder"
 	@echo "... test_fusioncore"
 	@echo "... test_gnss"
+	@echo "... test_gnss_manager"
 	@echo "... test_imu"
 	@echo "... test_ukf"
 .PHONY : help

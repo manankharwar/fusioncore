@@ -26,6 +26,7 @@ fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o
  /mnt/c/stealth/ROS/fusioncore/build/_deps/googletest-src/googletest/include/gtest/internal/gtest-type-util.h
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/fusioncore.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/encoder.hpp
+ /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/gnss.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/imu.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/state.hpp
  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp

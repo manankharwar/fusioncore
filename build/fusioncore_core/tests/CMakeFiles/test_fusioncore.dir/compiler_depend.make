@@ -25,6 +25,7 @@ fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o: /mnt
   _deps/googletest-src/googletest/include/gtest/internal/gtest-type-util.h \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/fusioncore.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/encoder.hpp \
+  /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/gnss.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/imu.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/state.hpp \
   /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp \
@@ -612,6 +613,8 @@ fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o: /mnt
 
 /usr/include/x86_64-linux-gnu/bits/xopen_lim.h:
 
+/usr/include/x86_64-linux-gnu/bits/wordsize.h:
+
 /usr/include/eigen3/Eigen/src/Core/DiagonalMatrix.h:
 
 /usr/include/eigen3/Eigen/src/Core/Diagonal.h:
@@ -730,8 +733,6 @@ fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o: /mnt
 
 /usr/include/eigen3/Eigen/src/Geometry/AlignedBox.h:
 
-/usr/include/eigen3/Eigen/src/Core/GeneralProduct.h:
-
 /usr/include/c++/13/initializer_list:
 
 /usr/lib/gcc/x86_64-linux-gnu/13/include/mmintrin.h:
@@ -739,6 +740,8 @@ fusioncore_core/tests/CMakeFiles/test_fusioncore.dir/test_fusioncore.cpp.o: /mnt
 /usr/include/c++/13/tr1/bessel_function.tcc:
 
 /usr/include/eigen3/Eigen/src/QR/CompleteOrthogonalDecomposition.h:
+
+/mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/sensors/gnss.hpp:
 
 /usr/include/eigen3/Eigen/src/Core/CoreEvaluators.h:
 
@@ -840,10 +843,6 @@ _deps/googletest-src/googletest/include/gtest/gtest-message.h:
 
 /usr/include/c++/13/bits/specfun.h:
 
-/usr/include/c++/13/bits/cpp_type_traits.h:
-
-/usr/include/c++/13/cassert:
-
 /usr/include/c++/13/bits/chrono.h:
 
 /usr/include/x86_64-linux-gnu/bits/endianness.h:
@@ -873,12 +872,6 @@ _deps/googletest-src/googletest/include/gtest/gtest-message.h:
 /usr/include/c++/13/vector:
 
 /usr/include/eigen3/Eigen/src/Core/util/Macros.h:
-
-/usr/include/eigen3/Eigen/src/Core/ArrayBase.h:
-
-/usr/include/c++/13/bit:
-
-/usr/include/c++/13/bits/allocated_ptr.h:
 
 /usr/include/c++/13/bits/vector.tcc:
 
@@ -920,6 +913,26 @@ _deps/googletest-src/googletest/include/gtest/gtest.h:
 
 /usr/include/c++/13/any:
 
+/usr/include/c++/13/bits/basic_ios.h:
+
+/usr/include/c++/13/bits/shared_ptr_base.h:
+
+/usr/include/c++/13/tr1/gamma.tcc:
+
+/usr/include/c++/13/ext/atomicity.h:
+
+/usr/include/x86_64-linux-gnu/bits/types/struct_tm.h:
+
+/usr/include/c++/13/cctype:
+
+/usr/include/eigen3/Eigen/src/Core/Select.h:
+
+/usr/include/eigen3/Eigen/src/Core/ArrayBase.h:
+
+/usr/include/c++/13/bit:
+
+/usr/include/c++/13/bits/allocated_ptr.h:
+
 /usr/include/c++/13/bits/shared_ptr.h:
 
 /usr/include/eigen3/Eigen/QR:
@@ -931,6 +944,12 @@ _deps/googletest-src/googletest/include/gtest/gtest.h:
 _deps/googletest-src/googletest/include/gtest/gtest-death-test.h:
 
 /usr/include/c++/13/stdlib.h:
+
+/usr/include/c++/13/unordered_map:
+
+/usr/include/eigen3/Eigen/src/Core/PlainObjectBase.h:
+
+_deps/googletest-src/googletest/include/gtest/internal/gtest-internal.h:
 
 /usr/include/c++/13/bits/cxxabi_forced.h:
 
@@ -1000,6 +1019,10 @@ _deps/googletest-src/googletest/include/gtest/internal/custom/gtest-printers.h:
 
 _deps/googletest-src/googletest/include/gtest/internal/gtest-death-test-internal.h:
 
+/usr/include/c++/13/bits/algorithmfwd.h:
+
+/usr/include/x86_64-linux-gnu/bits/long-double.h:
+
 _deps/googletest-src/googletest/include/gtest/internal/gtest-param-util.h:
 
 /usr/include/c++/13/bits/stl_iterator_base_types.h:
@@ -1040,9 +1063,9 @@ _deps/googletest-src/googletest/include/gtest/gtest-test-part.h:
 
 /usr/include/eigen3/Eigen/src/Core/SelfCwiseBinaryOp.h:
 
-/usr/include/c++/13/bits/algorithmfwd.h:
+/usr/include/c++/13/cassert:
 
-/usr/include/x86_64-linux-gnu/bits/long-double.h:
+/usr/include/c++/13/bits/cpp_type_traits.h:
 
 /mnt/c/stealth/ROS/fusioncore/fusioncore_core/include/fusioncore/state.hpp:
 
@@ -1069,26 +1092,6 @@ _deps/googletest-src/googletest/include/gtest/gtest-typed-test.h:
 /usr/include/c++/13/bits/sstream.tcc:
 
 /usr/include/eigen3/Eigen/src/Core/util/Meta.h:
-
-/usr/include/c++/13/bits/basic_ios.h:
-
-/usr/include/c++/13/bits/shared_ptr_base.h:
-
-/usr/include/c++/13/unordered_map:
-
-_deps/googletest-src/googletest/include/gtest/internal/gtest-internal.h:
-
-/usr/include/eigen3/Eigen/src/Core/PlainObjectBase.h:
-
-/usr/include/c++/13/tr1/gamma.tcc:
-
-/usr/include/c++/13/ext/atomicity.h:
-
-/usr/include/x86_64-linux-gnu/bits/types/struct_tm.h:
-
-/usr/include/c++/13/cctype:
-
-/usr/include/eigen3/Eigen/src/Core/Select.h:
 
 /usr/include/c++/13/typeinfo:
 
@@ -1261,6 +1264,8 @@ _deps/googletest-src/googletest/include/gtest/internal/custom/gtest-port.h:
 /usr/include/eigen3/Eigen/src/Geometry/EulerAngles.h:
 
 /usr/include/x86_64-linux-gnu/bits/types/sigval_t.h:
+
+/usr/include/eigen3/Eigen/src/Core/GeneralProduct.h:
 
 /usr/include/c++/13/bits/invoke.h:
 
@@ -1725,5 +1730,3 @@ _deps/googletest-src/googletest/include/gtest/internal/custom/gtest-port.h:
 /usr/include/eigen3/Eigen/src/Core/ArrayWrapper.h:
 
 /usr/include/x86_64-linux-gnu/bits/wctype-wchar.h:
-
-/usr/include/x86_64-linux-gnu/bits/wordsize.h:
