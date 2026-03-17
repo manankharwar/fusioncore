@@ -22,7 +22,11 @@ add_executable(fusioncore_node
 )
 
 target_include_directories(fusioncore_node PRIVATE
-  include
+  ${fusioncore_core_INCLUDE_DIRS}
+)
+
+target_link_directories(fusioncore_node PRIVATE
+  ${fusioncore_core_LIB_DEPENDS}
 )
 
 ament_target_dependencies(fusioncore_node
@@ -34,12 +38,23 @@ ament_target_dependencies(fusioncore_node
   tf2
   tf2_ros
   tf2_geometry_msgs
+  fusioncore_core
 )
 
 target_link_libraries(fusioncore_node
-  fusioncore_core
   Eigen3::Eigen
 )
+
+# Explicitly link the static library
+find_library(FUSIONCORE_CORE_LIB
+  NAMES fusioncore_core
+  HINTS ${fusioncore_core_DIR}/../../../lib
+)
+if(FUSIONCORE_CORE_LIB)
+  target_link_libraries(fusioncore_node ${FUSIONCORE_CORE_LIB})
+else()
+  message(FATAL_ERROR "Could not find libfusioncore_core.a")
+endif()
 
 install(TARGETS fusioncore_node
   DESTINATION lib/${PROJECT_NAME}
