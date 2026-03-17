@@ -12,6 +12,7 @@
 /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/CMakeFiles/install/local.dir
 /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/CMakeFiles/install/strip.dir
 /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/CMakeFiles/test_ukf.dir
+/mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/CMakeFiles/test_imu.dir
 /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/CMakeFiles/edit_cache.dir
 /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/CMakeFiles/rebuild_cache.dir
 /mnt/c/stealth/ROS/fusioncore/build/fusioncore_core/tests/CMakeFiles/list_install_components.dir

@@ -175,6 +175,44 @@ test_ukf/fast:
 	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_ukf.dir/build.make fusioncore_core/tests/CMakeFiles/test_ukf.dir/build
 .PHONY : test_ukf/fast
 
+# Convenience name for target.
+fusioncore_core/tests/CMakeFiles/test_imu.dir/rule:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fusioncore_core/tests/CMakeFiles/test_imu.dir/rule
+.PHONY : fusioncore_core/tests/CMakeFiles/test_imu.dir/rule
+
+# Convenience name for target.
+test_imu: fusioncore_core/tests/CMakeFiles/test_imu.dir/rule
+.PHONY : test_imu
+
+# fast build rule for target.
+test_imu/fast:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/build
+.PHONY : test_imu/fast
+
+test_imu.o: test_imu.cpp.o
+.PHONY : test_imu.o
+
+# target to build an object file
+test_imu.cpp.o:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/test_imu.cpp.o
+.PHONY : test_imu.cpp.o
+
+test_imu.i: test_imu.cpp.i
+.PHONY : test_imu.i
+
+# target to preprocess a source file
+test_imu.cpp.i:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/test_imu.cpp.i
+.PHONY : test_imu.cpp.i
+
+test_imu.s: test_imu.cpp.s
+.PHONY : test_imu.s
+
+# target to generate assembly for a file
+test_imu.cpp.s:
+	cd /mnt/c/stealth/ROS/fusioncore/build && $(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/test_imu.cpp.s
+.PHONY : test_imu.cpp.s
+
 test_ukf.o: test_ukf.cpp.o
 .PHONY : test_ukf.o
 
@@ -211,7 +249,11 @@ help:
 	@echo "... install/strip"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
+	@echo "... test_imu"
 	@echo "... test_ukf"
+	@echo "... test_imu.o"
+	@echo "... test_imu.i"
+	@echo "... test_imu.s"
 	@echo "... test_ukf.o"
 	@echo "... test_ukf.i"
 	@echo "... test_ukf.s"

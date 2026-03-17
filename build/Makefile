@@ -188,6 +188,19 @@ test_ukf/fast:
 .PHONY : test_ukf/fast
 
 #=============================================================================
+# Target rules for targets named test_imu
+
+# Build rule for target.
+test_imu: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 test_imu
+.PHONY : test_imu
+
+# fast build rule for target.
+test_imu/fast:
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/build
+.PHONY : test_imu/fast
+
+#=============================================================================
 # Target rules for targets named gmock
 
 # Build rule for target.
@@ -256,6 +269,7 @@ help:
 	@echo "... gmock_main"
 	@echo "... gtest"
 	@echo "... gtest_main"
+	@echo "... test_imu"
 	@echo "... test_ukf"
 .PHONY : help
 

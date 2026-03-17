@@ -147,6 +147,7 @@ fusioncore_core/clean: fusioncore_core/tests/clean
 
 # Recursive "all" directory target.
 fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_ukf.dir/all
+fusioncore_core/tests/all: fusioncore_core/tests/CMakeFiles/test_imu.dir/all
 fusioncore_core/tests/all: _deps/googletest-build/all
 .PHONY : fusioncore_core/tests/all
 
@@ -156,6 +157,7 @@ fusioncore_core/tests/preinstall: _deps/googletest-build/preinstall
 
 # Recursive "clean" directory target.
 fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_ukf.dir/clean
+fusioncore_core/tests/clean: fusioncore_core/tests/CMakeFiles/test_imu.dir/clean
 fusioncore_core/tests/clean: _deps/googletest-build/clean
 .PHONY : fusioncore_core/tests/clean
 
@@ -194,7 +196,7 @@ fusioncore_core/tests/CMakeFiles/test_ukf.dir/all: _deps/googletest-build/google
 fusioncore_core/tests/CMakeFiles/test_ukf.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/all
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_ukf.dir/build.make fusioncore_core/tests/CMakeFiles/test_ukf.dir/depend
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_ukf.dir/build.make fusioncore_core/tests/CMakeFiles/test_ukf.dir/build
-	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=11,12 "Built target test_ukf"
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=13,14 "Built target test_ukf"
 .PHONY : fusioncore_core/tests/CMakeFiles/test_ukf.dir/all
 
 # Build rule for subdir invocation for target.
@@ -212,6 +214,34 @@ test_ukf: fusioncore_core/tests/CMakeFiles/test_ukf.dir/rule
 fusioncore_core/tests/CMakeFiles/test_ukf.dir/clean:
 	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_ukf.dir/build.make fusioncore_core/tests/CMakeFiles/test_ukf.dir/clean
 .PHONY : fusioncore_core/tests/CMakeFiles/test_ukf.dir/clean
+
+#=============================================================================
+# Target rules for target fusioncore_core/tests/CMakeFiles/test_imu.dir
+
+# All Build rule for target.
+fusioncore_core/tests/CMakeFiles/test_imu.dir/all: fusioncore_core/CMakeFiles/fusioncore_core.dir/all
+fusioncore_core/tests/CMakeFiles/test_imu.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest.dir/all
+fusioncore_core/tests/CMakeFiles/test_imu.dir/all: _deps/googletest-build/googletest/CMakeFiles/gtest_main.dir/all
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/depend
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/build
+	@$(CMAKE_COMMAND) -E cmake_echo_color "--switch=$(COLOR)" --progress-dir=/mnt/c/stealth/ROS/fusioncore/build/CMakeFiles --progress-num=11,12 "Built target test_imu"
+.PHONY : fusioncore_core/tests/CMakeFiles/test_imu.dir/all
+
+# Build rule for subdir invocation for target.
+fusioncore_core/tests/CMakeFiles/test_imu.dir/rule: cmake_check_build_system
+	$(CMAKE_COMMAND) -E cmake_progress_start /mnt/c/stealth/ROS/fusioncore/build/CMakeFiles 8
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 fusioncore_core/tests/CMakeFiles/test_imu.dir/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /mnt/c/stealth/ROS/fusioncore/build/CMakeFiles 0
+.PHONY : fusioncore_core/tests/CMakeFiles/test_imu.dir/rule
+
+# Convenience name for target.
+test_imu: fusioncore_core/tests/CMakeFiles/test_imu.dir/rule
+.PHONY : test_imu
+
+# clean rule for target.
+fusioncore_core/tests/CMakeFiles/test_imu.dir/clean:
+	$(MAKE) $(MAKESILENT) -f fusioncore_core/tests/CMakeFiles/test_imu.dir/build.make fusioncore_core/tests/CMakeFiles/test_imu.dir/clean
+.PHONY : fusioncore_core/tests/CMakeFiles/test_imu.dir/clean
 
 #=============================================================================
 # Target rules for target _deps/googletest-build/googlemock/CMakeFiles/gmock.dir
