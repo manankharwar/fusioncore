@@ -8,11 +8,9 @@ Replaces robot_localization for ROS 2 Jazzy.
 
 ## Why FusionCore exists
 
-In December 2024, Stefan at Husarion posted on ROS Discourse:
+Common thread posted on ROS Discourse:
 
 > "robot_localization is no longer being developed... the lack of open-source examples and out-of-the-box GNSS support is concerning."
-
-27 months after the deprecation announcement, no accessible replacement existed. FusionCore is that replacement.
 
 ---
 
@@ -35,7 +33,7 @@ In December 2024, Stefan at Husarion posted on ROS Discourse:
 
 ```bash
 cd ~/ros2_ws/src
-git clone https://github.com/YOUR_USERNAME/fusioncore.git
+git clone https://github.com/manankharwar/fusioncore.git
 cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --packages-select fusioncore_core fusioncore_ros
@@ -44,7 +42,7 @@ source install/setup.bash
 
 ---
 
-## Stefan Configuration - Husarion Panther outdoor robot
+## Configuration
 
 GNSS + IMU + wheel encoders, ROS 2 Jazzy, dual antenna heading:
 
