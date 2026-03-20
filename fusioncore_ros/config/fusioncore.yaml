@@ -1,27 +1,25 @@
-# FusionCore Configuration
-# Works for both indoor (no GPS) and outdoor (with GPS) robots
-# Just set enable_gnss to true or false
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
 
-base_frame: base_link    # your robot body frame name
-odom_frame: odom         # fixed reference frame name
-publish_rate: 100.0      # output rate in Hz
+    imu.gyro_noise: 0.005
+    imu.accel_noise: 0.1
 
-imu:
-  gyro_noise: 0.005      # gyroscope noise (rad/s) — from your IMU datasheet
-  accel_noise: 0.1       # accelerometer noise (m/s2)
+    encoder.vel_noise: 0.05
+    encoder.yaw_noise: 0.02
 
-encoder:
-  vel_noise: 0.05        # wheel velocity noise (m/s)
-  yaw_noise: 0.02        # yaw rate noise (rad/s)
+    gnss.base_noise_xy: 1.0
+    gnss.base_noise_z: 2.0
+    gnss.heading_noise: 0.02
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
 
-gnss:
-  enable: true           # set to false for indoor robots with no GPS
-  base_noise_xy: 1.0     # GPS horizontal noise in meters
-  base_noise_z: 2.0      # GPS vertical noise in meters
-  heading_noise: 0.02    # dual antenna heading noise (rad)
-  max_hdop: 4.0          # reject GPS fixes worse than this
-  min_satellites: 4      # reject GPS fixes with fewer satellites
-
-ukf:
-  q_gyro_bias: 1.0e-5    # how fast gyro bias can drift
-  q_accel_bias: 1.0e-5   # how fast accel bias can drift
+    ukf.q_position: 0.01
+    ukf.q_orientation: 0.01
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
