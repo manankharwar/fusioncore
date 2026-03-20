@@ -1,5 +1,5 @@
 import os
-from ament_python import get_package_share_directory
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
@@ -14,7 +14,7 @@ def generate_launch_description():
     return LaunchDescription([
         DeclareLaunchArgument(
             "config",
-            default_value=os.path.join(pkg, "config", "differential_drive_basic.yaml"),
+            default_value=os.path.join(pkg, "config", "fusioncore.yaml"),
             description="Path to FusionCore config file"
         ),
 
