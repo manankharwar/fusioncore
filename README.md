@@ -108,7 +108,7 @@ source install/setup.bash
 ### Terminal 1 — Start the node
 ```bash
 ros2 launch fusioncore_ros fusioncore.launch.py \
-  config:=config/outdoor_gnss_dual_antenna.yaml
+  config:=config/fusioncore.yaml
 ```
 
 **Why launch instead of run:** The launch file handles startup configuration automatically. You should see:
@@ -199,14 +199,14 @@ ukf:
 GPS + IMU + wheel encoders, dual antenna heading:
 ```bash
 ros2 launch fusioncore_ros fusioncore.launch.py \
-  config:=config/outdoor_gnss_dual_antenna.yaml
+  config:=config/fusioncore.yaml
 ```
 
 ### Basic indoor robot — no GPS
 IMU + wheel encoders only:
 ```bash
 ros2 launch fusioncore_ros fusioncore.launch.py \
-  config:=config/differential_drive_basic.yaml
+  config:=config/fusioncore.yaml
 ```
 
 ---
