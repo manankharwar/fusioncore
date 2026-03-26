@@ -8,7 +8,11 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.hpp>
+#include <tf2_ros/buffer.h>
+#include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Vector3.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
 using namespace std::chrono_literals;
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -28,27 +32,22 @@ public:
   {
     RCLCPP_INFO(get_logger(), "Configuring FusionCore...");
 
-    // Declare parameters
     declare_parameter("base_frame",   "base_link");
     declare_parameter("odom_frame",   "odom");
     declare_parameter("publish_rate", 100.0);
 
-    // IMU noise
     declare_parameter("imu.gyro_noise",  0.005);
     declare_parameter("imu.accel_noise", 0.1);
 
-    // Encoder noise
     declare_parameter("encoder.vel_noise",    0.05);
     declare_parameter("encoder.yaw_noise",    0.02);
 
-    // GNSS params
     declare_parameter("gnss.base_noise_xy",   1.0);
     declare_parameter("gnss.base_noise_z",    2.0);
     declare_parameter("gnss.heading_noise",   0.02);
     declare_parameter("gnss.max_hdop",        4.0);
     declare_parameter("gnss.min_satellites",  4);
 
-    // UKF process noise
     declare_parameter("ukf.q_position",     0.01);
     declare_parameter("ukf.q_orientation",  0.01);
     declare_parameter("ukf.q_velocity",     0.1);
@@ -61,7 +60,6 @@ public:
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
 
-    // Build config from parameters
     fusioncore::FusionCoreConfig config;
 
     config.imu.gyro_noise_x  = get_parameter("imu.gyro_noise").as_double();
@@ -94,6 +92,10 @@ public:
     // TF broadcaster
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
 
+    // TF buffer + listener for IMU frame transforms
+    tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
+    tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
+
     RCLCPP_INFO(get_logger(), "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
 
@@ -106,13 +108,11 @@ public:
   {
     RCLCPP_INFO(get_logger(), "Activating FusionCore...");
 
-    // Initialize filter at origin
     fusioncore::State initial;
     initial.x = fusioncore::StateVector::Zero();
     initial.P = fusioncore::StateMatrix::Identity() * 0.1;
     fc_->init(initial, now().seconds());
 
-    // Subscribers
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
       "/imu/data", 100,
       [this](const sensor_msgs::msg::Imu::SharedPtr msg) { imu_callback(msg); });
@@ -125,10 +125,8 @@ public:
       "/gnss/fix", 10,
       [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) { gnss_callback(msg); });
 
-    // Publisher
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/fusion/odom", 100);
 
-    // Publish timer
     auto period = std::chrono::duration<double>(1.0 / publish_rate_);
     publish_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
@@ -155,6 +153,8 @@ public:
   {
     fc_.reset();
     tf_broadcaster_.reset();
+    tf_listener_.reset();
+    tf_buffer_.reset();
     return CallbackReturn::SUCCESS;
   }
 
@@ -165,7 +165,10 @@ public:
 
 private:
 
-  // ─── IMU callback ─────────────────────────────────────────────────────────
+  // ─── IMU callback — with frame transform ──────────────────────────────────
+  // Fixes peci1 issue #1: IMUs rarely publish in base_link frame.
+  // We look up the transform from imu_frame -> base_link and rotate
+  // angular velocity and linear acceleration before fusing.
 
   void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
@@ -173,14 +176,67 @@ private:
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
+    std::string imu_frame = msg->header.frame_id;
+    if (imu_frame.empty()) imu_frame = "imu_link";
+
+    // If already in base_link frame, fuse directly
+    if (imu_frame == base_frame_) {
+      fc_->update_imu(t,
+        msg->angular_velocity.x,
+        msg->angular_velocity.y,
+        msg->angular_velocity.z,
+        msg->linear_acceleration.x,
+        msg->linear_acceleration.y,
+        msg->linear_acceleration.z);
+      return;
+    }
+
+    // Look up rotation from imu_frame -> base_link
+    geometry_msgs::msg::TransformStamped tf_stamped;
+    try {
+      tf_stamped = tf_buffer_->lookupTransform(
+        base_frame_, imu_frame, tf2::TimePointZero);
+    } catch (const tf2::TransformException & ex) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+        "Cannot transform IMU from %s to %s: %s"
+        " -- Fix: ros2 run tf2_ros static_transform_publisher"
+        " 0 0 0 0 0 0 %s %s",
+        imu_frame.c_str(), base_frame_.c_str(), ex.what(),
+        base_frame_.c_str(), imu_frame.c_str());
+      // Fall back to raw data rather than dropping the measurement
+      fc_->update_imu(t,
+        msg->angular_velocity.x,
+        msg->angular_velocity.y,
+        msg->angular_velocity.z,
+        msg->linear_acceleration.x,
+        msg->linear_acceleration.y,
+        msg->linear_acceleration.z);
+      return;
+    }
+
+    // Extract rotation matrix from quaternion
+    tf2::Quaternion q(
+      tf_stamped.transform.rotation.x,
+      tf_stamped.transform.rotation.y,
+      tf_stamped.transform.rotation.z,
+      tf_stamped.transform.rotation.w);
+    tf2::Matrix3x3 R(q);
+
+    // Rotate angular velocity into base_link frame
+    tf2::Vector3 w(msg->angular_velocity.x,
+                   msg->angular_velocity.y,
+                   msg->angular_velocity.z);
+    tf2::Vector3 w_base = R * w;
+
+    // Rotate linear acceleration into base_link frame
+    tf2::Vector3 a(msg->linear_acceleration.x,
+                   msg->linear_acceleration.y,
+                   msg->linear_acceleration.z);
+    tf2::Vector3 a_base = R * a;
+
     fc_->update_imu(t,
-      msg->angular_velocity.x,
-      msg->angular_velocity.y,
-      msg->angular_velocity.z,
-      msg->linear_acceleration.x,
-      msg->linear_acceleration.y,
-      msg->linear_acceleration.z
-    );
+      w_base.x(), w_base.y(), w_base.z(),
+      a_base.x(), a_base.y(), a_base.z());
   }
 
   // ─── Encoder callback ─────────────────────────────────────────────────────
@@ -194,22 +250,21 @@ private:
     fc_->update_encoder(t,
       msg->twist.twist.linear.x,
       msg->twist.twist.linear.y,
-      msg->twist.twist.angular.z
-    );
+      msg->twist.twist.angular.z);
   }
 
-  // ─── GNSS callback ────────────────────────────────────────────────────────
+  // ─── GNSS callback — with message covariance support ──────────────────────
+  // Fixes peci1 issue #3: use message covariances when they are meaningful,
+  // fall back to config params when they are not.
 
   void gnss_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
   {
     if (!fc_->is_initialized()) return;
 
-    // Reject no-fix
     if (msg->status.status < 0) return;
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
-    // Convert lat/lon/alt to ENU using first fix as reference
     if (!gnss_ref_set_) {
       gnss_ref_lla_.lat_rad = msg->latitude  * M_PI / 180.0;
       gnss_ref_lla_.lon_rad = msg->longitude * M_PI / 180.0;
@@ -221,7 +276,6 @@ private:
       return;
     }
 
-    // Convert current fix to ENU
     fusioncore::sensors::LLAPoint lla;
     lla.lat_rad = msg->latitude  * M_PI / 180.0;
     lla.lon_rad = msg->longitude * M_PI / 180.0;
@@ -233,22 +287,38 @@ private:
     Eigen::Vector3d enu = fusioncore::sensors::ecef_to_enu(
       ecef, gnss_ref_ecef_, gnss_ref_lla_);
 
-    // Build fix struct
     fusioncore::sensors::GnssFix fix;
     fix.x = enu[0];
     fix.y = enu[1];
     fix.z = enu[2];
-    fix.satellites = 6;   // NavSatFix doesn't expose sat count directly
-    fix.hdop = 1.5;       // NavSatFix doesn't expose HDOP directly
-    fix.vdop = 2.0;
     fix.fix_type = fusioncore::sensors::GnssFixType::GPS_FIX;
 
-    // Use position covariance if available
-    if (msg->position_covariance_type > 0) {
-      double sigma_xy = std::sqrt(msg->position_covariance[0]);
-      double sigma_z  = std::sqrt(msg->position_covariance[8]);
-      fix.hdop = sigma_xy;
-      fix.vdop = sigma_z;
+    // Use message covariance when meaningful (peci1 fix #3)
+    // position_covariance_type:
+    //   0 = unknown (use config defaults)
+    //   1 = approximated
+    //   2 = diagonal known
+    //   3 = full matrix known
+    if (msg->position_covariance_type >= 2) {
+      // Diagonal elements are variances: sigma^2
+      // We use sqrt to get sigma, then assign as hdop/vdop equivalent
+      double var_xy = (msg->position_covariance[0] + msg->position_covariance[4]) / 2.0;
+      double var_z  = msg->position_covariance[8];
+      // Guard against zero or negative variances from buggy drivers
+      if (var_xy > 0.0 && var_z > 0.0) {
+        fix.hdop = std::sqrt(var_xy);
+        fix.vdop = std::sqrt(var_z);
+        fix.satellites = 6;  // assume acceptable if covariance is provided
+      } else {
+        fix.hdop = 1.5;
+        fix.vdop = 2.0;
+        fix.satellites = 6;
+      }
+    } else {
+      // Fall back to config defaults
+      fix.hdop = 1.5;
+      fix.vdop = 2.0;
+      fix.satellites = 6;
     }
 
     bool accepted = fc_->update_gnss(t, fix);
@@ -267,7 +337,6 @@ private:
     const fusioncore::State& s = fc_->get_state();
     auto stamp = now();
 
-    // Publish nav_msgs/Odometry
     nav_msgs::msg::Odometry odom;
     odom.header.stamp    = stamp;
     odom.header.frame_id = odom_frame_;
@@ -295,7 +364,6 @@ private:
 
     odom_pub_->publish(odom);
 
-    // Broadcast TF: odom -> base_link
     geometry_msgs::msg::TransformStamped tf;
     tf.header.stamp    = stamp;
     tf.header.frame_id = odom_frame_;
@@ -332,8 +400,10 @@ private:
 
   // ─── Members ──────────────────────────────────────────────────────────────
 
-  std::unique_ptr<fusioncore::FusionCore> fc_;
-  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  std::unique_ptr<fusioncore::FusionCore>          fc_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster>   tf_broadcaster_;
+  std::shared_ptr<tf2_ros::Buffer>                 tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener>      tf_listener_;
 
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          imu_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
