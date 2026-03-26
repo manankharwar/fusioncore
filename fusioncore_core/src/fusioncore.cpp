@@ -1,4 +1,5 @@
 #include "fusioncore/fusioncore.hpp"
+#include "fusioncore/sensors/imu.hpp"
 #include <stdexcept>
 #include <cmath>
 
@@ -54,6 +55,37 @@ void FusionCore::update_imu(
 
   sensors::ImuNoiseMatrix R = sensors::imu_noise_matrix(config_.imu);
   ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R);
+
+  last_imu_time_ = timestamp_seconds;
+  ++update_count_;
+}
+
+void FusionCore::update_imu_orientation(
+  double timestamp_seconds,
+  double roll, double pitch, double yaw,
+  const double orientation_cov[9]
+) {
+  if (!initialized_)
+    throw std::runtime_error("FusionCore: update_imu_orientation() called before init()");
+
+  predict_to(timestamp_seconds);
+
+  sensors::ImuOrientationMeasurement z;
+  z[0] = roll;
+  z[1] = pitch;
+  z[2] = yaw;
+
+  sensors::ImuOrientationParams fallback;
+  sensors::ImuOrientationNoiseMatrix R;
+
+  if (orientation_cov != nullptr) {
+    R = sensors::imu_orientation_noise_from_covariance(orientation_cov, fallback);
+  } else {
+    R = sensors::imu_orientation_noise_matrix(fallback);
+  }
+
+  ukf_.update<sensors::IMU_ORIENTATION_DIM>(
+    z, sensors::imu_orientation_measurement_function, R);
 
   last_imu_time_ = timestamp_seconds;
   ++update_count_;

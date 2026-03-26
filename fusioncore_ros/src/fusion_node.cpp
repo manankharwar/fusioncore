@@ -210,6 +210,7 @@ private:
         msg->linear_acceleration.x,
         msg->linear_acceleration.y,
         msg->linear_acceleration.z);
+      fuse_imu_orientation_if_valid(t, msg);
       return;
     }
 
@@ -254,6 +255,43 @@ private:
     fc_->update_imu(t,
       w_base.x(), w_base.y(), w_base.z(),
       a_base.x(), a_base.y(), a_base.z());
+    fuse_imu_orientation_if_valid(t, msg);
+  }
+
+  // ─── IMU orientation helper ───────────────────────────────────────────────
+  // Called after every IMU update if the message contains a valid orientation.
+  // Handles IMUs like BNO08x, VectorNav, Xsens that publish full orientation.
+  // Uses message covariance when available (peci1 fix).
+
+  void fuse_imu_orientation_if_valid(
+    double t,
+    const sensor_msgs::msg::Imu::SharedPtr& msg)
+  {
+    // orientation_covariance[0] == -1 means "no orientation data"
+    if (msg->orientation_covariance[0] < 0.0) return;
+
+    // All zeros also means unknown — skip
+    bool has_orientation = false;
+    for (int i = 0; i < 9; ++i) {
+      if (msg->orientation_covariance[i] != 0.0) {
+        has_orientation = true;
+        break;
+      }
+    }
+    if (!has_orientation) return;
+
+    // Extract roll, pitch, yaw from quaternion
+    tf2::Quaternion q(
+      msg->orientation.x,
+      msg->orientation.y,
+      msg->orientation.z,
+      msg->orientation.w);
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+    fc_->update_imu_orientation(
+      t, roll, pitch, yaw,
+      msg->orientation_covariance.data());
   }
 
   // ─── Encoder callback ─────────────────────────────────────────────────────

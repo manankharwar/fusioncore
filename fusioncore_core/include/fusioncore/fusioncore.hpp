@@ -42,11 +42,22 @@ public:
 
   void init(const State& initial_state, double timestamp_seconds);
 
-  // IMU update
+  // IMU raw update (gyro + accel)
   void update_imu(
     double timestamp_seconds,
     double wx, double wy, double wz,
     double ax, double ay, double az
+  );
+
+  // IMU orientation update — for IMUs that publish full orientation
+  // (BNO08x, VectorNav, Xsens, etc.)
+  // roll, pitch, yaw in radians
+  // orientation_cov: 9-element row-major covariance matrix from message
+  //                  pass nullptr to use config params
+  void update_imu_orientation(
+    double timestamp_seconds,
+    double roll, double pitch, double yaw,
+    const double orientation_cov[9] = nullptr
   );
 
   // Encoder update
