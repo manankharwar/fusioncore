@@ -5,6 +5,7 @@
 #include <rclcpp_lifecycle/lifecycle_node.hpp>
 #include <sensor_msgs/msg/imu.hpp>
 #include <sensor_msgs/msg/nav_sat_fix.hpp>
+#include <sensor_msgs/msg/nav_sat_status.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.hpp>
@@ -39,14 +40,19 @@ public:
     declare_parameter("imu.gyro_noise",  0.005);
     declare_parameter("imu.accel_noise", 0.1);
 
-    declare_parameter("encoder.vel_noise",    0.05);
-    declare_parameter("encoder.yaw_noise",    0.02);
+    declare_parameter("encoder.vel_noise", 0.05);
+    declare_parameter("encoder.yaw_noise", 0.02);
 
-    declare_parameter("gnss.base_noise_xy",   1.0);
-    declare_parameter("gnss.base_noise_z",    2.0);
-    declare_parameter("gnss.heading_noise",   0.02);
-    declare_parameter("gnss.max_hdop",        4.0);
-    declare_parameter("gnss.min_satellites",  4);
+    declare_parameter("gnss.base_noise_xy",  1.0);
+    declare_parameter("gnss.base_noise_z",   2.0);
+    declare_parameter("gnss.heading_noise",  0.02);
+    declare_parameter("gnss.max_hdop",       4.0);
+    declare_parameter("gnss.min_satellites", 4);
+
+    // Topic for dual antenna heading — sensor_msgs/Imu used as heading carrier.
+    // The yaw component of orientation is the heading.
+    // Set to empty string to disable dual antenna heading.
+    declare_parameter("gnss.heading_topic", "/gnss/heading");
 
     declare_parameter("ukf.q_position",     0.01);
     declare_parameter("ukf.q_orientation",  0.01);
@@ -59,6 +65,7 @@ public:
     base_frame_   = get_parameter("base_frame").as_string();
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
+    heading_topic_ = get_parameter("gnss.heading_topic").as_string();
 
     fusioncore::FusionCoreConfig config;
 
@@ -89,14 +96,19 @@ public:
 
     fc_ = std::make_unique<fusioncore::FusionCore>(config);
 
-    // TF broadcaster
     tf_broadcaster_ = std::make_unique<tf2_ros::TransformBroadcaster>(*this);
-
-    // TF buffer + listener for IMU frame transforms
     tf_buffer_ = std::make_shared<tf2_ros::Buffer>(get_clock());
     tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
-    RCLCPP_INFO(get_logger(), "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
+    if (!heading_topic_.empty()) {
+      RCLCPP_INFO(get_logger(),
+        "Dual antenna heading enabled on topic: %s", heading_topic_.c_str());
+    } else {
+      RCLCPP_INFO(get_logger(), "Dual antenna heading disabled.");
+    }
+
+    RCLCPP_INFO(get_logger(),
+      "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
 
     return CallbackReturn::SUCCESS;
@@ -125,6 +137,19 @@ public:
       "/gnss/fix", 10,
       [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) { gnss_callback(msg); });
 
+    // Dual antenna heading subscriber — only if topic is configured
+    // Expects sensor_msgs/Imu where orientation.z/w gives the yaw heading.
+    // This is the standard way dual antenna GPS receivers report heading in ROS.
+    if (!heading_topic_.empty()) {
+      gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
+        heading_topic_, 10,
+        [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
+          gnss_heading_callback(msg);
+        });
+      RCLCPP_INFO(get_logger(),
+        "Subscribed to dual antenna heading: %s", heading_topic_.c_str());
+    }
+
     odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/fusion/odom", 100);
 
     auto period = std::chrono::duration<double>(1.0 / publish_rate_);
@@ -143,6 +168,7 @@ public:
     imu_sub_.reset();
     encoder_sub_.reset();
     gnss_sub_.reset();
+    gnss_heading_sub_.reset();
     publish_timer_.reset();
     odom_pub_.reset();
     RCLCPP_INFO(get_logger(), "FusionCore deactivated.");
@@ -166,9 +192,6 @@ public:
 private:
 
   // ─── IMU callback — with frame transform ──────────────────────────────────
-  // Fixes peci1 issue #1: IMUs rarely publish in base_link frame.
-  // We look up the transform from imu_frame -> base_link and rotate
-  // angular velocity and linear acceleration before fusing.
 
   void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
@@ -179,7 +202,6 @@ private:
     std::string imu_frame = msg->header.frame_id;
     if (imu_frame.empty()) imu_frame = "imu_link";
 
-    // If already in base_link frame, fuse directly
     if (imu_frame == base_frame_) {
       fc_->update_imu(t,
         msg->angular_velocity.x,
@@ -191,7 +213,6 @@ private:
       return;
     }
 
-    // Look up rotation from imu_frame -> base_link
     geometry_msgs::msg::TransformStamped tf_stamped;
     try {
       tf_stamped = tf_buffer_->lookupTransform(
@@ -203,7 +224,6 @@ private:
         " 0 0 0 0 0 0 %s %s",
         imu_frame.c_str(), base_frame_.c_str(), ex.what(),
         base_frame_.c_str(), imu_frame.c_str());
-      // Fall back to raw data rather than dropping the measurement
       fc_->update_imu(t,
         msg->angular_velocity.x,
         msg->angular_velocity.y,
@@ -214,7 +234,6 @@ private:
       return;
     }
 
-    // Extract rotation matrix from quaternion
     tf2::Quaternion q(
       tf_stamped.transform.rotation.x,
       tf_stamped.transform.rotation.y,
@@ -222,13 +241,11 @@ private:
       tf_stamped.transform.rotation.w);
     tf2::Matrix3x3 R(q);
 
-    // Rotate angular velocity into base_link frame
     tf2::Vector3 w(msg->angular_velocity.x,
                    msg->angular_velocity.y,
                    msg->angular_velocity.z);
     tf2::Vector3 w_base = R * w;
 
-    // Rotate linear acceleration into base_link frame
     tf2::Vector3 a(msg->linear_acceleration.x,
                    msg->linear_acceleration.y,
                    msg->linear_acceleration.z);
@@ -253,9 +270,7 @@ private:
       msg->twist.twist.angular.z);
   }
 
-  // ─── GNSS callback — with message covariance support ──────────────────────
-  // Fixes peci1 issue #3: use message covariances when they are meaningful,
-  // fall back to config params when they are not.
+  // ─── GNSS position callback ────────────────────────────────────────────────
 
   void gnss_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
   {
@@ -293,29 +308,20 @@ private:
     fix.z = enu[2];
     fix.fix_type = fusioncore::sensors::GnssFixType::GPS_FIX;
 
-    // Use message covariance when meaningful (peci1 fix #3)
-    // position_covariance_type:
-    //   0 = unknown (use config defaults)
-    //   1 = approximated
-    //   2 = diagonal known
-    //   3 = full matrix known
+    // Use message covariance when meaningful
     if (msg->position_covariance_type >= 2) {
-      // Diagonal elements are variances: sigma^2
-      // We use sqrt to get sigma, then assign as hdop/vdop equivalent
       double var_xy = (msg->position_covariance[0] + msg->position_covariance[4]) / 2.0;
       double var_z  = msg->position_covariance[8];
-      // Guard against zero or negative variances from buggy drivers
       if (var_xy > 0.0 && var_z > 0.0) {
         fix.hdop = std::sqrt(var_xy);
         fix.vdop = std::sqrt(var_z);
-        fix.satellites = 6;  // assume acceptable if covariance is provided
+        fix.satellites = 6;
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
         fix.satellites = 6;
       }
     } else {
-      // Fall back to config defaults
       fix.hdop = 1.5;
       fix.vdop = 2.0;
       fix.satellites = 6;
@@ -325,6 +331,72 @@ private:
     if (!accepted) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
         "GNSS fix rejected (poor quality)");
+    }
+  }
+
+  // ─── Dual antenna heading callback ────────────────────────────────────────
+  // Fixes peci1 issue: dual antenna heading was in core C++ but not wired
+  // to any ROS topic. Now subscribes to gnss.heading_topic.
+  //
+  // Expected message: sensor_msgs/Imu
+  // The orientation quaternion gives the robot heading in ENU frame.
+  // We extract yaw from it and pass to update_gnss_heading().
+  //
+  // Most dual antenna GPS receivers (u-blox, Septentrio, Trimble) publish
+  // heading as a quaternion in a sensor_msgs/Imu message. This is the
+  // de facto standard in ROS even though it is slightly awkward.
+
+  void gnss_heading_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
+  {
+    if (!fc_->is_initialized()) return;
+
+    double t = rclcpp::Time(msg->header.stamp).seconds();
+
+    // Check orientation covariance — if all zeros the orientation is invalid
+    bool orientation_valid = false;
+    for (int i = 0; i < 9; ++i) {
+      if (msg->orientation_covariance[i] != 0.0) {
+        orientation_valid = true;
+        break;
+      }
+    }
+
+    // Some drivers set covariance[0] = -1 to signal "no orientation"
+    if (msg->orientation_covariance[0] < 0.0) {
+      orientation_valid = false;
+    }
+
+    if (!orientation_valid) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
+        "Dual antenna heading message has invalid orientation covariance."
+        " Check your GPS driver configuration.");
+      return;
+    }
+
+    // Extract yaw from quaternion
+    tf2::Quaternion q(
+      msg->orientation.x,
+      msg->orientation.y,
+      msg->orientation.z,
+      msg->orientation.w);
+
+    double roll, pitch, yaw;
+    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+    // Extract heading accuracy from orientation covariance
+    // covariance[8] is the yaw variance (3rd diagonal element)
+    double yaw_variance = msg->orientation_covariance[8];
+    double yaw_sigma = (yaw_variance > 0.0) ? std::sqrt(yaw_variance) : 0.02;
+
+    fusioncore::sensors::GnssHeading heading;
+    heading.heading_rad  = yaw;
+    heading.accuracy_rad = yaw_sigma;
+    heading.valid        = true;
+
+    bool accepted = fc_->update_gnss_heading(t, heading);
+    if (!accepted) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+        "GNSS heading update rejected");
     }
   }
 
@@ -386,8 +458,8 @@ private:
     const fusioncore::sensors::LLAPoint& lla,
     fusioncore::sensors::ECEFPoint& ecef)
   {
-    const double a   = 6378137.0;
-    const double e2  = 0.00669437999014;
+    const double a  = 6378137.0;
+    const double e2 = 0.00669437999014;
     double sin_lat = std::sin(lla.lat_rad);
     double cos_lat = std::cos(lla.lat_rad);
     double sin_lon = std::sin(lla.lon_rad);
@@ -400,12 +472,13 @@ private:
 
   // ─── Members ──────────────────────────────────────────────────────────────
 
-  std::unique_ptr<fusioncore::FusionCore>          fc_;
-  std::unique_ptr<tf2_ros::TransformBroadcaster>   tf_broadcaster_;
-  std::shared_ptr<tf2_ros::Buffer>                 tf_buffer_;
-  std::shared_ptr<tf2_ros::TransformListener>      tf_listener_;
+  std::unique_ptr<fusioncore::FusionCore>        fc_;
+  std::unique_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
+  std::shared_ptr<tf2_ros::Buffer>               tf_buffer_;
+  std::shared_ptr<tf2_ros::TransformListener>    tf_listener_;
 
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          imu_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr           odom_pub_;
@@ -414,6 +487,7 @@ private:
   std::string base_frame_;
   std::string odom_frame_;
   double      publish_rate_;
+  std::string heading_topic_;
 
   bool gnss_ref_set_ = false;
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
