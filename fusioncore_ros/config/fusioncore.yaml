@@ -5,6 +5,8 @@ fusioncore:
     publish_rate: 100.0
 
     imu.gyro_noise: 0.005
+    # Set true if IMU has magnetometer (9-axis). False for 6-axis gyro/accel only.
+    imu.has_magnetometer: false
     imu.accel_noise: 0.1
 
     encoder.vel_noise: 0.05

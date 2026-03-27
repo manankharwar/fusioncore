@@ -20,8 +20,15 @@ struct FusionCoreConfig {
 
   // Minimum distance robot must travel (meters) before heading is considered
   // geometrically observable from GPS track alone.
-  // Only used when no dual antenna or IMU orientation source is available.
   double heading_observable_distance = 5.0;
+
+  // Does the IMU have a magnetometer (9-axis)?
+  // true  — IMU orientation includes magnetically-referenced yaw (BNO08x,
+  //         VectorNav, Xsens). Orientation update validates heading.
+  // false — IMU is 6-axis only. Yaw is integrated gyro and drifts.
+  //         Orientation update validates roll/pitch ONLY, not heading.
+  //         Lever arm will not activate from IMU orientation alone.
+  bool imu_has_magnetometer = false;
 };
 
 // How heading was validated — tracked per filter run
@@ -75,9 +82,14 @@ public:
   );
 
   // Encoder update
+  // var_vx, var_vy, var_wz: message covariance variances (m/s)²
+  // Pass -1.0 to use config params for that axis
   void update_encoder(
     double timestamp_seconds,
-    double vx, double vy, double wz
+    double vx, double vy, double wz,
+    double var_vx = -1.0,
+    double var_vy = -1.0,
+    double var_wz = -1.0
   );
 
   // GNSS position update — ENU frame

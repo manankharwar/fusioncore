@@ -58,15 +58,41 @@ void FusionCore::update_distance_traveled(double x, double y) {
     gnss_pos_set_ = true;
     return;
   }
+
   double dx = x - last_gnss_x_;
   double dy = y - last_gnss_y_;
   double dist = std::sqrt(dx*dx + dy*dy);
-  distance_traveled_ += dist;
+
+  // Minimum step size to filter GPS jitter — ignore sub-centimeter moves
+  // This prevents GPS noise from accumulating fake distance
+  const double MIN_STEP = 0.05;  // 5cm
+  if (dist < MIN_STEP) return;
+
+  // Estimate speed from this GPS step and the time since last GNSS fix
+  // If dt is available, check that speed is meaningful (not jitter, not slip)
+  // We use the state velocity as a cross-check
+  double state_speed = std::sqrt(
+    ukf_.state().x[VX] * ukf_.state().x[VX] +
+    ukf_.state().x[VY] * ukf_.state().x[VY]);
+
+  // Minimum forward speed to count as real motion
+  // Below this threshold: could be GPS jitter, spinning in place, or sliding
+  const double MIN_SPEED = 0.2;  // m/s
+
+  // Maximum yaw rate — if spinning fast, heading is not observable from track
+  const double MAX_YAW_RATE = 0.3;  // rad/s (~17 deg/s)
+  double yaw_rate = std::abs(ukf_.state().x[WZ]);
+
+  bool motion_is_valid = (state_speed >= MIN_SPEED) && (yaw_rate <= MAX_YAW_RATE);
+
+  if (motion_is_valid) {
+    distance_traveled_ += dist;
+  }
+
   last_gnss_x_ = x;
   last_gnss_y_ = y;
 
-  // If robot has moved enough, heading is geometrically observable
-  // from the GPS track — but only if no better source already validated it
+  // Only validate heading from GPS track when motion quality is confirmed
   if (!heading_validated_ &&
       distance_traveled_ >= config_.heading_observable_distance) {
     heading_validated_ = true;
@@ -122,12 +148,19 @@ void FusionCore::update_imu_orientation(
   ukf_.update<sensors::IMU_ORIENTATION_DIM>(
     z, sensors::imu_orientation_measurement_function, R);
 
-  // IMU orientation validates heading — this is a real independent source
-  if (!heading_validated_ ||
-      heading_source_ == HeadingSource::GPS_TRACK) {
-    heading_validated_ = true;
-    heading_source_    = HeadingSource::IMU_ORIENTATION;
+  // IMU orientation validates heading ONLY if the IMU has a magnetometer.
+  // 6-axis IMUs integrate gyro for yaw — this drifts and is not a valid
+  // heading reference. 9-axis IMUs with magnetometer give true heading.
+  // peci1 fix: don't blindly trust IMU orientation as heading source.
+  if (config_.imu_has_magnetometer) {
+    if (!heading_validated_ ||
+        heading_source_ == HeadingSource::GPS_TRACK) {
+      heading_validated_ = true;
+      heading_source_    = HeadingSource::IMU_ORIENTATION;
+    }
   }
+  // If no magnetometer: orientation still fused for roll/pitch accuracy,
+  // but heading_validated_ is NOT set — lever arm stays inactive.
 
   last_imu_time_ = timestamp_seconds;
   ++update_count_;
@@ -135,7 +168,10 @@ void FusionCore::update_imu_orientation(
 
 void FusionCore::update_encoder(
   double timestamp_seconds,
-  double vx, double vy, double wz
+  double vx, double vy, double wz,
+  double var_vx,
+  double var_vy,
+  double var_wz
 ) {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_encoder() called before init()");
@@ -145,7 +181,13 @@ void FusionCore::update_encoder(
   sensors::EncoderMeasurement z;
   z[0] = vx; z[1] = vy; z[2] = wz;
 
+  // Use message covariance when provided (peci1 fix)
+  // Falls back to config params when var is -1.0 (not available)
   sensors::EncoderNoiseMatrix R = sensors::encoder_noise_matrix(config_.encoder);
+  if (var_vx > 0.0) R(0,0) = var_vx;
+  if (var_vy > 0.0) R(1,1) = var_vy;
+  if (var_wz > 0.0) R(2,2) = var_wz;
+
   ukf_.update<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R);
 
   last_encoder_time_ = timestamp_seconds;

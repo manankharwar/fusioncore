@@ -38,6 +38,9 @@ public:
     declare_parameter("publish_rate", 100.0);
 
     declare_parameter("imu.gyro_noise",  0.005);
+    // Set to true if IMU has a magnetometer (9-axis: BNO08x, VectorNav, Xsens)
+    // Set to false for 6-axis IMUs — yaw from gyro integration drifts
+    declare_parameter("imu.has_magnetometer", false);
     declare_parameter("imu.accel_noise", 0.1);
 
     declare_parameter("encoder.vel_noise", 0.05);
@@ -81,7 +84,8 @@ public:
     config.imu.gyro_noise_x  = get_parameter("imu.gyro_noise").as_double();
     config.imu.gyro_noise_y  = config.imu.gyro_noise_x;
     config.imu.gyro_noise_z  = config.imu.gyro_noise_x;
-    config.imu.accel_noise_x = get_parameter("imu.accel_noise").as_double();
+    config.imu.accel_noise_x    = get_parameter("imu.accel_noise").as_double();
+    config.imu_has_magnetometer = get_parameter("imu.has_magnetometer").as_bool();
     config.imu.accel_noise_y = config.imu.accel_noise_x;
     config.imu.accel_noise_z = config.imu.accel_noise_x;
 
