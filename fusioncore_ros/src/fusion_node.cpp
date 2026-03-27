@@ -12,6 +12,7 @@
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
+#include <compass_msgs/msg/azimuth.hpp>
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 
@@ -60,6 +61,10 @@ public:
     // Optional second GNSS receiver topic — set to empty string to disable
     declare_parameter("gnss.fix2_topic", "");
 
+    // compass_msgs/Azimuth heading topic — peci1 standard
+    // Set to empty string to disable (use sensor_msgs/Imu heading instead)
+    declare_parameter("gnss.azimuth_topic", "");
+
     // Antenna lever arm params
     declare_parameter("gnss.lever_arm_x", 0.0);
     declare_parameter("gnss.lever_arm_y", 0.0);
@@ -77,7 +82,8 @@ public:
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
-    gnss2_topic_   = get_parameter("gnss.fix2_topic").as_string();
+    gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
+    azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
 
     fusioncore::FusionCoreConfig config;
 
@@ -163,6 +169,17 @@ public:
         gnss_callback(msg, 0);
       });
 
+    // compass_msgs/Azimuth heading — optional, preferred over sensor_msgs/Imu
+    if (!azimuth_topic_.empty()) {
+      azimuth_sub_ = create_subscription<compass_msgs::msg::Azimuth>(
+        azimuth_topic_, 10,
+        [this](const compass_msgs::msg::Azimuth::SharedPtr msg) {
+          azimuth_callback(msg);
+        });
+      RCLCPP_INFO(get_logger(),
+        "compass_msgs/Azimuth heading enabled on topic: %s", azimuth_topic_.c_str());
+    }
+
     // Second GNSS receiver — optional
     if (!gnss2_topic_.empty()) {
       gnss2_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
@@ -207,6 +224,7 @@ public:
     gnss_sub_.reset();
     gnss2_sub_.reset();
     gnss_heading_sub_.reset();
+    azimuth_sub_.reset();
     publish_timer_.reset();
     odom_pub_.reset();
     RCLCPP_INFO(get_logger(), "FusionCore deactivated.");
@@ -513,6 +531,60 @@ private:
     }
   }
 
+  // ─── compass_msgs/Azimuth heading callback ───────────────────────────────
+  // Handles the compass_msgs standard suggested by peci1.
+  // Supports ENU/NED orientation and RAD/DEG units.
+  // Converts to ENU radians before passing to the filter.
+
+  void azimuth_callback(const compass_msgs::msg::Azimuth::SharedPtr msg)
+  {
+    if (!fc_->is_initialized()) return;
+
+    double t = rclcpp::Time(msg->header.stamp).seconds();
+
+    // Convert to radians if needed
+    double azimuth_rad = msg->azimuth;
+    if (msg->unit == compass_msgs::msg::Azimuth::UNIT_DEG) {
+      azimuth_rad = azimuth_rad * M_PI / 180.0;
+    }
+
+    // Convert to ENU yaw if needed
+    // ENU: 0 = east, increases CCW — matches ROS REP-103
+    // NED: 0 = north, increases CW — needs conversion
+    double yaw_enu;
+    if (msg->orientation == compass_msgs::msg::Azimuth::ORIENTATION_NED) {
+      // NED azimuth to ENU yaw: yaw_enu = pi/2 - azimuth_ned
+      yaw_enu = M_PI / 2.0 - azimuth_rad;
+    } else {
+      // Already ENU
+      yaw_enu = azimuth_rad;
+    }
+
+    // Normalize to [-pi, pi]
+    while (yaw_enu >  M_PI) yaw_enu -= 2.0 * M_PI;
+    while (yaw_enu < -M_PI) yaw_enu += 2.0 * M_PI;
+
+    // Build heading struct
+    fusioncore::sensors::GnssHeading heading;
+    heading.heading_rad  = yaw_enu;
+    heading.accuracy_rad = (msg->variance > 0.0) ? std::sqrt(msg->variance) : 0.02;
+    heading.valid        = true;
+
+    // Note magnetic vs geographic north
+    // Geographic is preferred — magnetic has declination error
+    if (msg->reference == compass_msgs::msg::Azimuth::REFERENCE_MAGNETIC) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 30000,
+        "compass_msgs/Azimuth uses MAGNETIC north reference. "
+        "Consider using GEOGRAPHIC for better accuracy.");
+    }
+
+    bool accepted = fc_->update_gnss_heading(t, heading);
+    if (!accepted) {
+      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+        "Azimuth heading update rejected");
+    }
+  }
+
   // ─── Publish state ────────────────────────────────────────────────────────
 
   void publish_state()
@@ -591,6 +663,7 @@ private:
   std::shared_ptr<tf2_ros::TransformListener>    tf_listener_;
 
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          imu_sub_;
+  rclcpp::Subscription<compass_msgs::msg::Azimuth>::SharedPtr     azimuth_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss_sub_;
@@ -603,6 +676,7 @@ private:
   double      publish_rate_;
   std::string heading_topic_;
   std::string gnss2_topic_;
+  std::string azimuth_topic_;
 
   bool gnss_ref_set_ = false;
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;

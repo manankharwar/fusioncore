@@ -28,6 +28,11 @@ fusioncore:
     # Optional second GNSS receiver — leave empty to disable
     gnss.fix2_topic: ""
 
+    # compass_msgs/Azimuth heading topic (peci1 standard)
+    # Preferred over gnss.heading_topic when available
+    # Leave empty to use sensor_msgs/Imu heading instead
+    gnss.azimuth_topic: ""
+
     ukf.q_position: 0.01
     ukf.q_orientation: 0.01
     ukf.q_velocity: 0.1
