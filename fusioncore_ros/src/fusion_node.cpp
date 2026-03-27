@@ -153,6 +153,10 @@ public:
       "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
 
+    // TF validation — check transforms exist before starting
+    rclcpp::sleep_for(std::chrono::milliseconds(500));
+    validate_transforms();
+
     return CallbackReturn::SUCCESS;
   }
 
@@ -258,6 +262,67 @@ public:
   }
 
 private:
+
+  // ─── TF validation ────────────────────────────────────────────────────────
+  // Called during on_configure. Checks all required transforms exist.
+  // Prints [OK] or [MISSING] + exact fix command for each.
+  // Returns true only if all critical transforms are found.
+
+  bool validate_transforms()
+  {
+    bool all_ok = true;
+    RCLCPP_INFO(get_logger(), "--- TF Validation ---");
+
+    // Check common sensor transforms
+    std::vector<std::pair<std::string,std::string>> to_check = {
+      {"imu_link", base_frame_},
+      {"base_link", odom_frame_},
+    };
+
+    for (const auto& [from, to] : to_check) {
+      if (check_transform(from, to)) {
+        RCLCPP_INFO(get_logger(), "  [OK]      %s -> %s", from.c_str(), to.c_str());
+      } else {
+        RCLCPP_WARN(get_logger(), "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 %s %s",
+          from.c_str(), to.c_str(), to.c_str(), from.c_str());
+      }
+    }
+
+    // Check GNSS frame if lever arm is configured
+    double lx = get_parameter("gnss.lever_arm_x").as_double();
+    double ly = get_parameter("gnss.lever_arm_y").as_double();
+    double lz = get_parameter("gnss.lever_arm_z").as_double();
+    bool lever_arm_set = std::abs(lx) > 1e-6 || std::abs(ly) > 1e-6 || std::abs(lz) > 1e-6;
+
+    if (lever_arm_set) {
+      if (check_transform("gnss_link", base_frame_)) {
+        RCLCPP_INFO(get_logger(), "  [OK]      gnss_link -> %s", base_frame_.c_str());
+      } else {
+        RCLCPP_WARN(get_logger(), "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss_link",
+          base_frame_.c_str(), lx, ly, lz, base_frame_.c_str());
+      }
+    }
+
+    RCLCPP_INFO(get_logger(), "---------------------");
+    return all_ok;
+  }
+
+
+  bool check_transform(
+    const std::string& from_frame,
+    const std::string& to_frame,
+    double timeout_seconds = 1.0)
+  {
+    try {
+      tf_buffer_->lookupTransform(
+        to_frame, from_frame,
+        tf2::TimePointZero,
+        tf2::durationFromSec(timeout_seconds));
+      return true;
+    } catch (const tf2::TransformException&) {
+      return false;
+    }
+  }
 
   // ─── IMU callback — with frame transform ──────────────────────────────────
 
