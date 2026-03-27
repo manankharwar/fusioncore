@@ -8,7 +8,6 @@ namespace fusioncore {
 namespace sensors {
 
 // ─── GNSS position measurement (3-dimensional) ──────────────────────────────
-// [x, y, z] in ENU frame (converted from ECEF or lat/lon/alt)
 
 constexpr int GNSS_POS_DIM = 3;
 
@@ -16,30 +15,52 @@ using GnssPosMeasurement = Eigen::Matrix<double, GNSS_POS_DIM, 1>;
 using GnssPosNoiseMatrix = Eigen::Matrix<double, GNSS_POS_DIM, GNSS_POS_DIM>;
 
 // ─── GNSS heading measurement (1-dimensional) ───────────────────────────────
-// Dual antenna heading — direct yaw measurement
 
 constexpr int GNSS_HDG_DIM = 1;
 
 using GnssHdgMeasurement = Eigen::Matrix<double, GNSS_HDG_DIM, 1>;
 using GnssHdgNoiseMatrix = Eigen::Matrix<double, GNSS_HDG_DIM, GNSS_HDG_DIM>;
 
+// ─── GNSS antenna lever arm ──────────────────────────────────────────────────
+// The offset from base_link to the GNSS antenna, in the robot body frame.
+// peci1 fix: if the antenna is not at base_link, its readings correspond
+// to a different point than base_link. Ignoring this causes position errors
+// proportional to the lever arm length times the rotation rate.
+//
+// How to measure: use a tape measure from your robot's base_link origin
+// (usually center of the rear axle or geometric center) to the antenna.
+// x = forward, y = left, z = up in body frame.
+//
+// Example for Husarion Panther with antenna on top:
+//   lever_arm_x = 0.0   (centered fore-aft)
+//   lever_arm_y = 0.0   (centered left-right)
+//   lever_arm_z = 0.5   (0.5m above base_link)
+
+struct GnssLeverArm {
+  double x = 0.0;  // meters, body frame forward
+  double y = 0.0;  // meters, body frame left
+  double z = 0.0;  // meters, body frame up
+
+  bool is_zero() const {
+    return std::abs(x) < 1e-6 && std::abs(y) < 1e-6 && std::abs(z) < 1e-6;
+  }
+};
+
 // ─── GNSS quality parameters ─────────────────────────────────────────────────
 
 struct GnssParams {
-  // Base position noise (m) — scaled by HDOP/VDOP
-  double base_noise_xy = 1.0;   // horizontal (m)
-  double base_noise_z  = 2.0;   // vertical (m) — always worse than horizontal
+  double base_noise_xy = 1.0;
+  double base_noise_z  = 2.0;
+  double heading_noise = 0.02;
+  double max_hdop      = 4.0;
+  double max_vdop      = 6.0;
+  int    min_satellites = 4;
 
-  // Dual antenna heading noise (rad)
-  double heading_noise = 0.02;  // ~1 degree
-
-  // Quality thresholds — reject measurements below these
-  double max_hdop = 4.0;        // reject if HDOP worse than this
-  double max_vdop = 6.0;        // reject if VDOP worse than this
-  int    min_satellites = 4;    // reject if fewer satellites
+  // Antenna offset from base_link in body frame
+  GnssLeverArm lever_arm;
 };
 
-// ─── GNSS fix quality ────────────────────────────────────────────────────────
+// ─── GNSS fix ────────────────────────────────────────────────────────────────
 
 enum class GnssFixType {
   NO_FIX    = 0,
@@ -50,15 +71,15 @@ enum class GnssFixType {
 };
 
 struct GnssFix {
-  double x = 0.0;   // ENU position (meters)
+  double x = 0.0;
   double y = 0.0;
   double z = 0.0;
 
-  double hdop = 99.0;  // horizontal dilution of precision
-  double vdop = 99.0;  // vertical dilution of precision
+  double hdop = 99.0;
+  double vdop = 99.0;
 
-  int    satellites  = 0;
-  GnssFixType fix_type = GnssFixType::NO_FIX;
+  int         satellites = 0;
+  GnssFixType fix_type   = GnssFixType::NO_FIX;
 
   bool is_valid(const GnssParams& p) const {
     return fix_type != GnssFixType::NO_FIX
@@ -69,14 +90,14 @@ struct GnssFix {
 };
 
 struct GnssHeading {
-  double heading_rad = 0.0;  // yaw in ENU frame (rad)
-  double accuracy_rad = 0.1; // reported accuracy
-  bool   valid = false;
+  double heading_rad  = 0.0;
+  double accuracy_rad = 0.1;
+  bool   valid        = false;
 };
 
 // ─── Measurement functions ───────────────────────────────────────────────────
 
-// h(x): state -> expected GNSS position measurement
+// h(x): state -> expected GNSS position at base_link (no lever arm)
 inline GnssPosMeasurement gnss_pos_measurement_function(const StateVector& x) {
   GnssPosMeasurement z;
   z[0] = x[X];
@@ -85,64 +106,105 @@ inline GnssPosMeasurement gnss_pos_measurement_function(const StateVector& x) {
   return z;
 }
 
-// h(x): state -> expected GNSS heading measurement
+// h(x): state -> expected GNSS position accounting for antenna lever arm
+// This is the correct version when the antenna is not at base_link.
+//
+// The antenna position in world frame is:
+//   p_antenna = p_base + R_body_to_world * lever_arm
+//
+// where R_body_to_world is the rotation matrix from current roll/pitch/yaw.
+//
+// This function is returned as a lambda so it captures the lever arm.
+inline auto gnss_pos_measurement_function_with_lever_arm(
+  const GnssLeverArm& lever_arm)
+{
+  return [lever_arm](const StateVector& x) -> GnssPosMeasurement {
+    double roll  = x[ROLL];
+    double pitch = x[PITCH];
+    double yaw   = x[YAW];
+
+    // Build rotation matrix body -> world (ZYX Euler)
+    double cr = std::cos(roll),  sr = std::sin(roll);
+    double cp = std::cos(pitch), sp = std::sin(pitch);
+    double cy = std::cos(yaw),   sy = std::sin(yaw);
+
+    // R = Rz(yaw) * Ry(pitch) * Rx(roll)
+    double R00 = cy*cp;
+    double R01 = cy*sp*sr - sy*cr;
+    double R02 = cy*sp*cr + sy*sr;
+    double R10 = sy*cp;
+    double R11 = sy*sp*sr + cy*cr;
+    double R12 = sy*sp*cr - cy*sr;
+    double R20 = -sp;
+    double R21 = cp*sr;
+    double R22 = cp*cr;
+
+    // Rotate lever arm from body frame to world frame
+    double lx = lever_arm.x;
+    double ly = lever_arm.y;
+    double lz = lever_arm.z;
+
+    double offset_x = R00*lx + R01*ly + R02*lz;
+    double offset_y = R10*lx + R11*ly + R12*lz;
+    double offset_z = R20*lx + R21*ly + R22*lz;
+
+    GnssPosMeasurement z;
+    z[0] = x[X] + offset_x;
+    z[1] = x[Y] + offset_y;
+    z[2] = x[Z] + offset_z;
+    return z;
+  };
+}
+
+// h(x): state -> expected GNSS heading
 inline GnssHdgMeasurement gnss_hdg_measurement_function(const StateVector& x) {
   GnssHdgMeasurement z;
   z[0] = x[YAW];
   return z;
 }
 
-// ─── Quality-aware noise matrix ───────────────────────────────────────────────
-// This is the key differentiator — we scale noise by HDOP/VDOP
-// A fix with HDOP=1.0 gets tight noise. HDOP=3.5 gets loose noise.
-// robot_localization uses fixed covariance — FusionCore adapts.
+// ─── Noise matrices ───────────────────────────────────────────────────────────
 
 inline GnssPosNoiseMatrix gnss_pos_noise_matrix(
   const GnssParams& p,
-  const GnssFix& fix
-) {
+  const GnssFix& fix)
+{
   GnssPosNoiseMatrix R = GnssPosNoiseMatrix::Zero();
-
-  // Scale base noise by DOP values
   double sigma_xy = p.base_noise_xy * fix.hdop;
   double sigma_z  = p.base_noise_z  * fix.vdop;
-
   R(0,0) = sigma_xy * sigma_xy;
   R(1,1) = sigma_xy * sigma_xy;
   R(2,2) = sigma_z  * sigma_z;
-
   return R;
 }
 
 inline GnssHdgNoiseMatrix gnss_hdg_noise_matrix(
   const GnssParams& p,
-  const GnssHeading& hdg
-) {
+  const GnssHeading& hdg)
+{
   GnssHdgNoiseMatrix R;
   double sigma = std::max(p.heading_noise, hdg.accuracy_rad);
   R(0,0) = sigma * sigma;
   return R;
 }
 
-// ─── ECEF to ENU conversion ───────────────────────────────────────────────────
-// This is why FusionCore uses ECEF — no singularities, no UTM zone boundaries
+// ─── ECEF / ENU conversion ────────────────────────────────────────────────────
 
 struct ECEFPoint {
-  double x, y, z;  // meters
+  double x, y, z;
 };
 
 struct LLAPoint {
-  double lat_rad;  // latitude (radians)
-  double lon_rad;  // longitude (radians)
-  double alt_m;    // altitude (meters)
+  double lat_rad;
+  double lon_rad;
+  double alt_m;
 };
 
-// Convert ECEF to ENU relative to a reference point
 inline Eigen::Vector3d ecef_to_enu(
   const ECEFPoint& point,
   const ECEFPoint& ref,
-  const LLAPoint&  ref_lla
-) {
+  const LLAPoint&  ref_lla)
+{
   double dx = point.x - ref.x;
   double dy = point.y - ref.y;
   double dz = point.z - ref.z;
@@ -152,7 +214,6 @@ inline Eigen::Vector3d ecef_to_enu(
   double sin_lon = std::sin(ref_lla.lon_rad);
   double cos_lon = std::cos(ref_lla.lon_rad);
 
-  // ENU rotation matrix
   double e = -sin_lon*dx           + cos_lon*dy;
   double n = -sin_lat*cos_lon*dx   - sin_lat*sin_lon*dy + cos_lat*dz;
   double u =  cos_lat*cos_lon*dx   + cos_lat*sin_lon*dy + sin_lat*dz;

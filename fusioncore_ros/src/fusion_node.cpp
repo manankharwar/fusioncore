@@ -54,6 +54,11 @@ public:
     // Set to empty string to disable dual antenna heading.
     declare_parameter("gnss.heading_topic", "/gnss/heading");
 
+    // Antenna lever arm params
+    declare_parameter("gnss.lever_arm_x", 0.0);
+    declare_parameter("gnss.lever_arm_y", 0.0);
+    declare_parameter("gnss.lever_arm_z", 0.0);
+
     declare_parameter("ukf.q_position",     0.01);
     declare_parameter("ukf.q_orientation",  0.01);
     declare_parameter("ukf.q_velocity",     0.1);
@@ -85,6 +90,17 @@ public:
     config.gnss.heading_noise  = get_parameter("gnss.heading_noise").as_double();
     config.gnss.max_hdop       = get_parameter("gnss.max_hdop").as_double();
     config.gnss.min_satellites = get_parameter("gnss.min_satellites").as_int();
+    config.gnss.lever_arm.x    = get_parameter("gnss.lever_arm_x").as_double();
+    config.gnss.lever_arm.y    = get_parameter("gnss.lever_arm_y").as_double();
+    config.gnss.lever_arm.z    = get_parameter("gnss.lever_arm_z").as_double();
+
+    if (!config.gnss.lever_arm.is_zero()) {
+      RCLCPP_INFO(get_logger(),
+        "GNSS lever arm set: x=%.3f y=%.3f z=%.3f m",
+        config.gnss.lever_arm.x,
+        config.gnss.lever_arm.y,
+        config.gnss.lever_arm.z);
+    }
 
     config.ukf.q_position     = get_parameter("ukf.q_position").as_double();
     config.ukf.q_orientation  = get_parameter("ukf.q_orientation").as_double();
@@ -369,6 +385,17 @@ private:
     if (!accepted) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
         "GNSS fix rejected (poor quality)");
+    }
+
+    // Inform user if lever arm correction is being skipped due to yaw uncertainty
+    const auto& state = fc_->get_state();
+    double yaw_std_deg = std::sqrt(state.P(fusioncore::YAW, fusioncore::YAW))
+                         * 180.0 / M_PI;
+    if (yaw_std_deg > 18.0) {
+      RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
+        "GNSS lever arm correction inactive — yaw uncertainty %.1f deg "
+        "(waiting for < 18 deg)",
+        yaw_std_deg);
     }
   }
 

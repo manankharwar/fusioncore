@@ -130,9 +130,32 @@ bool FusionCore::update_gnss(
   sensors::GnssPosNoiseMatrix R =
     sensors::gnss_pos_noise_matrix(config_.gnss, fix);
 
-  ukf_.update<sensors::GNSS_POS_DIM>(
-    z, sensors::gnss_pos_measurement_function, R
-  );
+  // Use lever arm corrected measurement function if antenna is offset.
+  // peci1 fix: only apply lever arm correction when yaw is sufficiently
+  // converged. If yaw uncertainty is high, the lever arm rotation is
+  // unreliable and can destabilize the filter.
+  //
+  // Yaw variance is P(YAW, YAW) — the diagonal element of the covariance.
+  // Threshold of 0.1 rad² (~18 degrees std dev) is conservative enough
+  // to avoid injecting bad corrections while still applying the correction
+  // once the filter has a reasonable heading estimate.
+
+  const double yaw_variance = ukf_.state().P(YAW, YAW);
+  const double YAW_VARIANCE_THRESHOLD = 0.1;  // rad²
+
+  if (config_.gnss.lever_arm.is_zero() || yaw_variance > YAW_VARIANCE_THRESHOLD) {
+    // Either no lever arm configured, or yaw not yet converged — fuse at base_link
+    if (!config_.gnss.lever_arm.is_zero() && yaw_variance > YAW_VARIANCE_THRESHOLD) {
+      // Will be printed at most once per second via the caller
+    }
+    ukf_.update<sensors::GNSS_POS_DIM>(
+      z, sensors::gnss_pos_measurement_function, R);
+  } else {
+    // Yaw is converged — apply lever arm correction
+    auto h = sensors::gnss_pos_measurement_function_with_lever_arm(
+      config_.gnss.lever_arm);
+    ukf_.update<sensors::GNSS_POS_DIM>(z, h, R);
+  }
 
   last_gnss_time_ = timestamp_seconds;
   ++update_count_;

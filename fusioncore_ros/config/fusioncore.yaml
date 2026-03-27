@@ -16,6 +16,13 @@ fusioncore:
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
 
+    # Antenna lever arm — offset from base_link to GNSS antenna in body frame
+    # x=forward, y=left, z=up (meters)
+    # Leave at 0.0 if antenna is directly above base_link origin
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
     ukf.q_position: 0.01
     ukf.q_orientation: 0.01
     ukf.q_velocity: 0.1
