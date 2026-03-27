@@ -6,274 +6,270 @@
 
 ## What problem does this solve?
 
-Every mobile robot needs to know where it is. It gets this information from multiple sensors:
-- **IMU**: measures rotation and acceleration (like a phone's motion sensor)
-- **Wheel encoders**: measure how far each wheel has turned
-- **GPS/GNSS**: measures position from satellites
+Every mobile robot needs to know where it is. It gets this from multiple sensors — IMU, wheel encoders, GPS — each of which is imperfect in its own way. IMUs drift. Wheels slip. GPS jumps. You need software that intelligently combines all three into one trustworthy position estimate.
 
-The problem: each sensor is imperfect. IMUs drift over time. Wheels slip. GPS jumps around. You need software that intelligently combines all three into one trustworthy position estimate.
+That software is called a sensor fusion package. The standard one for ROS, `robot_localization`, was officially deprecated in September 2023. Its designated replacement (`fuse`) still doesn't support GPS properly as of early 2026. At ROSCon UK 2025 the official workshop was still teaching both tools because no clear accessible replacement existed.
 
-That software is called a **sensor fusion package**. The standard one for ROS: `robot_localization`: was officially deprecated in September 2023. Its designated replacement (`fuse`) still doesn't support GPS properly as of early 2026.
-
-**FusionCore is the replacement that actually works.**
+FusionCore is that replacement.
 
 ---
 
-## Why FusionCore is better
+## Why FusionCore
 
 | Capability | robot_localization | Fuse | FusionCore |
 |---|---|---|---|
-| **Core filter** | EKF | Factor graph | UKF |
-| **3D support** | Partial | Not ready yet | Full 3D from day one |
-| **IMU bias estimation** | None | Complex to configure | Automatic |
-| **Noise covariance** | Manual YAML file | Manual | Automatic |
-| **GPS fusion** | Workaround (UTM) | Not implemented | Proper (ECEF) |
-| **Dual antenna GPS heading** | Hack required | Not supported | Native support |
-| **Outlier rejection** | None | Partial | Coming next release |
-| **Maintenance** | Abandoned | Slow | Actively maintained |
-| **License** | BSD-3 | BSD-3 | Apache 2.0 |
-| **ROS 2 Jazzy** | Ported (imperfect) | Native | Native |
-| **Working examples** | Minimal | None | Real robot configs |
-| **Config complexity** | High: many YAML parameters | Very high | Low: one simple YAML |
-| **100Hz real-time** | Yes | Difficult | Yes: tested |
-
-### What those terms mean
-
-**Core filter (EKF vs UKF):**
-Both are mathematical algorithms for combining sensor data. EKF (Extended Kalman Filter) makes approximations that break down on aggressive robot motion. UKF (Unscented Kalman Filter) handles it more accurately without those approximations. Think of EKF as drawing a straight line through a curve: UKF actually follows the curve.
-
-**3D support:**
-robot_localization was originally built for 2D robots (ground robots that don't tilt). Full 3D means it correctly handles drones, outdoor robots on uneven terrain, or any robot that rolls and pitches.
-
-**IMU bias estimation:**
-Every IMU (gyroscope/accelerometer) has a slowly drifting error called bias. If you don't correct for it, your position estimate drifts over time. FusionCore estimates and corrects this bias automatically and continuously. robot_localization ignores it entirely.
-
-**Noise covariance:**
-A number that tells the filter "how much do I trust this sensor?" robot_localization requires you to manually set these numbers in a YAML file: most developers guess, and wrong values cause the filter to behave badly. FusionCore estimates them automatically from the data.
-
-**GPS fusion (UTM vs ECEF):**
-GPS gives you latitude/longitude. The filter needs meters. Converting between them requires a coordinate system. UTM (what robot_localization uses) has boundaries between zones and distortion at edges: causes jumps when crossing zone lines. ECEF (what FusionCore uses) is a single global coordinate system with no discontinuities. Better math, more reliable.
-
-**Dual antenna GPS heading:**
-One GPS antenna gives position. Two antennas separated by a known distance give you heading (which direction the robot is facing) by measuring the angle between them. robot_localization required a workaround (treating heading as IMU data). FusionCore supports it natively and correctly.
-
-**Maintenance (Deprecated vs Active):**
-Deprecated means the developers have stopped working on it and recommend you use something else. robot_localization is officially deprecated. FusionCore is actively maintained: issues are answered within 24 hours.
-
-**License (BSD-3 vs Apache 2.0):**
-Both are open source. Apache 2.0 includes an explicit patent license grant that BSD-3 does not. For commercial robotics companies, Apache 2.0 is the safer choice from a legal standpoint.
+| Core filter | EKF | Factor graph | UKF |
+| 3D support | Partial | PR open 1+ year | Full 3D, native |
+| IMU bias estimation | None | Complex | Automatic |
+| GPS fusion | UTM workaround | Not implemented | ECEF, proper |
+| Dual antenna heading | Hack required | Not supported | Native |
+| IMU frame transform | Manual | Manual | Automatic via TF |
+| Message covariances | Ignored | Partial | Full 3x3 GNSS + odometry |
+| GNSS antenna offset | Ignored | Ignored | Lever arm with observability guard |
+| Multiple sensor sources | No | No | Yes — 2x GPS, multiple IMUs |
+| compass_msgs/Azimuth | No | No | Yes |
+| Delay compensation | No | No | Yes — retrodiction up to 500ms |
+| Maintenance | Abandoned | Slow | Active, issues answered in 24h |
+| License | BSD-3 | BSD-3 | Apache 2.0 |
+| ROS 2 Jazzy | Ported | Native | Native, built from scratch |
+| Working examples | Minimal | None | Real robot configs |
 
 ---
 
 ## Installation
 
 ### Prerequisites
-- ROS 2 Jazzy Jalisco installed
-- A colcon workspace (usually `~/ros2_ws`)
+- ROS 2 Jazzy Jalisco
+- A colcon workspace (`~/ros2_ws`)
 
-### Step 1: Clone FusionCore into your workspace
+### Clone into your workspace
 ```bash
 cd ~/ros2_ws/src
 git clone https://github.com/manankharwar/fusioncore.git
-```
-
-**Why:** ROS 2 uses a tool called colcon to build packages. Colcon looks for packages inside the `src/` folder of your workspace. Cloning here makes FusionCore visible to colcon.
-
-### Step 2: Install dependencies
-```bash
 cd ~/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
-```
-
-**Why:** FusionCore depends on ROS 2 packages like `rclcpp`, `sensor_msgs`, `tf2`. This command automatically finds and installs anything missing.
-
-### Step 3: Build
-```bash
 colcon build --packages-select fusioncore_core fusioncore_ros
-```
-
-**Why:** This compiles the C++ code into a binary your robot can run. `fusioncore_core` is the pure math library (no ROS). `fusioncore_ros` is the ROS 2 node that connects it to your robot's sensors.
-
-### Step 4: Source the workspace
-```bash
 source install/setup.bash
 ```
-
-**Why:** This tells your terminal where to find the newly built FusionCore executables. You need to run this in every new terminal that uses FusionCore. Add it to your `~/.bashrc` to make it permanent.
 
 ---
 
 ## Running FusionCore
 
-### Terminal 1: Start the node
 ```bash
-ros2 launch fusioncore_ros fusioncore.launch.py \
-  config:=config/fusioncore.yaml
-```
+# Terminal 1
+ros2 launch fusioncore_ros fusioncore.launch.py
 
-**Why launch instead of run:** The launch file handles startup configuration automatically. You should see:
-```
-FusionCore node created
-Configuring FusionCore...
-FusionCore configured. base_frame=base_link odom_frame=odom rate=100Hz
-```
-
-### Terminal 2: Activate the node
-```bash
+# Terminal 2
 ros2 lifecycle set /fusioncore configure
 ros2 lifecycle set /fusioncore activate
-```
 
-**Why two steps:** FusionCore uses a ROS 2 lifecycle node. This is a design pattern that lets you configure the node first (load parameters, validate config) and then activate it (start processing sensor data) separately. This prevents the filter from starting mid-motion with bad initial values.
-
-After activation you should see:
-```
-Activating FusionCore...
-FusionCore active. Listening for sensors.
-```
-
-### Verify it is working
-```bash
+# Verify
 ros2 topic hz /fusion/odom
+# expected: average rate: 100.000
 ```
 
-Expected output:
-```
-average rate: 100.000
-```
+FusionCore uses a ROS 2 lifecycle node. Configure first (load parameters, validate config), then activate (start processing data). This prevents the filter from starting mid-motion with bad initial values.
 
 ---
 
 ## Sensor topics
 
-FusionCore subscribes to these topics by default:
+**Subscribes to:**
 
-| Topic | Message type | What it is |
+| Topic | Type | What it is |
 |---|---|---|
-| `/imu/data` | `sensor_msgs/Imu` | IMU: angular velocity and linear acceleration |
+| `/imu/data` | `sensor_msgs/Imu` | IMU angular velocity and linear acceleration |
 | `/odom/wheels` | `nav_msgs/Odometry` | Wheel encoder velocity |
-| `/gnss/fix` | `sensor_msgs/NavSatFix` | GPS position (latitude, longitude, altitude) |
+| `/gnss/fix` | `sensor_msgs/NavSatFix` | GPS position |
+| `/gnss/heading` | `sensor_msgs/Imu` | Dual antenna heading (optional) |
+| `gnss.azimuth_topic` | `compass_msgs/Azimuth` | Azimuth heading (optional, preferred) |
+| `gnss.fix2_topic` | `sensor_msgs/NavSatFix` | Second GPS receiver (optional) |
 
-FusionCore publishes:
+**Publishes:**
 
-| Topic | Message type | What it is |
+| Topic | Type | What it is |
 |---|---|---|
 | `/fusion/odom` | `nav_msgs/Odometry` | Fused position + orientation + velocity at 100Hz |
-| `/tf` | TF transform | `odom -> base_link` transform for Nav2 |
+| `/tf` | TF | `odom -> base_link` for Nav2 |
 
 ---
 
 ## Configuration
 
-No covariance matrices. One YAML file with plain English parameters:
 ```yaml
-base_frame: base_link    # your robot's body frame
-odom_frame: odom         # the fixed reference frame
-publish_rate: 100.0      # Hz
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
 
-imu:
-  gyro_noise: 0.005      # how noisy your gyroscope is (rad/s)
-  accel_noise: 0.1       # how noisy your accelerometer is (m/s²)
+    imu.gyro_noise: 0.005       # rad/s — from your IMU datasheet
+    imu.accel_noise: 0.1        # m/s²
+    imu.has_magnetometer: false # true for 9-axis IMUs (BNO08x, VectorNav, Xsens)
+                                # false for 6-axis — yaw from gyro integration drifts
 
-encoder:
-  vel_noise: 0.05        # how noisy your wheel velocity is (m/s)
-  yaw_noise: 0.02        # how noisy your yaw rate is (rad/s)
+    encoder.vel_noise: 0.05     # m/s
+    encoder.yaw_noise: 0.02     # rad/s
 
-gnss:
-  base_noise_xy: 1.0     # base GPS horizontal noise (meters)
-  max_hdop: 4.0          # reject GPS fixes worse than this quality
-  min_satellites: 4      # reject GPS fixes with fewer satellites
+    gnss.base_noise_xy: 1.0     # meters — scaled automatically by HDOP
+    gnss.base_noise_z: 2.0      # meters
+    gnss.heading_noise: 0.02    # rad — for dual antenna
+    gnss.max_hdop: 4.0          # reject fixes worse than this
+    gnss.min_satellites: 4
 
-ukf:
-  q_gyro_bias: 1.0e-5    # how fast gyro bias can change (smaller = slower)
-  q_accel_bias: 1.0e-5   # how fast accel bias can change
+    # Antenna lever arm — offset from base_link to GPS antenna in body frame
+    # x=forward, y=left, z=up (meters). Leave at 0 if antenna is above base_link.
+    # Lever arm correction only activates when heading is independently validated.
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    # Optional second GPS receiver
+    gnss.fix2_topic: ""
+
+    # Heading topics — pick one or both
+    gnss.heading_topic: "/gnss/heading"   # sensor_msgs/Imu
+    gnss.azimuth_topic: ""                # compass_msgs/Azimuth (preferred standard)
+
+    ukf.q_position: 0.01
+    ukf.q_orientation: 0.01
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
 ```
-
-**HDOP explained:** Horizontal Dilution of Precision. A number from GPS receivers indicating fix quality. Lower is better. 1.0 = excellent. 4.0 = acceptable. Above 4.0 = FusionCore rejects the fix and relies on dead reckoning until quality improves.
 
 ---
 
-## Example configurations
+## How FusionCore handles the hard problems
 
-### Stefan's config: Husarion Panther outdoor robot
-GPS + IMU + wheel encoders, dual antenna heading:
-```bash
-ros2 launch fusioncore_ros fusioncore.launch.py \
-  config:=config/fusioncore.yaml
+### IMU frame transform
+
+IMUs are almost never mounted at `base_link`. FusionCore reads `frame_id` from every IMU message, looks up the TF rotation to `base_link`, and rotates angular velocity and linear acceleration before fusing. If the transform is missing you get the exact command to fix it:
+
+```
+[WARN] Cannot transform IMU from imu_link to base_link.
+Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link imu_link
 ```
 
-### Basic indoor robot: no GPS
-IMU + wheel encoders only:
-```bash
-ros2 launch fusioncore_ros fusioncore.launch.py \
-  config:=config/fusioncore.yaml
-```
+### GPS antenna offset (lever arm)
+
+If the GPS antenna is not at `base_link` — mounted on top of the robot, forward of center — its readings correspond to a different trajectory than `base_link`. Ignoring this injects position errors proportional to lever arm length times rotation rate.
+
+FusionCore corrects for this using the rotation matrix from the current state: `p_antenna = p_base + R * lever_arm`. But this correction depends on heading — if heading is wrong the correction makes things worse. So FusionCore only activates lever arm correction when heading has been **independently validated** from a real source.
+
+### Heading observability
+
+This is the subtle one. A Kalman filter can reduce its own uncertainty about heading even when it has no real heading sensor — it does this by fitting the motion model to GPS position updates. The variance goes down, but the heading might still be wrong. Using that fake confidence to activate lever arm correction can destabilize the filter.
+
+FusionCore tracks a `heading_validated_` flag that is only set true from a genuine independent source:
+
+- **`DUAL_ANTENNA`** — dual antenna heading message received
+- **`IMU_ORIENTATION`** — 9-axis AHRS published full orientation (only when `imu.has_magnetometer: true` — 6-axis IMUs drift in yaw and don't count)
+- **`GPS_TRACK`** — robot has traveled >= 5 meters at speed >= 0.2 m/s with yaw rate <= 0.3 rad/s (geometrically observable from GPS track, not just accumulated distance)
+
+Before any of these, lever arm is disabled regardless of what yaw variance says.
+
+### Message covariances
+
+FusionCore uses the covariance values sensors actually publish rather than ignoring them:
+
+**GPS:** When `position_covariance_type == 3`, the full 3x3 covariance matrix is used including off-diagonal elements (correlated X/Y errors). RTK receivers in particular publish meaningful off-diagonal terms. When covariance type is lower, falls back to HDOP/VDOP scaling. Config params always available as override for sensors with bogus covariance.
+
+**Wheel odometry:** Reads `twist.covariance` per-axis when available. A wheel-slip estimating odometry node that publishes real covariances gets the benefit automatically.
+
+**IMU orientation:** Reads `orientation_covariance` from the message. Uses it directly when meaningful, falls back to config params when not.
+
+### compass_msgs/Azimuth
+
+peci1 on ROS Discourse suggested using `compass_msgs/Azimuth` as a standard heading message format. The upstream package is ROS 1 only. FusionCore ships a ROS 2 native port with the identical message definition.
+
+FusionCore accepts `compass_msgs/Azimuth` on a configurable topic. It handles ENU/NED convention conversion, RAD/DEG units, and warns when magnetic north reference is used instead of geographic (magnetic heading has declination error that varies by location and changes over time).
+
+### Delay compensation
+
+GPS messages arrive 100-300ms after the fix was taken. Without compensation, delayed fixes are silently dropped — the filter's clock has already moved past that timestamp.
+
+FusionCore saves a state snapshot (full 21-dimensional state + covariance) on every IMU update at 100Hz — 50 snapshots = 0.5 seconds of history. When a delayed GPS fix arrives, it finds the closest snapshot before the fix timestamp, restores that state, applies the fix at the correct time, then re-predicts forward to the current time in one step.
+
+This is approximate retrodiction — the re-prediction forward uses the motion model rather than replaying the actual IMU history. For smooth motion at normal robot speeds the approximation error is small compared to GPS noise. Full IMU replay retrodiction (replaying every IMU message between the fix timestamp and now) is on the roadmap.
 
 ---
 
 ## Architecture
+
 ```
 fusioncore/
-├── fusioncore_core/          # Pure C++17 math library: zero ROS dependency
+├── fusioncore_core/              # Pure C++17 math library. Zero ROS dependency.
 │   ├── include/fusioncore/
-│   │   ├── ukf.hpp           # Unscented Kalman Filter: the core algorithm
-│   │   ├── state.hpp         # 21-dimensional state vector definition
-│   │   ├── fusioncore.hpp    # Main public API
+│   │   ├── ukf.hpp               # Unscented Kalman Filter — 43 sigma points
+│   │   ├── state.hpp             # 21-dimensional state vector
+│   │   ├── fusioncore.hpp        # Public API — FusionCore, FusionCoreConfig
 │   │   └── sensors/
-│   │       ├── imu.hpp       # IMU measurement model + bias estimation
-│   │       ├── encoder.hpp   # Wheel encoder measurement model
-│   │       └── gnss.hpp      # GPS: ECEF conversion, quality scaling
+│   │       ├── imu.hpp           # Raw IMU + orientation measurement models
+│   │       ├── encoder.hpp       # Wheel encoder measurement model
+│   │       └── gnss.hpp          # GPS: ECEF, lever arm, quality scaling
 │   └── src/
-│       ├── ukf.cpp           # UKF implementation
-│       └── fusioncore.cpp    # Manager: wires all sensors to UKF
-└── fusioncore_ros/           # ROS 2 Jazzy wrapper
-    ├── src/fusion_node.cpp   # Lifecycle node: subscribes and publishes
-    ├── config/
-    │   ├── outdoor_gnss_dual_antenna.yaml   # Stefan's config
-    │   └── differential_drive_basic.yaml    # Basic indoor config
-    └── launch/
-        └── fusioncore.launch.py
+│       ├── ukf.cpp               # UKF: sigma points, predict, update
+│       └── fusioncore.cpp        # Manager: sensors, snapshots, observability
+└── fusioncore_ros/               # ROS 2 Jazzy wrapper
+    ├── src/fusion_node.cpp       # Lifecycle node: all sensor callbacks
+    ├── config/fusioncore.yaml    # Default configuration
+    └── launch/fusioncore.launch.py
 ```
 
-**Why fusioncore_core has no ROS dependency:** The pure C++ core can run as firmware on embedded hardware (Phase 2 hardware module) without any ROS installation. This is a deliberate architectural decision.
+`fusioncore_core` has no ROS dependency by design. The core algorithm can run as firmware on embedded hardware for the Phase 2 hardware module without any ROS installation.
 
 ---
 
 ## Technical details
 
-- **Filter:** Unscented Kalman Filter with 43 sigma points
-- **State vector:** 21-dimensional: position (x,y,z), orientation (roll,pitch,yaw), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z)
-- **GPS coordinate system:** ECEF: globally valid, no zone boundaries
-- **Bias estimation:** Continuous online estimation: no calibration ritual required
-- **GPS quality:** Noise covariance scaled automatically by HDOP and VDOP values from the receiver
+- **Filter:** Unscented Kalman Filter, 43 sigma points
+- **State vector:** 21-dimensional — position (x,y,z), orientation (roll,pitch,yaw), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z)
+- **GPS coordinate system:** ECEF — globally valid, no UTM zone boundaries or discontinuities
+- **Bias estimation:** Continuous online estimation, no calibration required
+- **GPS quality scaling:** Noise covariance scaled by HDOP/VDOP, or full 3x3 message covariance when available
 - **Output rate:** 100Hz
 - **Language:** C++17
+- **License:** Apache 2.0
 
 ---
 
-## Status and roadmap
+## Status
 
-**Working now:**
-- UKF core with full 3D state
+**Working and tested:**
+- UKF core — 36 unit tests passing
 - IMU + encoder + GPS fusion
 - Automatic IMU bias estimation
-- ECEF GPS conversion
-- Quality-aware GPS noise scaling
-- Dual antenna heading
-- ROS 2 Jazzy lifecycle node
-- 100Hz output
+- ECEF GPS conversion with quality-aware noise scaling
+- Dual antenna heading — both `sensor_msgs/Imu` and `compass_msgs/Azimuth`
+- IMU frame transform via TF
+- GPS lever arm with heading observability guard
+- Full 3x3 GPS covariance support
+- Wheel odometry covariance support
+- Multiple GPS receivers
+- Heading observability tracking with source classification
+- GPS delay compensation — retrodiction up to 500ms
+- ROS 2 Jazzy lifecycle node at 100Hz
 
-**Coming next:**
-- Mahalanobis distance outlier rejection (GPS jumps, encoder slip detection)
-- Adaptive noise covariance (fully automatic, no YAML needed at all)
-- TF validation with clear error messages
-- Omnidirectional and Ackermann steering motion models
+**Known limitations:**
+- Delay compensation uses approximate retrodiction (one forward prediction step, not full IMU replay). Accurate for smooth motion, may introduce small inconsistencies during high-acceleration maneuvers.
+- GNSS antenna offset assumes lever arm is fixed and known. Does not estimate it from data.
+
+**Roadmap:**
+- Full IMU replay retrodiction
+- Mahalanobis distance outlier rejection (GPS jumps, wheel slip detection)
+- Adaptive noise covariance — fully automatic, no YAML needed
+- Ackermann and omnidirectional steering motion models
+- Phase 2: hardware module — custom PCB, ICM-42688-P + MMC5983MA, 400Hz onboard fusion
 
 ---
 
 ## License
 
-Apache 2.0: commercially safe. Includes explicit patent license grant that BSD-3 does not provide.
+Apache 2.0. Includes explicit patent license grant that BSD-3 does not provide. Commercially safe.
 
 ---
 
@@ -281,4 +277,4 @@ Apache 2.0: commercially safe. Includes explicit patent license grant that BSD-3
 
 Issues answered within 24 hours. Open a GitHub issue or find the original discussion on ROS Discourse.
 
-This project exists because of community threads asking for a robot_localization replacement that actually works. If you hit a problem: report it. That feedback is what makes this better.
+This project exists because of community threads asking for a `robot_localization` replacement that actually works on ROS 2 Jazzy. If you hit a problem — open an issue. That feedback is what drives the roadmap.
