@@ -54,6 +54,9 @@ public:
     // Set to empty string to disable dual antenna heading.
     declare_parameter("gnss.heading_topic", "/gnss/heading");
 
+    // Optional second GNSS receiver topic — set to empty string to disable
+    declare_parameter("gnss.fix2_topic", "");
+
     // Antenna lever arm params
     declare_parameter("gnss.lever_arm_x", 0.0);
     declare_parameter("gnss.lever_arm_y", 0.0);
@@ -71,6 +74,7 @@ public:
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
+    gnss2_topic_   = get_parameter("gnss.fix2_topic").as_string();
 
     fusioncore::FusionCoreConfig config;
 
@@ -151,7 +155,20 @@ public:
 
     gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
       "/gnss/fix", 10,
-      [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) { gnss_callback(msg); });
+      [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+        gnss_callback(msg, 0);
+      });
+
+    // Second GNSS receiver — optional
+    if (!gnss2_topic_.empty()) {
+      gnss2_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
+        gnss2_topic_, 10,
+        [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+          gnss_callback(msg, 1);
+        });
+      RCLCPP_INFO(get_logger(),
+        "Second GNSS receiver enabled on topic: %s", gnss2_topic_.c_str());
+    }
 
     // Dual antenna heading subscriber — only if topic is configured
     // Expects sensor_msgs/Imu where orientation.z/w gives the yaw heading.
@@ -184,6 +201,7 @@ public:
     imu_sub_.reset();
     encoder_sub_.reset();
     gnss_sub_.reset();
+    gnss2_sub_.reset();
     gnss_heading_sub_.reset();
     publish_timer_.reset();
     odom_pub_.reset();
@@ -326,7 +344,7 @@ private:
 
   // ─── GNSS position callback ────────────────────────────────────────────────
 
-  void gnss_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg)
+  void gnss_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg, int source_id = 0)
   {
     if (!fc_->is_initialized()) return;
 
@@ -360,10 +378,36 @@ private:
     fix.x = enu[0];
     fix.y = enu[1];
     fix.z = enu[2];
-    fix.fix_type = fusioncore::sensors::GnssFixType::GPS_FIX;
+    fix.fix_type  = fusioncore::sensors::GnssFixType::GPS_FIX;
+    fix.source_id = source_id;
 
-    // Use message covariance when meaningful
-    if (msg->position_covariance_type >= 2) {
+    // Use message covariance when meaningful (peci1 fix)
+    // position_covariance_type:
+    //   0 = unknown
+    //   1 = approximated (diagonal only)
+    //   2 = diagonal known
+    //   3 = full matrix known — use off-diagonal elements too
+    if (msg->position_covariance_type == 3) {
+      // Full 3x3 covariance available — use it directly including off-diagonals
+      Eigen::Matrix3d cov;
+      for (int i = 0; i < 3; ++i)
+        for (int j = 0; j < 3; ++j)
+          cov(i, j) = msg->position_covariance[i*3 + j];
+
+      // Validate diagonal is positive
+      if (cov(0,0) > 0.0 && cov(1,1) > 0.0 && cov(2,2) > 0.0) {
+        fix.has_full_covariance = true;
+        fix.full_covariance = cov;
+        fix.hdop = std::sqrt(cov(0,0));  // for validity check
+        fix.vdop = std::sqrt(cov(2,2));
+        fix.satellites = 6;
+      } else {
+        fix.hdop = 1.5;
+        fix.vdop = 2.0;
+        fix.satellites = 6;
+      }
+    } else if (msg->position_covariance_type >= 1) {
+      // Diagonal covariance available
       double var_xy = (msg->position_covariance[0] + msg->position_covariance[4]) / 2.0;
       double var_z  = msg->position_covariance[8];
       if (var_xy > 0.0 && var_z > 0.0) {
@@ -376,6 +420,7 @@ private:
         fix.satellites = 6;
       }
     } else {
+      // Unknown covariance — use config defaults
       fix.hdop = 1.5;
       fix.vdop = 2.0;
       fix.satellites = 6;
@@ -546,6 +591,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss_sub_;
+  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss2_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr           odom_pub_;
   rclcpp::TimerBase::SharedPtr                                    publish_timer_;
 
@@ -553,6 +599,7 @@ private:
   std::string odom_frame_;
   double      publish_rate_;
   std::string heading_topic_;
+  std::string gnss2_topic_;
 
   bool gnss_ref_set_ = false;
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;

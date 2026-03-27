@@ -23,6 +23,9 @@ fusioncore:
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
 
+    # Optional second GNSS receiver — leave empty to disable
+    gnss.fix2_topic: ""
+
     ukf.q_position: 0.01
     ukf.q_orientation: 0.01
     ukf.q_velocity: 0.1

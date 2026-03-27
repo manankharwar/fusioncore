@@ -81,6 +81,17 @@ struct GnssFix {
   int         satellites = 0;
   GnssFixType fix_type   = GnssFixType::NO_FIX;
 
+  // Source identifier — used when fusing multiple GNSS receivers.
+  // 0 = primary, 1 = secondary, etc.
+  int source_id = 0;
+
+  // Full 3x3 position covariance matrix (row-major, ENU frame).
+  // peci1 fix: real GNSS covariance often has off-diagonal elements
+  // (correlated X/Y errors). When has_full_covariance is true, this
+  // matrix is used directly instead of the diagonal HDOP/VDOP estimate.
+  bool has_full_covariance = false;
+  Eigen::Matrix3d full_covariance = Eigen::Matrix3d::Identity();
+
   bool is_valid(const GnssParams& p) const {
     return fix_type != GnssFixType::NO_FIX
         && hdop <= p.max_hdop
@@ -93,6 +104,10 @@ struct GnssHeading {
   double heading_rad  = 0.0;
   double accuracy_rad = 0.1;
   bool   valid        = false;
+
+  // Source identifier — matches the source_id of the GnssFix
+  // from the same receiver
+  int source_id = 0;
 };
 
 // ─── Measurement functions ───────────────────────────────────────────────────
@@ -169,6 +184,19 @@ inline GnssPosNoiseMatrix gnss_pos_noise_matrix(
   const GnssParams& p,
   const GnssFix& fix)
 {
+  // peci1 fix: use full covariance matrix when available.
+  // Real GNSS receivers often report correlated X/Y errors —
+  // the off-diagonal elements matter, especially with RTK.
+  if (fix.has_full_covariance) {
+    // Validate — all diagonal elements must be positive
+    if (fix.full_covariance(0,0) > 0.0 &&
+        fix.full_covariance(1,1) > 0.0 &&
+        fix.full_covariance(2,2) > 0.0) {
+      return fix.full_covariance;
+    }
+  }
+
+  // Fall back to diagonal estimate from HDOP/VDOP
   GnssPosNoiseMatrix R = GnssPosNoiseMatrix::Zero();
   double sigma_xy = p.base_noise_xy * fix.hdop;
   double sigma_z  = p.base_noise_z  * fix.vdop;
