@@ -249,9 +249,11 @@ One thing worth knowing up front: Gazebo Harmonic's built-in NavSat sensor has a
 
 If you haven\'t built yet, add `fusioncore_gazebo` to the build command from the Installation section:
 ```bash
-colcon build --packages-select fusioncore_core fusioncore_ros fusioncore_gazebo
+cd ~/ros2_ws
+source /opt/ros/jazzy/setup.bash
 source install/setup.bash
-```e install/setup.bash
+colcon build --packages-select fusioncore_gazebo --cmake-args -DBUILD_TESTING=OFF
+ros2 launch fusioncore_gazebo fusioncore_gazebo.launch.py
 ```
 
 Launch everything: Gazebo, the ROS bridge, and FusionCore all start together and auto-configure after 12 seconds:
@@ -262,9 +264,13 @@ ros2 launch fusioncore_gazebo fusioncore_gazebo.launch.py
 Drive the robot and watch the fused position:
 ```bash
 # Terminal 2: drive forward
+source /opt/ros/jazzy/setup.bash
+source /mnt/c/stealth/ROS/fusioncore_ws/install/setup.bash
 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.0}}" --rate 10
 
 # Terminal 3: watch position
+source /opt/ros/jazzy/setup.bash
+source /mnt/c/stealth/ROS/fusioncore_ws/install/setup.bash
 ros2 topic echo /fusion/odom --field pose.pose.position
 ```
 
