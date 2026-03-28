@@ -181,6 +181,11 @@ public:
     fusioncore::State initial;
     initial.x = fusioncore::StateVector::Zero();
     initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+    // Large position uncertainty so first GPS fixes are accepted, not Mahalanobis-rejected.
+    // Critical for Gazebo and any real robot where GPS arrives before position is known.
+    initial.P(0,0) = 1000.0;  // X
+    initial.P(1,1) = 1000.0;  // Y
+    initial.P(2,2) = 1000.0;  // Z
     fc_->init(initial, now().seconds());
 
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
@@ -481,6 +486,26 @@ private:
 
     fusioncore::sensors::ECEFPoint ecef;
     lla_to_ecef(lla, ecef);
+
+    // Pre-filter: drop fixes more than 10km from the reference origin.
+    // This is the correct defense against the Gazebo NavSat bug (gz-sim #2163)
+    // where every other fix is published at world Cartesian origin (~100km away).
+    // On real hardware this also catches catastrophic GPS glitches before they
+    // reach the estimator. Mahalanobis handles normal outliers (1-100m jumps);
+    // this handles physically impossible jumps (>10km) that would corrupt the
+    // filter state before Mahalanobis can recover.
+    {
+      double dx = ecef.x - gnss_ref_ecef_.x;
+      double dy = ecef.y - gnss_ref_ecef_.y;
+      double dz = ecef.z - gnss_ref_ecef_.z;
+      double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
+      if (dist > 10000.0) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
+          "GPS fix dropped: %.0fm from reference (known Gazebo NavSat bug or "
+          "catastrophic hardware glitch — not a normal outlier)", dist);
+        return;
+      }
+    }
 
     Eigen::Vector3d enu = fusioncore::sensors::ecef_to_enu(
       ecef, gnss_ref_ecef_, gnss_ref_lla_);
