@@ -57,6 +57,19 @@ source install/setup.bash
 
 ---
 
+## Running the tests
+```bash
+cd ~/ros2_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select fusioncore_core --cmake-args -DBUILD_TESTING=ON
+colcon test --packages-select fusioncore_core
+colcon test-result --verbose
+```
+
+Expected output: `42 tests, 0 errors, 0 failures, 0 skipped`
+
+---
+
 ## Running FusionCore
 
 ```bash
@@ -336,7 +349,7 @@ fusioncore/
 ## Status
 
 **Working and tested:**
-- UKF core: 36 unit tests passing
+- UKF core: 42 unit tests passing via colcon test
 - IMU + encoder + GPS fusion
 - Automatic IMU bias estimation
 - ECEF GPS conversion with quality-aware noise scaling
