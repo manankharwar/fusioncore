@@ -247,14 +247,11 @@ One thing worth knowing up front: Gazebo Harmonic's built-in NavSat sensor has a
 
 ### Running the simulation
 
-Build with the Gazebo package included:
+If you haven\'t built yet, add `fusioncore_gazebo` to the build command from the Installation section:
 ```bash
-cd ~/ros2_ws/src
-git clone https://github.com/manankharwar/fusioncore.git
-cd ~/ros2_ws
-rosdep install --from-paths src --ignore-src -r -y
 colcon build --packages-select fusioncore_core fusioncore_ros fusioncore_gazebo
 source install/setup.bash
+```e install/setup.bash
 ```
 
 Launch everything: Gazebo, the ROS bridge, and FusionCore all start together and auto-configure after 12 seconds:
