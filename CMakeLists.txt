@@ -11,6 +11,9 @@ find_package(Eigen3 REQUIRED)
 option(BUILD_ROS "Build ROS 2 wrapper" OFF)
 option(BUILD_TESTS "Build unit tests" ON)
 
+# compass_msgs — ROS 2 port of ctu-vras/compass message definitions
+add_subdirectory(compass_msgs)
+
 # Core library (no ROS dependency)
 add_subdirectory(fusioncore_core)
 
