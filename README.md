@@ -251,8 +251,8 @@ If you haven\'t built yet, add `fusioncore_gazebo` to the build command from the
 ```bash
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
+colcon build --packages-select fusioncore_gazebo
 source install/setup.bash
-colcon build --packages-select fusioncore_gazebo --cmake-args -DBUILD_TESTING=OFF
 ros2 launch fusioncore_gazebo fusioncore_gazebo.launch.py
 ```
 
@@ -265,12 +265,12 @@ Drive the robot and watch the fused position:
 ```bash
 # Terminal 2: drive forward
 source /opt/ros/jazzy/setup.bash
-source /mnt/c/stealth/ROS/fusioncore_ws/install/setup.bash
-ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.0}}" --rate 10
+source ~/ros2_ws/install/setup.bash
+ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.3}}" --rate 10
 
 # Terminal 3: watch position
 source /opt/ros/jazzy/setup.bash
-source /mnt/c/stealth/ROS/fusioncore_ws/install/setup.bash
+source ~/ros2_ws/install/setup.bash
 ros2 topic echo /fusion/odom --field pose.pose.position
 ```
 
