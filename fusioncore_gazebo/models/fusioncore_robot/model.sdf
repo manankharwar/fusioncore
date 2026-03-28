@@ -1,0 +1,134 @@
+<?xml version="1.0" ?>
+<sdf version="1.8">
+  <model name="fusioncore_robot">
+    <pose>0 0 0.15 0 0 0</pose>
+
+    <!-- Base link -->
+    <link name="base_link">
+      <inertial>
+        <mass>10.0</mass>
+        <inertia>
+          <ixx>0.3</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.3</iyy><iyz>0</iyz>
+          <izz>0.4</izz>
+        </inertia>
+      </inertial>
+      <collision name="base_collision">
+        <geometry>
+          <box><size>0.5 0.4 0.2</size></box>
+        </geometry>
+      </collision>
+      <visual name="base_visual">
+        <geometry>
+          <box><size>0.5 0.4 0.2</size></box>
+        </geometry>
+        <material>
+          <ambient>0.2 0.5 0.8 1</ambient>
+          <diffuse>0.2 0.5 0.8 1</diffuse>
+        </material>
+      </visual>
+    </link>
+
+    <!-- Left wheel -->
+    <link name="left_wheel">
+      <pose>0 0.22 0 -1.5707 0 0</pose>
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.01</iyy><iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <collision name="left_wheel_collision">
+        <geometry><cylinder><radius>0.15</radius><length>0.05</length></cylinder></geometry>
+        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+      </collision>
+      <visual name="left_wheel_visual">
+        <geometry><cylinder><radius>0.15</radius><length>0.05</length></cylinder></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient></material>
+      </visual>
+    </link>
+
+    <!-- Right wheel -->
+    <link name="right_wheel">
+      <pose>0 -0.22 0 -1.5707 0 0</pose>
+      <inertial>
+        <mass>1.0</mass>
+        <inertia>
+          <ixx>0.01</ixx><ixy>0</ixy><ixz>0</ixz>
+          <iyy>0.01</iyy><iyz>0</iyz>
+          <izz>0.02</izz>
+        </inertia>
+      </inertial>
+      <collision name="right_wheel_collision">
+        <geometry><cylinder><radius>0.15</radius><length>0.05</length></cylinder></geometry>
+        <surface><friction><ode><mu>1.0</mu><mu2>1.0</mu2></ode></friction></surface>
+      </collision>
+      <visual name="right_wheel_visual">
+        <geometry><cylinder><radius>0.15</radius><length>0.05</length></cylinder></geometry>
+        <material><ambient>0.1 0.1 0.1 1</ambient></material>
+      </visual>
+    </link>
+
+    <!-- Left wheel joint -->
+    <joint name="left_wheel_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>left_wheel</child>
+      <axis><xyz>0 0 1</xyz></axis>
+    </joint>
+
+    <!-- Right wheel joint -->
+    <joint name="right_wheel_joint" type="revolute">
+      <parent>base_link</parent>
+      <child>right_wheel</child>
+      <axis><xyz>0 0 1</xyz></axis>
+    </joint>
+
+    <!-- IMU sensor -->
+    <link name="imu_link">
+      <pose>0 0 0.1 0 0 0</pose>
+      <inertial><mass>0.01</mass><inertia><ixx>1e-5</ixx><ixy>0</ixy><ixz>0</ixz><iyy>1e-5</iyy><iyz>0</iyz><izz>1e-5</izz></inertia></inertial>
+      <sensor name="imu_sensor" type="imu">
+        <always_on>true</always_on>
+        <update_rate>100</update_rate>
+        <imu>
+          <angular_velocity>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.003</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.003</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.003</stddev></noise></z>
+          </angular_velocity>
+          <linear_acceleration>
+            <x><noise type="gaussian"><mean>0</mean><stddev>0.05</stddev></noise></x>
+            <y><noise type="gaussian"><mean>0</mean><stddev>0.05</stddev></noise></y>
+            <z><noise type="gaussian"><mean>0</mean><stddev>0.05</stddev></noise></z>
+          </linear_acceleration>
+        </imu>
+        <topic>/imu/data</topic>
+      </sensor>
+    </link>
+
+    <joint name="imu_joint" type="fixed">
+      <parent>base_link</parent>
+      <child>imu_link</child>
+    </joint>
+
+    <!-- GPS: use odometry ground truth converted to NavSat in launch file -->
+    <!-- NavSat sensor avoided due to gz-sim #2163 bug corrupting coordinates -->
+
+    <!-- Differential drive plugin -->
+    <plugin filename="gz-sim-diff-drive-system"
+            name="gz::sim::systems::DiffDrive">
+      <left_joint>left_wheel_joint</left_joint>
+      <right_joint>right_wheel_joint</right_joint>
+      <wheel_separation>0.44</wheel_separation>
+      <wheel_radius>0.15</wheel_radius>
+      <odom_publish_frequency>50</odom_publish_frequency>
+      <topic>/cmd_vel</topic>
+      <odom_topic>/odom/wheels</odom_topic>
+      <frame_id>odom</frame_id>
+      <child_frame_id>base_link</child_frame_id>
+    </plugin>
+
+  </model>
+</sdf>

@@ -1,0 +1,25 @@
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+
+    imu.gyro_noise: 0.005
+    imu.accel_noise: 0.1
+    imu.has_magnetometer: false
+
+    encoder.vel_noise: 0.05
+    encoder.yaw_noise: 0.02
+
+    gnss.base_noise_xy: 1.0
+    gnss.base_noise_z: 2.0
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
+    gnss.heading_topic: ""
+
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
