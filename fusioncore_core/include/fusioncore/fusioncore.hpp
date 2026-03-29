@@ -54,6 +54,10 @@ struct FusionCoreConfig {
   // How many state snapshots to keep. At 100Hz IMU, 50 = 0.5 seconds.
   int snapshot_buffer_size = 50;
 
+  // How many IMU messages to keep for full replay retrodiction.
+  // At 100Hz IMU and 500ms max delay: 50 messages minimum.
+  int imu_buffer_size = 100;
+
   // Does the IMU have a magnetometer (9-axis)?
   // true  — IMU orientation includes magnetically-referenced yaw (BNO08x,
   //         VectorNav, Xsens). Orientation update validates heading.
@@ -231,6 +235,17 @@ private:
   };
 
   std::deque<StateSnapshot> snapshot_buffer_;
+
+  // IMU message buffer for full replay retrodiction
+  // Every raw IMU message is stored so that when a delayed GNSS arrives,
+  // we replay all intermediate IMU updates instead of one big predict(dt).
+  struct ImuBufferEntry {
+    double timestamp;
+    double wx, wy, wz;
+    double ax, ay, az;
+    sensors::ImuNoiseMatrix R;
+  };
+  std::deque<ImuBufferEntry> imu_buffer_;
 
   // Heading observability tracking
   bool          heading_validated_ = false;
