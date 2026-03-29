@@ -98,6 +98,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
 
   // Reset snapshot buffer
   snapshot_buffer_.clear();
+  imu_buffer_.clear();
 
   // Initialize adaptive noise matrices
   init_adaptive_R();
@@ -114,6 +115,7 @@ void FusionCore::reset() {
   heading_source_    = HeadingSource::NONE;
   gnss_pos_set_      = false;
   distance_traveled_ = 0.0;
+  imu_buffer_.clear();
 }
 
 void FusionCore::save_snapshot() {
@@ -185,11 +187,39 @@ bool FusionCore::apply_delayed_measurement(
   // Apply the delayed measurement (predict_to inside apply_fn handles timing)
   apply_fn();
 
-  // Re-predict forward to where we were
-  double dt = current_time - last_timestamp_;
-  if (dt > config_.min_dt && dt <= config_.max_dt) {
-    ukf_.predict(dt);
+  // ── Full IMU replay retrodiction ──────────────────────────────────────────
+  // Instead of one big predict(dt), replay every buffered IMU message
+  // between the snapshot time and current_time in chronological order.
+  // This correctly evolves the state through all intermediate dynamics.
+  double replay_start = last_timestamp_;
+  bool replayed_any   = false;
+
+  for (const auto& imu : imu_buffer_) {
+    if (imu.timestamp <= replay_start) continue;
+    if (imu.timestamp >  current_time) break;
+
+    double dt = imu.timestamp - last_timestamp_;
+    if (dt > config_.min_dt && dt <= config_.max_dt) {
+      ukf_.predict(dt);
+      last_timestamp_ = imu.timestamp;
+
+      // Re-apply the IMU measurement so the filter sees the real dynamics
+      sensors::ImuMeasurement z;
+      z[0] = imu.wx; z[1] = imu.wy; z[2] = imu.wz;
+      z[3] = imu.ax; z[4] = imu.ay; z[5] = imu.az;
+      ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, imu.R);
+      replayed_any = true;
+    }
   }
+
+  // If no IMU messages were in the buffer, fall back to single predict step
+  if (!replayed_any) {
+    double dt = current_time - last_timestamp_;
+    if (dt > config_.min_dt && dt <= config_.max_dt) {
+      ukf_.predict(dt);
+    }
+  }
+
   last_timestamp_    = current_time;
   last_imu_time_     = current_imu;
   last_encoder_time_ = current_encoder;
@@ -281,6 +311,16 @@ void FusionCore::update_imu(
 
   // Save snapshot for delay compensation
   save_snapshot();
+
+  // Save IMU message for full replay retrodiction
+  ImuBufferEntry entry;
+  entry.timestamp = timestamp_seconds;
+  entry.wx = wx; entry.wy = wy; entry.wz = wz;
+  entry.ax = ax; entry.ay = ay; entry.az = az;
+  entry.R  = R;
+  imu_buffer_.push_back(entry);
+  while ((int)imu_buffer_.size() > config_.imu_buffer_size)
+    imu_buffer_.pop_front();
 
   last_imu_time_ = timestamp_seconds;
   ++update_count_;
