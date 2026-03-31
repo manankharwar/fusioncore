@@ -233,11 +233,14 @@ void FusionCore::predict_to(double timestamp_seconds) {
   double dt = timestamp_seconds - last_timestamp_;
   if (dt < config_.min_dt) return;
   if (dt > config_.max_dt) {
-    // Gap too large for a single step — predict with max_dt so the covariance
-    // P still grows by one step's worth of Q, then advance the clock.
-    // Skipping predict() entirely would leave P frozen and the filter
-    // overconfident after any sensor dropout.
-    ukf_.predict(config_.max_dt);
+    // Gap too large for a single step (sensor dropout, startup lag, etc.).
+    // Step through in max_dt chunks so P accumulates Q proportionally to the
+    // actual elapsed time — keeps uncertainty calibrated over long dropouts.
+    double t = last_timestamp_;
+    while (t + config_.max_dt < timestamp_seconds) {
+      ukf_.predict(config_.max_dt);
+      t += config_.max_dt;
+    }
     last_timestamp_ = timestamp_seconds;
     return;
   }
