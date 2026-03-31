@@ -368,11 +368,9 @@ fusioncore/
 - Gazebo Harmonic simulation world
 
 **Known limitations:**
-- Delay compensation uses approximate retrodiction (one forward prediction step, not full IMU replay). Accurate for smooth motion, may introduce small inconsistencies during high-acceleration maneuvers.
 - GNSS antenna lever arm is fixed and known: does not estimate it from data.
 
 **Roadmap:**
-- Full IMU replay retrodiction
 - Ackermann and omnidirectional steering motion models
 
 ---

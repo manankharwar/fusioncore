@@ -21,9 +21,10 @@ TEST(IMUTest, MeasurementFunctionMapsState) {
   EXPECT_DOUBLE_EQ(z[0], 0.1);
   EXPECT_DOUBLE_EQ(z[1], 0.2);
   EXPECT_DOUBLE_EQ(z[2], 0.3);
-  EXPECT_DOUBLE_EQ(z[3], 1.0);
-  EXPECT_DOUBLE_EQ(z[4], 2.0);
-  EXPECT_DOUBLE_EQ(z[5], 9.8);
+  constexpr double g = 9.80665;  // gravity (cp=1, cr=1 at zero roll/pitch)
+  EXPECT_DOUBLE_EQ(z[3], 1.0);   // AX, no pitch → no gravity x-component
+  EXPECT_DOUBLE_EQ(z[4], 2.0);   // AY, no roll  → no gravity y-component
+  EXPECT_DOUBLE_EQ(z[5], 9.8 + g); // AZ + gravity at zero roll/pitch
 }
 
 // ─── Test 2: Bias shifts the expected measurement ────────────────────────────
@@ -39,8 +40,9 @@ TEST(IMUTest, BiasShiftsMeasurement) {
 
   ImuMeasurement z = imu_measurement_function(x);
 
+  constexpr double g = 9.80665;
   EXPECT_DOUBLE_EQ(z[0], 0.15);
-  EXPECT_DOUBLE_EQ(z[5], 10.0);
+  EXPECT_DOUBLE_EQ(z[5], 9.8 + 0.2 + g); // AZ + B_AZ + gravity at zero roll/pitch
 }
 
 // ─── Test 3: Noise matrix is diagonal and positive ───────────────────────────

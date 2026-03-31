@@ -25,14 +25,20 @@ struct ImuParams {
 };
 
 // h(x): state -> expected raw IMU measurement
+// Accelerometer reads specific force = body acceleration + gravity in body frame.
+// Gravity in body frame (R^T * [0, 0, g], ENU z-up): yaw drops out because
+// rotating around the world z-axis does not change a z-aligned vector.
 inline ImuMeasurement imu_measurement_function(const StateVector& x) {
   ImuMeasurement z;
+  constexpr double g = 9.80665;
+  const double cr = std::cos(x[ROLL]),  sr = std::sin(x[ROLL]);
+  const double cp = std::cos(x[PITCH]), sp = std::sin(x[PITCH]);
   z[0] = x[WX] + x[B_GX];
   z[1] = x[WY] + x[B_GY];
   z[2] = x[WZ] + x[B_GZ];
-  z[3] = x[AX] + x[B_AX];
-  z[4] = x[AY] + x[B_AY];
-  z[5] = x[AZ] + x[B_AZ];
+  z[3] = x[AX] + x[B_AX] + (-sp      * g);
+  z[4] = x[AY] + x[B_AY] + ( cp * sr * g);
+  z[5] = x[AZ] + x[B_AZ] + ( cp * cr * g);
   return z;
 }
 

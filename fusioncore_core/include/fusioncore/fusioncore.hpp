@@ -21,6 +21,9 @@ struct FusionCoreConfig {
   double min_dt = 1e-6;
   double max_dt = 1.0;
 
+  // How long without a sensor update before that sensor is marked STALE (seconds)
+  double stale_timeout = 1.0;
+
   // Minimum distance robot must travel (meters) before heading is considered
   // geometrically observable from GPS track alone.
   double heading_observable_distance = 5.0;
@@ -93,6 +96,12 @@ struct FusionCoreStatus {
   bool          heading_validated   = false;
   HeadingSource heading_source      = HeadingSource::NONE;
   double        distance_traveled   = 0.0;  // meters since init
+
+  // Outlier rejection counters — cumulative since init()
+  int gnss_outliers = 0;
+  int imu_outliers  = 0;
+  int enc_outliers  = 0;
+  int hdg_outliers  = 0;
 };
 
 class FusionCore {
@@ -179,11 +188,24 @@ private:
 
     bool ready() const { return (int)innovations.size() >= max_size / 2; }
 
-    // Estimate covariance from innovation window
+    // Estimate covariance from innovation window.
+    // Uses the sample covariance (mean-subtracted), not the autocorrelation.
+    // In a well-tuned filter innovations are zero-mean, but during startup
+    // or model mismatch the mean can be nonzero — subtracting it prevents
+    // R from being inflated by a squared bias term.
     ZMatrix estimate_covariance() const {
-      ZMatrix C = ZMatrix::Zero();
+      // Compute sample mean
+      Eigen::Matrix<double, z_dim, 1> mean = Eigen::Matrix<double, z_dim, 1>::Zero();
       for (const auto& nu : innovations)
-        C += nu * nu.transpose();
+        mean += nu;
+      mean /= (double)innovations.size();
+
+      // Compute mean-subtracted sample covariance
+      ZMatrix C = ZMatrix::Zero();
+      for (const auto& nu : innovations) {
+        Eigen::Matrix<double, z_dim, 1> d = nu - mean;
+        C += d * d.transpose();
+      }
       return C / (double)innovations.size();
     }
   };
@@ -258,7 +280,7 @@ private:
   double distance_traveled_ = 0.0;
 
   void predict_to(double timestamp_seconds);
-  void apply_gnss_update(double timestamp_seconds, const sensors::GnssFix& fix);
+  bool apply_gnss_update(double timestamp_seconds, const sensors::GnssFix& fix);
   void save_snapshot();
   bool apply_delayed_measurement(
     double measurement_timestamp,

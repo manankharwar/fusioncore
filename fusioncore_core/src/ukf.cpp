@@ -45,7 +45,12 @@ void UKF::build_process_noise() {
 Eigen::MatrixXd UKF::generate_sigma_points() const {
   int n_sigma = 2 * n_aug_ + 1;
   Eigen::MatrixXd sigma(STATE_DIM, n_sigma);
-  Eigen::LLT<StateMatrix> llt((n_aug_ + lambda_) * state_.P);
+  // Symmetrize and regularize P to keep it positive-definite under real sensor noise
+  StateMatrix P_sym = (state_.P + state_.P.transpose()) * 0.5;
+  StateMatrix P_reg = (n_aug_ + lambda_) * P_sym;
+  P_reg += StateMatrix::Identity() * 1e-9;
+
+  Eigen::LLT<StateMatrix> llt(P_reg);
   if (llt.info() != Eigen::Success)
     throw std::runtime_error("FusionCore: Cholesky decomposition failed");
   StateMatrix L = llt.matrixL();
@@ -67,15 +72,23 @@ StateVector UKF::process_model(const StateVector& x, double dt) const {
   x_new[X] += dt * (cy*cp*vx + (cy*sp*sr - sy*cr)*vy + (cy*sp*cr + sy*sr)*vz);
   x_new[Y] += dt * (sy*cp*vx + (sy*sp*sr + cy*cr)*vy + (sy*sp*cr - cy*sr)*vz);
   x_new[Z] += dt * (-sp*vx   + cp*sr*vy             + cp*cr*vz);
-  double wx = x[WX] - x[B_GX];
-  double wy = x[WY] - x[B_GY];
-  double wz = x[WZ] - x[B_GZ];
-  x_new[ROLL]  += dt * (wx + sr*std::tan(pitch)*wy + cr*std::tan(pitch)*wz);
+  // WX/WY/WZ are the true angular rates; B_GX/B_GY/B_GZ are gyro biases.
+  // The measurement model predicts z = true_rate + bias, so propagation uses
+  // the true rate directly — do NOT subtract bias here.
+  double wx = x[WX];
+  double wy = x[WY];
+  double wz = x[WZ];
+  // Guard against Euler singularity (gimbal lock) at pitch = ±90° where
+  // tan(pitch) and 1/cos(pitch) diverge. Clamp cos(pitch) away from zero.
+  double cp_safe = (std::abs(cp) < 1e-4) ? std::copysign(1e-4, cp) : cp;
+  x_new[ROLL]  += dt * (wx + sr*(sp/cp_safe)*wy + cr*(sp/cp_safe)*wz);
   x_new[PITCH] += dt * (cr*wy - sr*wz);
-  x_new[YAW]   += dt * (sr/cp*wy + cr/cp*wz);
-  x_new[VX] += dt * (x[AX] - x[B_AX]);
-  x_new[VY] += dt * (x[AY] - x[B_AY]);
-  x_new[VZ] += dt * (x[AZ] - x[B_AZ]);
+  x_new[YAW]   += dt * (sr/cp_safe*wy + cr/cp_safe*wz);
+  // AX/AY/AZ are true body-frame accelerations (gravity already handled in
+  // the measurement model). Velocity integrates true acceleration directly.
+  x_new[VX] += dt * x[AX];
+  x_new[VY] += dt * x[AY];
+  x_new[VZ] += dt * x[AZ];
   x_new = normalize_state(x_new);
   return x_new;
 }
@@ -105,7 +118,8 @@ template <int z_dim>
 Eigen::Matrix<double, z_dim, 1> UKF::update(
   const Eigen::Matrix<double, z_dim, 1>& z,
   const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
-  const Eigen::Matrix<double, z_dim, z_dim>& R
+  const Eigen::Matrix<double, z_dim, z_dim>& R,
+  unsigned int angle_dims
 ) {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update() called before init()");
@@ -128,14 +142,22 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   ZMatrix   S   = R;
   PxzMatrix Pxz = PxzMatrix::Zero();
   for (int i = 0; i < n_sigma; ++i) {
-    ZVector    z_diff = sigma_z.col(i) - z_pred;
+    ZVector z_diff = sigma_z.col(i) - z_pred;
+    for (int d = 0; d < z_dim; ++d)
+      if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
     StateVector x_diff = normalize_state(sigma.col(i) - state_.x);
     S   += Wc_[i] * z_diff * z_diff.transpose();
     Pxz += Wc_[i] * x_diff * z_diff.transpose();
   }
 
   ZVector innovation = z - z_pred;
-  PxzMatrix K = Pxz * S.inverse();
+  for (int d = 0; d < z_dim; ++d)
+    if (angle_dims & (1u << d)) innovation[d] = normalize_angle(innovation[d]);
+
+  // Use LDLT decomposition instead of direct S.inverse() — numerically stable
+  // when S is near-singular. K = Pxz * S^{-1} = (S^{-1} * Pxz^T)^T.
+  auto S_ldlt = S.ldlt();
+  PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
   state_.x = normalize_state(state_.x + K * innovation);
   state_.P -= K * S * K.transpose();
   return innovation;
@@ -147,7 +169,8 @@ void UKF::predict_measurement(
   const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
   const Eigen::Matrix<double, z_dim, z_dim>& R,
   Eigen::Matrix<double, z_dim, 1>& innovation_out,
-  Eigen::Matrix<double, z_dim, z_dim>& S_out
+  Eigen::Matrix<double, z_dim, z_dim>& S_out,
+  unsigned int angle_dims
 ) const {
   using ZVector = Eigen::Matrix<double, z_dim, 1>;
   using ZMatrix = Eigen::Matrix<double, z_dim, z_dim>;
@@ -166,10 +189,14 @@ void UKF::predict_measurement(
   ZMatrix S = R;
   for (int i = 0; i < n_sigma; ++i) {
     ZVector z_diff = sigma_z.col(i) - z_pred;
+    for (int d = 0; d < z_dim; ++d)
+      if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
     S += Wc_[i] * z_diff * z_diff.transpose();
   }
 
   innovation_out = z - z_pred;
+  for (int d = 0; d < z_dim; ++d)
+    if (angle_dims & (1u << d)) innovation_out[d] = normalize_angle(innovation_out[d]);
   S_out = S;
 }
 
@@ -179,21 +206,24 @@ template void UKF::predict_measurement<1>(
   const std::function<Eigen::Matrix<double, 1, 1>(const StateVector&)>&,
   const Eigen::Matrix<double, 1, 1>&,
   Eigen::Matrix<double, 1, 1>&,
-  Eigen::Matrix<double, 1, 1>&) const;
+  Eigen::Matrix<double, 1, 1>&,
+  unsigned int) const;
 
 template void UKF::predict_measurement<3>(
   const Eigen::Matrix<double, 3, 1>&,
   const std::function<Eigen::Matrix<double, 3, 1>(const StateVector&)>&,
   const Eigen::Matrix<double, 3, 3>&,
   Eigen::Matrix<double, 3, 1>&,
-  Eigen::Matrix<double, 3, 3>&) const;
+  Eigen::Matrix<double, 3, 3>&,
+  unsigned int) const;
 
 template void UKF::predict_measurement<6>(
   const Eigen::Matrix<double, 6, 1>&,
   const std::function<Eigen::Matrix<double, 6, 1>(const StateVector&)>&,
   const Eigen::Matrix<double, 6, 6>&,
   Eigen::Matrix<double, 6, 1>&,
-  Eigen::Matrix<double, 6, 6>&) const;
+  Eigen::Matrix<double, 6, 6>&,
+  unsigned int) const;
 
 double UKF::normalize_angle(double angle) {
   while (angle >  M_PI) angle -= 2.0 * M_PI;
@@ -213,22 +243,20 @@ StateVector UKF::normalize_state(const StateVector& x) {
 template Eigen::Matrix<double, 1, 1> UKF::update<1>(
   const Eigen::Matrix<double, 1, 1>&,
   const std::function<Eigen::Matrix<double, 1, 1>(const StateVector&)>&,
-  const Eigen::Matrix<double, 1, 1>&
+  const Eigen::Matrix<double, 1, 1>&,
+  unsigned int
 );
 template Eigen::Matrix<double, 3, 1> UKF::update<3>(
   const Eigen::Matrix<double, 3, 1>&,
   const std::function<Eigen::Matrix<double, 3, 1>(const StateVector&)>&,
-  const Eigen::Matrix<double, 3, 3>&
+  const Eigen::Matrix<double, 3, 3>&,
+  unsigned int
 );
 template Eigen::Matrix<double, 6, 1> UKF::update<6>(
   const Eigen::Matrix<double, 6, 1>&,
   const std::function<Eigen::Matrix<double, 6, 1>(const StateVector&)>&,
-  const Eigen::Matrix<double, 6, 6>&
-);
-template Eigen::Matrix<double, 7, 1> UKF::update<7>(
-  const Eigen::Matrix<double, 7, 1>&,
-  const std::function<Eigen::Matrix<double, 7, 1>(const StateVector&)>&,
-  const Eigen::Matrix<double, 7, 7>&
+  const Eigen::Matrix<double, 6, 6>&,
+  unsigned int
 );
 
 } // namespace fusioncore

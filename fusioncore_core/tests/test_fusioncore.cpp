@@ -44,8 +44,9 @@ TEST(FusionCoreTest, StatusReflectsSensorHealth) {
   EXPECT_EQ(status.imu_health,     SensorHealth::NOT_INIT);
   EXPECT_EQ(status.encoder_health, SensorHealth::NOT_INIT);
 
-  // After IMU update
-  fc.update_imu(0.01, 0,0,0,0,0,9.8);
+  // Send gravity on az — the measurement model now predicts ~9.81 for a flat
+  // stationary robot, so the innovation is near zero and the update is accepted.
+  fc.update_imu(0.01, 0,0,0, 0,0,9.81);
   status = fc.get_status();
   EXPECT_EQ(status.imu_health, SensorHealth::OK);
   EXPECT_EQ(status.update_count, 1);
@@ -74,7 +75,7 @@ TEST(FusionCoreTest, UncertaintyGrowsWithoutUpdates) {
 
 // ─── Test 5: Full end-to-end — robot drives forward 1 meter ─────────────────
 
-TEST(FusionCoreTest, RobotDrivesForwardOneMetер) {
+TEST(FusionCoreTest, RobotDrivesForwardOneMeter) {
   FusionCoreConfig config;
   config.ukf.q_position    = 1e-6;
   config.ukf.q_velocity    = 1e-6;
@@ -86,9 +87,17 @@ TEST(FusionCoreTest, RobotDrivesForwardOneMetер) {
 
   FusionCore fc(config);
 
+  // Large uncertainty on position/velocity — we don't know where we are.
+  // Small uncertainty on orientation — robot starts at a known heading (yaw=0).
+  // High yaw uncertainty (P[YAW]=1.0) would spread sigma points ±57° and
+  // cause the UKF's cos(yaw) average to collapse toward zero, making the
+  // filter predict near-zero forward motion regardless of encoder velocity.
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 1e-4;
+  initial.P = StateMatrix::Identity() * 1.0;
+  initial.P(ROLL,ROLL)   = 0.01;
+  initial.P(PITCH,PITCH) = 0.01;
+  initial.P(YAW,YAW)     = 0.01;
   fc.init(initial, 0.0);
 
   // Robot drives forward at 1 m/s for 1 second
@@ -96,8 +105,8 @@ TEST(FusionCoreTest, RobotDrivesForwardOneMetер) {
   for (int i = 1; i <= 100; ++i) {
     double t = i * 0.01;
 
-    // IMU: moving forward, no rotation
-    fc.update_imu(t, 0,0,0, 0,0,0);
+    // IMU: moving forward at constant velocity, flat robot — send gravity on az.
+    fc.update_imu(t, 0,0,0, 0,0,9.81);
 
     // Encoder at 50Hz
     if (i % 2 == 0) {

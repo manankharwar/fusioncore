@@ -9,7 +9,7 @@ namespace fusioncore {
 // UKF tuning parameters
 struct UKFParams {
   // Sigma point spread — standard defaults, rarely need changing
-  double alpha = 1e-3;   // spread of sigma points around mean (1e-4 to 1.0)
+  double alpha = 0.1;    // spread of sigma points around mean (1e-4 to 1.0)
   double beta  = 2.0;    // prior knowledge of distribution (2.0 = Gaussian)
   double kappa = 0.0;    // secondary scaling (0.0 is standard)
 
@@ -21,20 +21,6 @@ struct UKFParams {
   double q_acceleration = 1.0;    // (m/s²)²/s
   double q_gyro_bias    = 1e-5;   // (rad/s)²/s  -- biases change slowly
   double q_accel_bias   = 1e-5;   // (m/s²)²/s
-};
-
-// Measurement model: maps state -> expected measurement
-// z_dim: dimension of measurement vector
-template <int z_dim>
-struct MeasurementModel {
-  using MeasurementVector = Eigen::Matrix<double, z_dim, 1>;
-  using MeasurementMatrix = Eigen::Matrix<double, z_dim, z_dim>;
-
-  // h(x): state to measurement space
-  std::function<MeasurementVector(const StateVector&)> h;
-
-  // Measurement noise covariance R
-  MeasurementMatrix R = MeasurementMatrix::Identity();
 };
 
 class UKF {
@@ -49,23 +35,30 @@ public:
 
   // Update step — fuse a measurement
   // Returns innovation vector (z - z_pred) for adaptive noise tracking
+  // angle_dims: bitmask of measurement dimensions that are angles and need
+  //             wrapping to [-pi, pi] during innovation computation.
+  //             e.g., 0b100 means dimension 2 (zero-indexed) is an angle.
+  //             Pass 0 (default) for no angle wrapping.
   template <int z_dim>
   Eigen::Matrix<double, z_dim, 1> update(
     const Eigen::Matrix<double, z_dim, 1>& z,
     const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
-    const Eigen::Matrix<double, z_dim, z_dim>& R
+    const Eigen::Matrix<double, z_dim, z_dim>& R,
+    unsigned int angle_dims = 0
   );
 
   // Predict measurement without updating state.
   // Returns innovation and innovation covariance S for Mahalanobis test.
   // Call this BEFORE update() to check if measurement should be rejected.
+  // angle_dims: same bitmask as update() — wrap angle dimensions in z_diff.
   template <int z_dim>
   void predict_measurement(
     const Eigen::Matrix<double, z_dim, 1>& z,
     const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
     const Eigen::Matrix<double, z_dim, z_dim>& R,
     Eigen::Matrix<double, z_dim, 1>& innovation_out,
-    Eigen::Matrix<double, z_dim, z_dim>& S_out
+    Eigen::Matrix<double, z_dim, z_dim>& S_out,
+    unsigned int angle_dims = 0
   ) const;
 
   // Get current state estimate

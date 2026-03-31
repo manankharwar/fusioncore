@@ -16,8 +16,8 @@ bool FusionCore::is_outlier(
   double threshold) const
 {
   // Mahalanobis distance squared: d² = νᵀ · S⁻¹ · ν
-  // .value() extracts scalar from 1x1 matrix — works for all dimensions
-  double d2 = (innovation.transpose() * S.inverse() * innovation).value();
+  // Use LDLT decomposition — numerically stable when S is near-singular.
+  double d2 = innovation.dot(S.ldlt().solve(innovation));
   return d2 > threshold;
 }
 
@@ -115,6 +115,7 @@ void FusionCore::reset() {
   heading_source_    = HeadingSource::NONE;
   gnss_pos_set_      = false;
   distance_traveled_ = 0.0;
+  snapshot_buffer_.clear();
   imu_buffer_.clear();
 }
 
@@ -232,6 +233,11 @@ void FusionCore::predict_to(double timestamp_seconds) {
   double dt = timestamp_seconds - last_timestamp_;
   if (dt < config_.min_dt) return;
   if (dt > config_.max_dt) {
+    // Gap too large for a single step — predict with max_dt so the covariance
+    // P still grows by one step's worth of Q, then advance the clock.
+    // Skipping predict() entirely would leave P frozen and the filter
+    // overconfident after any sensor dropout.
+    ukf_.predict(config_.max_dt);
     last_timestamp_ = timestamp_seconds;
     return;
   }
@@ -304,6 +310,19 @@ void FusionCore::update_imu(
 
   // Use adaptive R if initialized, else config default
   sensors::ImuNoiseMatrix R = adaptive_initialized_ ? R_imu_ : sensors::imu_noise_matrix(config_.imu);
+
+  // Mahalanobis outlier rejection for IMU
+  if (config_.outlier_rejection) {
+    sensors::ImuMeasurement innovation_pre;
+    sensors::ImuNoiseMatrix S;
+    ukf_.predict_measurement<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R, innovation_pre, S);
+    if (is_outlier<sensors::IMU_DIM>(innovation_pre, S, config_.outlier_threshold_imu)) {
+      ++imu_outliers_;
+      last_imu_time_ = timestamp_seconds;
+      return;
+    }
+  }
+
   auto innovation = ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R);
 
   // Track innovation for adaptive noise estimation
@@ -347,11 +366,30 @@ void FusionCore::update_imu_orientation(
   if (orientation_cov != nullptr) {
     R = sensors::imu_orientation_noise_from_covariance(orientation_cov, fallback);
   } else {
-    R = sensors::imu_orientation_noise_matrix(fallback);
+    R = adaptive_initialized_ ? R_imu_orient_ : sensors::imu_orientation_noise_matrix(fallback);
   }
 
-  ukf_.update<sensors::IMU_ORIENTATION_DIM>(
-    z, sensors::imu_orientation_measurement_function, R);
+  // Mahalanobis outlier rejection for IMU orientation
+  if (config_.outlier_rejection) {
+    sensors::ImuOrientationMeasurement innovation_pre;
+    sensors::ImuOrientationNoiseMatrix S;
+    ukf_.predict_measurement<sensors::IMU_ORIENTATION_DIM>(
+      z, sensors::imu_orientation_measurement_function, R, innovation_pre, S);
+    if (is_outlier<sensors::IMU_ORIENTATION_DIM>(innovation_pre, S, config_.outlier_threshold_imu)) {
+      ++imu_outliers_;
+      last_imu_time_ = timestamp_seconds;
+      return;
+    }
+  }
+
+  // Dimension 2 (yaw) is an angle — wrap z_diff across ±π boundary
+  constexpr unsigned int IMU_ORIENT_ANGLE_DIMS = 0b100;  // bit 2 = yaw
+  auto imu_orient_innovation = ukf_.update<sensors::IMU_ORIENTATION_DIM>(
+    z, sensors::imu_orientation_measurement_function, R, IMU_ORIENT_ANGLE_DIMS);
+
+  // Track innovation for adaptive noise estimation
+  adapt_R<sensors::IMU_ORIENTATION_DIM>(
+    R_imu_orient_, imu_orient_innovations_, imu_orient_innovation, config_.adaptive_imu);
 
   // IMU orientation validates heading ONLY if the IMU has a magnetometer.
   // 6-axis IMUs integrate gyro for yaw — this drifts and is not a valid
@@ -392,6 +430,18 @@ void FusionCore::update_encoder(
   if (var_vy > 0.0) R(1,1) = var_vy;
   if (var_wz > 0.0) R(2,2) = var_wz;
 
+  // Mahalanobis outlier rejection for encoder
+  if (config_.outlier_rejection) {
+    sensors::EncoderMeasurement innovation_pre;
+    sensors::EncoderNoiseMatrix S;
+    ukf_.predict_measurement<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R, innovation_pre, S);
+    if (is_outlier<sensors::ENCODER_DIM>(innovation_pre, S, config_.outlier_threshold_enc)) {
+      ++enc_outliers_;
+      last_encoder_time_ = timestamp_seconds;
+      return;
+    }
+  }
+
   auto innovation = ukf_.update<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R);
 
   // Track innovation for adaptive noise estimation
@@ -413,34 +463,34 @@ bool FusionCore::update_gnss(
 
   if (!fix.is_valid(config_.gnss)) return false;
 
-  // Track distance for GPS-track heading observability
-  update_distance_traveled(fix.x, fix.y);
-
   // Check if this measurement is delayed
   bool is_delayed = (last_timestamp_ - timestamp_seconds) > config_.min_dt;
 
   if (is_delayed) {
-    // Apply with retrodiction
+    // apply_delayed_measurement rolls back state, calls the lambda, then
+    // replays IMU forward. Capture gnss_fused so we only count fusions that
+    // actually passed the outlier gate (apply_gnss_update returns bool).
+    bool gnss_fused = false;
     bool applied = apply_delayed_measurement(timestamp_seconds, [&]() {
       predict_to(timestamp_seconds);
-      apply_gnss_update(timestamp_seconds, fix);
+      gnss_fused = apply_gnss_update(timestamp_seconds, fix);
     });
-    if (!applied) return false;
+    if (!applied || !gnss_fused) return false;
+    update_distance_traveled(fix.x, fix.y);
     last_gnss_time_ = timestamp_seconds;
     ++update_count_;
     return true;
   }
 
-
   predict_to(timestamp_seconds);
-  apply_gnss_update(timestamp_seconds, fix);
-
+  if (!apply_gnss_update(timestamp_seconds, fix)) return false;
+  update_distance_traveled(fix.x, fix.y);
   last_gnss_time_ = timestamp_seconds;
   ++update_count_;
   return true;
 }
 
-void FusionCore::apply_gnss_update(
+bool FusionCore::apply_gnss_update(
   double timestamp_seconds,
   const sensors::GnssFix& fix)
 {
@@ -463,19 +513,28 @@ void FusionCore::apply_gnss_update(
 
   bool use_lever_arm = !config_.gnss.lever_arm.is_zero() && heading_validated_;
 
-  Eigen::Matrix<double, sensors::GNSS_POS_DIM, 1> innovation;
+  auto h_gnss = use_lever_arm
+    ? sensors::gnss_pos_measurement_function_with_lever_arm(config_.gnss.lever_arm)
+    : std::function<sensors::GnssPosMeasurement(const StateVector&)>(
+        sensors::gnss_pos_measurement_function);
 
-  if (use_lever_arm) {
-    auto h = sensors::gnss_pos_measurement_function_with_lever_arm(
-      config_.gnss.lever_arm);
-    innovation = ukf_.update<sensors::GNSS_POS_DIM>(z, h, R);
-  } else {
-    innovation = ukf_.update<sensors::GNSS_POS_DIM>(
-      z, sensors::gnss_pos_measurement_function, R);
+  // Mahalanobis outlier rejection for GNSS position
+  if (config_.outlier_rejection) {
+    sensors::GnssPosMeasurement innovation_pre;
+    sensors::GnssPosNoiseMatrix S;
+    ukf_.predict_measurement<sensors::GNSS_POS_DIM>(z, h_gnss, R, innovation_pre, S);
+    if (is_outlier<sensors::GNSS_POS_DIM>(innovation_pre, S, config_.outlier_threshold_gnss)) {
+      ++gnss_outliers_;
+      return false;
+    }
   }
+
+  Eigen::Matrix<double, sensors::GNSS_POS_DIM, 1> innovation =
+    ukf_.update<sensors::GNSS_POS_DIM>(z, h_gnss, R);
 
   // Track innovation for adaptive GNSS noise estimation
   adapt_R<sensors::GNSS_POS_DIM>(R_gnss_, gnss_innovations_, innovation, config_.adaptive_gnss);
+  return true;
 }
 
 bool FusionCore::update_gnss_heading(
@@ -495,12 +554,15 @@ bool FusionCore::update_gnss_heading(
   sensors::GnssHdgNoiseMatrix R =
     sensors::gnss_hdg_noise_matrix(config_.gnss, heading);
 
+  // Dimension 0 (heading) is an angle — wrap z_diff across ±π boundary
+  constexpr unsigned int HDG_ANGLE_DIMS = 0b1;  // bit 0 = heading
+
   // Mahalanobis outlier rejection for heading
   if (config_.outlier_rejection) {
     sensors::GnssHdgMeasurement innovation_pre;
     sensors::GnssHdgNoiseMatrix S;
     ukf_.predict_measurement<sensors::GNSS_HDG_DIM>(
-      z, sensors::gnss_hdg_measurement_function, R, innovation_pre, S);
+      z, sensors::gnss_hdg_measurement_function, R, innovation_pre, S, HDG_ANGLE_DIMS);
     if (is_outlier<sensors::GNSS_HDG_DIM>(innovation_pre, S, config_.outlier_threshold_hdg)) {
       ++hdg_outliers_;
       return false;
@@ -508,7 +570,7 @@ bool FusionCore::update_gnss_heading(
   }
 
   ukf_.update<sensors::GNSS_HDG_DIM>(
-    z, sensors::gnss_hdg_measurement_function, R);
+    z, sensors::gnss_hdg_measurement_function, R, HDG_ANGLE_DIMS);
 
   // Dual antenna heading is the strongest possible heading validation
   // Override any weaker source
@@ -531,7 +593,7 @@ FusionCoreStatus FusionCore::get_status() const {
 
   if (!initialized_) return status;
 
-  double stale = 1.0;
+  const double stale = config_.stale_timeout;
 
   status.imu_health =
     last_imu_time_ < 0.0 ? SensorHealth::NOT_INIT :
@@ -555,6 +617,12 @@ FusionCoreStatus FusionCore::get_status() const {
   status.heading_validated = heading_validated_;
   status.heading_source    = heading_source_;
   status.distance_traveled = distance_traveled_;
+
+  // Outlier rejection counters
+  status.gnss_outliers = gnss_outliers_;
+  status.imu_outliers  = imu_outliers_;
+  status.enc_outliers  = enc_outliers_;
+  status.hdg_outliers  = hdg_outliers_;
 
   return status;
 }
