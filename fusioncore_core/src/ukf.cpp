@@ -101,10 +101,24 @@ void UKF::predict(double dt) {
   Eigen::MatrixXd sigma_pred(STATE_DIM, n_sigma);
   for (int i = 0; i < n_sigma; ++i)
     sigma_pred.col(i) = process_model(sigma.col(i), dt);
+  // Weighted mean — normalize_state handles angle wrapping.
+  // Note: circular mean (atan2) is NOT used here because when P is large (e.g.
+  // during initialization with P=50*I), angle sigma points spread beyond ±π and
+  // wrap around. atan2 then returns the wrong quadrant (±π instead of 0), making
+  // diff_0 = ±π for every sigma point, and the large negative Wc[0] weight drives
+  // P_pred[angle, angle] to be large and negative → Cholesky failure.
+  // Circular mean is correct only in update()/predict_measurement() where the
+  // measurement function returns a bounded heading value with small spread.
   StateVector x_pred = StateVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
     x_pred += Wm_[i] * sigma_pred.col(i);
   x_pred = normalize_state(x_pred);
+
+  // Q is added per predict step (not scaled by dt).
+  // The q_* params in UKFParams are calibrated as per-step noise, not spectral densities.
+  // Scaling by dt here would require re-tuning all Q values by the IMU rate (~100x),
+  // which would break all existing configurations and cause GPS Mahalanobis rejections
+  // as P grows too slowly to track real motion.
   StateMatrix P_pred = Q_;
   for (int i = 0; i < n_sigma; ++i) {
     StateVector diff = normalize_state(sigma_pred.col(i) - x_pred);
@@ -135,6 +149,12 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   for (int i = 0; i < n_sigma; ++i)
     sigma_z.col(i) = h(sigma.col(i));
 
+  // Weighted mean of measurement sigma points.
+  // Circular mean (atan2) is NOT used here — UKF has Wm[0] ≈ -99 and Wm[i>0] ≈ +2.38.
+  // With yaw near 0: sum_cos ≈ -99 + 99*cos(spread) ≈ -0.05 (negative due to cos < 1),
+  // so atan2(0, -0.05) = π instead of 0, making every z_diff ≈ π → S goes negative
+  // → K*S*K.T has wrong sign → P goes non-PSD → Cholesky crash.
+  // Angle wrapping is handled correctly via normalize_angle on z_diff and innovation below.
   ZVector z_pred = ZVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
     z_pred += Wm_[i] * sigma_z.col(i);
@@ -182,6 +202,8 @@ void UKF::predict_measurement(
   for (int i = 0; i < n_sigma; ++i)
     sigma_z.col(i) = h(sigma.col(i));
 
+  // Same weighted mean as update() — no circular mean for same reason.
+  // Angle wrapping is handled via normalize_angle on z_diff and innovation_out below.
   ZVector z_pred = ZVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
     z_pred += Wm_[i] * sigma_z.col(i);
@@ -226,9 +248,10 @@ template void UKF::predict_measurement<6>(
   unsigned int) const;
 
 double UKF::normalize_angle(double angle) {
-  while (angle >  M_PI) angle -= 2.0 * M_PI;
-  while (angle < -M_PI) angle += 2.0 * M_PI;
-  return angle;
+  // fmod-based normalization — O(1) regardless of magnitude, safe under drift
+  angle = std::fmod(angle + M_PI, 2.0 * M_PI);
+  if (angle < 0.0) angle += 2.0 * M_PI;
+  return angle - M_PI;
 }
 
 StateVector UKF::normalize_state(const StateVector& x) {

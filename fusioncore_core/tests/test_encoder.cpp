@@ -23,17 +23,20 @@ TEST(EncoderTest, MeasurementFunctionMapsState) {
   EXPECT_DOUBLE_EQ(z[2], 0.3);
 }
 
-// ─── Test 2: Encoder corrects for gyro bias in yaw rate ─────────────────────
+// ─── Test 2: Encoder yaw rate maps directly to WZ (no gyro bias subtraction) ─
+// Encoders are wheel-based — they have no gyro bias. The gyro bias state B_GZ
+// belongs only in the IMU measurement function. Subtracting B_GZ here would
+// incorrectly couple encoder updates to the gyro bias estimate.
 
-TEST(EncoderTest, EncoderRemovesGyroBiasFromYawRate) {
+TEST(EncoderTest, EncoderYawRateMapsDirectlyToWZ) {
   StateVector x = StateVector::Zero();
-  x[WZ]   = 0.5;    // true angular velocity + bias
-  x[B_GZ] = 0.1;    // gyro bias
+  x[WZ]   = 0.5;    // angular velocity state
+  x[B_GZ] = 0.1;    // gyro bias — should NOT affect encoder measurement
 
   EncoderMeasurement z = encoder_measurement_function(x);
 
-  // Encoder sees true yaw rate (WZ - B_GZ)
-  EXPECT_DOUBLE_EQ(z[2], 0.4);
+  // Encoder measures WZ directly, not (WZ - B_GZ)
+  EXPECT_DOUBLE_EQ(z[2], 0.5);
 }
 
 // ─── Test 3: Noise matrix is diagonal and positive ───────────────────────────

@@ -15,6 +15,8 @@
 #include <compass_msgs/msg/azimuth.hpp>
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2/LinearMath/Matrix3x3.h>
+#include <rclcpp/executors/single_threaded_executor.hpp>
+#include <optional>
 
 using namespace std::chrono_literals;
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -302,6 +304,7 @@ private:
       } else {
         RCLCPP_WARN(get_logger(), "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 %s %s",
           from.c_str(), to.c_str(), to.c_str(), from.c_str());
+        all_ok = false;  // Fix 1: was never set — function always returned true
       }
     }
 
@@ -317,6 +320,7 @@ private:
       } else {
         RCLCPP_WARN(get_logger(), "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss_link",
           base_frame_.c_str(), lx, ly, lz, base_frame_.c_str());
+        all_ok = false;  // Fix 1: lever arm TF missing also marks as not ok
       }
     }
 
@@ -360,7 +364,8 @@ private:
         msg->linear_acceleration.x,
         msg->linear_acceleration.y,
         msg->linear_acceleration.z);
-      fuse_imu_orientation_if_valid(t, msg);
+      // No frame rotation needed — IMU is already in base_frame
+      fuse_imu_orientation_if_valid(t, msg, std::nullopt);
       return;
     }
 
@@ -405,17 +410,19 @@ private:
     fc_->update_imu(t,
       w_base.x(), w_base.y(), w_base.z(),
       a_base.x(), a_base.y(), a_base.z());
-    fuse_imu_orientation_if_valid(t, msg);
+    // Fix 11: pass the rotation quaternion so orientation is also transformed
+    fuse_imu_orientation_if_valid(t, msg, q);
   }
 
   // ─── IMU orientation helper ───────────────────────────────────────────────
-  // Called after every IMU update if the message contains a valid orientation.
-  // Handles IMUs like BNO08x, VectorNav, Xsens that publish full orientation.
-  // Uses message covariance when available (peci1 fix).
+  // Fix 11: now accepts optional imu_to_base rotation to transform orientation
+  // into base_frame before fusing. Previously used raw IMU-frame orientation
+  // even when IMU was mounted at an angle relative to base_frame.
 
   void fuse_imu_orientation_if_valid(
     double t,
-    const sensor_msgs::msg::Imu::SharedPtr& msg)
+    const sensor_msgs::msg::Imu::SharedPtr& msg,
+    const std::optional<tf2::Quaternion>& imu_to_base)
   {
     // orientation_covariance[0] == -1 means "no orientation data"
     if (msg->orientation_covariance[0] < 0.0) return;
@@ -430,14 +437,20 @@ private:
     }
     if (!has_orientation) return;
 
-    // Extract roll, pitch, yaw from quaternion
-    tf2::Quaternion q(
+    tf2::Quaternion q_imu(
       msg->orientation.x,
       msg->orientation.y,
       msg->orientation.z,
       msg->orientation.w);
+
+    // Fix 11: rotate orientation from IMU frame to base_frame.
+    // q_base = q_imu_to_base * q_imu  (apply mount rotation first)
+    tf2::Quaternion q_base = imu_to_base.has_value()
+      ? (imu_to_base.value() * q_imu).normalized()
+      : q_imu;
+
     double roll, pitch, yaw;
-    tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+    tf2::Matrix3x3(q_base).getRPY(roll, pitch, yaw);
 
     fc_->update_imu_orientation(
       t, roll, pitch, yaw,
@@ -456,6 +469,10 @@ private:
       msg->twist.twist.linear.x,
       msg->twist.twist.linear.y,
       msg->twist.twist.angular.z);
+
+    // Non-holonomic ground constraint: wheeled robots cannot move vertically.
+    // Fuses VZ=0 as a pseudo-measurement to prevent altitude drift.
+    fc_->update_ground_constraint(t);
   }
 
   // ─── GNSS position callback ────────────────────────────────────────────────
@@ -476,7 +493,9 @@ private:
       gnss_ref_set_ = true;
       RCLCPP_INFO(get_logger(), "GNSS reference set: lat=%.6f lon=%.6f",
         msg->latitude, msg->longitude);
-      return;
+      // Fix 3: do NOT return — fall through and fuse ENU [0,0,0] as first fix.
+      // Returning here dropped the first GPS measurement, leaving the filter at
+      // [0,0,0] with no position correction until the second fix arrived.
     }
 
     fusioncore::sensors::LLAPoint lla;
@@ -536,11 +555,11 @@ private:
         fix.full_covariance = cov;
         fix.hdop = std::sqrt(cov(0,0));  // for validity check
         fix.vdop = std::sqrt(cov(2,2));
-        fix.satellites = 6;
+        fix.satellites = 4;  // Fix 10: honest minimum — was hardcoded 6, always passed quality gate
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
-        fix.satellites = 6;
+        fix.satellites = 4;  // Fix 10
       }
     } else if (msg->position_covariance_type >= 1) {
       // Diagonal covariance available
@@ -549,23 +568,23 @@ private:
       if (var_xy > 0.0 && var_z > 0.0) {
         fix.hdop = std::sqrt(var_xy);
         fix.vdop = std::sqrt(var_z);
-        fix.satellites = 6;
+        fix.satellites = 4;  // Fix 10
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
-        fix.satellites = 6;
+        fix.satellites = 4;  // Fix 10
       }
     } else {
       // Unknown covariance — use config defaults
       fix.hdop = 1.5;
       fix.vdop = 2.0;
-      fix.satellites = 6;
+      fix.satellites = 4;  // Fix 10
     }
 
     bool accepted = fc_->update_gnss(t, fix);
     if (!accepted) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-        "GNSS fix rejected (poor quality)");
+        "GNSS fix rejected (quality check failed or Mahalanobis outlier gate)");
     }
 
     // Log heading observability status
@@ -801,7 +820,11 @@ int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
   auto node = std::make_shared<FusionNode>();
-  rclcpp::spin(node->get_node_base_interface());
+  // Fix 12: use SingleThreadedExecutor — correct pattern for lifecycle nodes.
+  // rclcpp::spin() bypasses the executor's lifecycle service callback handling.
+  rclcpp::executors::SingleThreadedExecutor executor;
+  executor.add_node(node->get_node_base_interface());
+  executor.spin();
   rclcpp::shutdown();
   return 0;
 }

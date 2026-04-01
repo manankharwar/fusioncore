@@ -158,18 +158,19 @@ bool FusionCore::apply_delayed_measurement(
     return true;
   }
 
-  // Find the snapshot closest to but before measurement_timestamp
-  const StateSnapshot* best = nullptr;
+  // Fix 7: copy snapshot by value — raw pointer into std::deque is invalidated
+  // by any push_back/pop_front between pointer capture and use.
+  StateSnapshot best_snap;
+  bool found = false;
   for (auto it = snapshot_buffer_.rbegin(); it != snapshot_buffer_.rend(); ++it) {
     if (it->timestamp <= measurement_timestamp) {
-      best = &(*it);
+      best_snap = *it;
+      found = true;
       break;
     }
   }
-
-  if (!best) {
-    // All snapshots are after measurement — use oldest
-    best = &snapshot_buffer_.front();
+  if (!found) {
+    best_snap = snapshot_buffer_.front();
   }
 
   // Save current state to restore after re-prediction
@@ -179,11 +180,11 @@ bool FusionCore::apply_delayed_measurement(
   double current_gnss     = last_gnss_time_;
 
   // Roll back to snapshot
-  ukf_.init(best->state);
-  last_timestamp_     = best->timestamp;
-  last_imu_time_      = best->last_imu_time;
-  last_encoder_time_  = best->last_encoder_time;
-  last_gnss_time_     = best->last_gnss_time;
+  ukf_.init(best_snap.state);
+  last_timestamp_     = best_snap.timestamp;
+  last_imu_time_      = best_snap.last_imu_time;
+  last_encoder_time_  = best_snap.last_encoder_time;
+  last_gnss_time_     = best_snap.last_gnss_time;
 
   // Apply the delayed measurement (predict_to inside apply_fn handles timing)
   apply_fn();
@@ -241,6 +242,11 @@ void FusionCore::predict_to(double timestamp_seconds) {
       ukf_.predict(config_.max_dt);
       t += config_.max_dt;
     }
+    // Fix 4: predict the remaining partial chunk — state was only propagated to t, not timestamp_seconds
+    double dt_remaining = timestamp_seconds - t;
+    if (dt_remaining > config_.min_dt) {
+      ukf_.predict(dt_remaining);
+    }
     last_timestamp_ = timestamp_seconds;
     return;
   }
@@ -248,7 +254,7 @@ void FusionCore::predict_to(double timestamp_seconds) {
   last_timestamp_ = timestamp_seconds;
 }
 
-void FusionCore::update_distance_traveled(double x, double y) {
+void FusionCore::update_distance_traveled(double x, double y, double pre_update_speed) {
   if (!gnss_pos_set_) {
     last_gnss_x_  = x;
     last_gnss_y_  = y;
@@ -265,12 +271,13 @@ void FusionCore::update_distance_traveled(double x, double y) {
   const double MIN_STEP = 0.05;  // 5cm
   if (dist < MIN_STEP) return;
 
-  // Estimate speed from this GPS step and the time since last GNSS fix
-  // If dt is available, check that speed is meaningful (not jitter, not slip)
-  // We use the state velocity as a cross-check
-  double state_speed = std::sqrt(
-    ukf_.state().x[VX] * ukf_.state().x[VX] +
-    ukf_.state().x[VY] * ukf_.state().x[VY]);
+  // Fix 8: use pre-update speed captured before apply_gnss_update().
+  // Post-update velocity is already GNSS-corrected and not representative of
+  // motion during the GPS step. Fall back to current state if not provided.
+  double state_speed = (pre_update_speed >= 0.0)
+    ? pre_update_speed
+    : std::sqrt(ukf_.state().x[VX] * ukf_.state().x[VX] +
+                ukf_.state().x[VY] * ukf_.state().x[VY]);
 
   // Minimum forward speed to count as real motion
   // Below this threshold: could be GPS jitter, spinning in place, or sliding
@@ -457,6 +464,26 @@ void FusionCore::update_encoder(
   ++update_count_;
 }
 
+void FusionCore::update_ground_constraint(double timestamp_seconds) {
+  if (!initialized_) return;
+
+  // Force a minimal predict step so Q is injected into P before this update.
+  // This prevents Cholesky failure when called back-to-back with update_encoder
+  // at the same timestamp (where predict_to would be a no-op and P gets two
+  // consecutive reductions with no covariance recovery between them).
+  // Do NOT update last_timestamp_ here — advancing it would cause every
+  // subsequent GNSS message to be misclassified as delayed (triggering the
+  // retrodiction path). The 1µs UKF time mismatch is negligible.
+  ukf_.predict(config_.min_dt);
+
+  sensors::GroundConstraintMeasurement z;
+  z[0] = 0.0;  // expected: body-frame VZ = 0
+
+  sensors::GroundConstraintNoiseMatrix R = sensors::ground_constraint_noise_matrix();
+  ukf_.update<sensors::GROUND_CONSTRAINT_DIM>(
+    z, sensors::ground_constraint_measurement_function, R);
+}
+
 bool FusionCore::update_gnss(
   double timestamp_seconds,
   const sensors::GnssFix& fix
@@ -474,20 +501,29 @@ bool FusionCore::update_gnss(
     // replays IMU forward. Capture gnss_fused so we only count fusions that
     // actually passed the outlier gate (apply_gnss_update returns bool).
     bool gnss_fused = false;
+    double pre_update_speed_delayed = 0.0;
     bool applied = apply_delayed_measurement(timestamp_seconds, [&]() {
       predict_to(timestamp_seconds);
+      pre_update_speed_delayed = std::sqrt(
+        ukf_.state().x[VX] * ukf_.state().x[VX] +
+        ukf_.state().x[VY] * ukf_.state().x[VY]);
       gnss_fused = apply_gnss_update(timestamp_seconds, fix);
     });
     if (!applied || !gnss_fused) return false;
-    update_distance_traveled(fix.x, fix.y);
+    update_distance_traveled(fix.x, fix.y, pre_update_speed_delayed);
     last_gnss_time_ = timestamp_seconds;
     ++update_count_;
     return true;
   }
 
   predict_to(timestamp_seconds);
+  // Fix 8: capture speed BEFORE gnss update — post-update velocity is corrected
+  // and not representative of motion during this GPS step.
+  double pre_update_speed = std::sqrt(
+    ukf_.state().x[VX] * ukf_.state().x[VX] +
+    ukf_.state().x[VY] * ukf_.state().x[VY]);
   if (!apply_gnss_update(timestamp_seconds, fix)) return false;
-  update_distance_traveled(fix.x, fix.y);
+  update_distance_traveled(fix.x, fix.y, pre_update_speed);
   last_gnss_time_ = timestamp_seconds;
   ++update_count_;
   return true;

@@ -84,10 +84,10 @@ def generate_launch_description():
         parameters=[config],
     )
 
-    # 6 — Auto-configure FusionCore after 8 seconds
-    # (gives Gazebo and bridge time to start publishing)
+    # 6 — Auto-configure FusionCore after 15 seconds
+    # (gives Gazebo, bridge, and DDS discovery time to settle in WSL2)
     configure_cmd = TimerAction(
-        period=8.0,
+        period=15.0,
         actions=[
             ExecuteProcess(
                 cmd=["ros2", "lifecycle", "set", "/fusioncore", "configure"],
@@ -96,9 +96,9 @@ def generate_launch_description():
         ]
     )
 
-    # 7 — Auto-activate FusionCore after 12 seconds
+    # 7 — Auto-activate FusionCore after 20 seconds
     activate_cmd = TimerAction(
-        period=12.0,
+        period=20.0,
         actions=[
             ExecuteProcess(
                 cmd=["ros2", "lifecycle", "set", "/fusioncore", "activate"],

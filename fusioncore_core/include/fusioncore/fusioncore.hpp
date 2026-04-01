@@ -143,6 +143,11 @@ public:
     const sensors::GnssFix& fix
   );
 
+  // Non-holonomic ground constraint — fuses VZ=0 as a pseudo-measurement.
+  // Call this every encoder update to prevent altitude drift in the UKF.
+  // Only applies to wheeled ground robots; do not call for aerial vehicles.
+  void update_ground_constraint(double timestamp_seconds);
+
   // GNSS dual antenna heading update
   // Calling this validates heading via HeadingSource::DUAL_ANTENNA
   bool update_gnss_heading(
@@ -286,7 +291,7 @@ private:
     double measurement_timestamp,
     const std::function<void()>& apply_fn
   );
-  void update_distance_traveled(double x, double y);
+  void update_distance_traveled(double x, double y, double pre_update_speed = -1.0);
 };
 
 } // namespace fusioncore
