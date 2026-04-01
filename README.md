@@ -388,7 +388,6 @@ fusioncore/
 
 **Roadmap:**
 - Ackermann and omnidirectional steering motion models
-- ~~Full IMU replay retrodiction~~ ✓ implemented
 
 ---
 
