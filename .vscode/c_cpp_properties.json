@@ -2,18 +2,19 @@
     "configurations": [
         {
             "name": "WSL",
-            "includePath": [
-                "${workspaceFolder}/**",
-                "/usr/include/eigen3",
-                "/opt/ros/jazzy/include/**",
-                "/usr/include"
-            ],
-            "defines": [],
             "compilerPath": "/usr/bin/g++",
             "cStandard": "c17",
             "cppStandard": "c++17",
             "intelliSenseMode": "linux-gcc-x64",
-            "configurationProvider": "ms-vscode.cmake-tools"
+            "includePath": [
+                "${workspaceFolder}/**",
+                "/opt/ros/jazzy/include/**",
+                "/usr/include/**",
+                "/usr/include/eigen3"
+            ],
+            "configurationProvider": "ms-vscode.cmake-tools",
+            // Use the ROOT compile_commands.json
+            "compileCommands": "/mnt/c/stealth/ROS/fusioncore_ws/build/compile_commands.json"
         }
     ],
     "version": 4
