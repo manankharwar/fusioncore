@@ -53,7 +53,9 @@ def generate_launch_description():
         package="tf2_ros",
         executable="static_transform_publisher",
         name="imu_tf",
-        arguments=["0", "0", "0.1", "0", "0", "0", "base_link", "imu_link"]
+        arguments=["--x", "0", "--y", "0", "--z", "0.1",
+                   "--roll", "0", "--pitch", "0", "--yaw", "0",
+                   "--frame-id", "base_link", "--child-frame-id", "imu_link"]
     )
 
     # 3b — Static TF for Gazebo's namespaced IMU frame
@@ -63,7 +65,10 @@ def generate_launch_description():
         package="tf2_ros",
         executable="static_transform_publisher",
         name="imu_tf_gz",
-        arguments=["0", "0", "0.1", "0", "0", "0", "base_link", "fusioncore_robot/imu_link/imu_sensor"]
+        arguments=["--x", "0", "--y", "0", "--z", "0.1",
+                   "--roll", "0", "--pitch", "0", "--yaw", "0",
+                   "--frame-id", "base_link",
+                   "--child-frame-id", "fusioncore_robot/imu_link/imu_sensor"]
     )
 
     # 4 — Static TF: base_link -> odom (identity at start)
@@ -71,7 +76,9 @@ def generate_launch_description():
         package="tf2_ros",
         executable="static_transform_publisher",
         name="odom_tf",
-        arguments=["0", "0", "0", "0", "0", "0", "odom", "base_link"]
+        arguments=["--x", "0", "--y", "0", "--z", "0",
+                   "--roll", "0", "--pitch", "0", "--yaw", "0",
+                   "--frame-id", "odom", "--child-frame-id", "base_link"]
     )
 
     # 5 — FusionCore lifecycle node
@@ -84,27 +91,34 @@ def generate_launch_description():
         parameters=[config],
     )
 
-    # 6 — Auto-configure FusionCore after 15 seconds
-    # (gives Gazebo, bridge, and DDS discovery time to settle in WSL2)
+    # 6 — Configure FusionCore via the launch system's internal event bus.
+    # EmitEvent+ChangeState talks directly to the LifecycleNode action without
+    # going through DDS, so it works even when 'ros2 lifecycle set' can't
+    # discover the node (the root cause of "Node not found" on WSL2).
     configure_cmd = TimerAction(
         period=15.0,
         actions=[
-            ExecuteProcess(
-                cmd=["ros2", "lifecycle", "set", "/fusioncore", "configure"],
-                output="screen"
-            )
+            EmitEvent(event=ChangeState(
+                lifecycle_node_matcher=lambda action: action == fusioncore_node,
+                transition_id=Transition.TRANSITION_CONFIGURE,
+            ))
         ]
     )
 
-    # 7 — Auto-activate FusionCore after 20 seconds
-    activate_cmd = TimerAction(
-        period=20.0,
-        actions=[
-            ExecuteProcess(
-                cmd=["ros2", "lifecycle", "set", "/fusioncore", "activate"],
-                output="screen"
-            )
-        ]
+    # 7 — Activate FusionCore once it reaches the 'inactive' state.
+    # Event-driven: fires immediately after configure succeeds.
+    activate_cmd = RegisterEventHandler(
+        OnStateTransition(
+            target_lifecycle_node=fusioncore_node,
+            start_state="configuring",
+            goal_state="inactive",
+            entities=[
+                EmitEvent(event=ChangeState(
+                    lifecycle_node_matcher=lambda action: action == fusioncore_node,
+                    transition_id=Transition.TRANSITION_ACTIVATE,
+                ))
+            ],
+        )
     )
 
     # GPS publisher — converts ground truth odom to NavSatFix

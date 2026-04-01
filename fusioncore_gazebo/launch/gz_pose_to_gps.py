@@ -11,8 +11,8 @@ ORIGIN_LON = -79.8711
 ORIGIN_ALT = 100.0
 A  = 6378137.0
 E2 = 0.00669437999014
-NOISE_H = 1.0
-NOISE_V = 2.0
+NOISE_H = 0.5   # 1-sigma horizontal GPS noise (m) — 1.0 was too large, biased y
+NOISE_V = 0.3   # 1-sigma vertical GPS noise (m)   — 2.0 caused persistent z bias via noisy reference capture
 
 def enu_to_lla(x, y, z):
     lat0 = math.radians(ORIGIN_LAT)

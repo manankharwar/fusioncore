@@ -59,7 +59,7 @@ public:
     Eigen::Matrix<double, z_dim, 1>& innovation_out,
     Eigen::Matrix<double, z_dim, z_dim>& S_out,
     unsigned int angle_dims = 0
-  ) const;
+  );
 
   // Get current state estimate
   const State& state() const { return state_; }
@@ -83,8 +83,9 @@ private:
   void compute_weights();
   void build_process_noise();
 
-  // Generate 2n+1 sigma points from current state
-  Eigen::MatrixXd generate_sigma_points() const;
+  // Generate 2n+1 sigma points from current state.
+  // Repairs state_.P in-place if it has lost positive-definiteness.
+  Eigen::MatrixXd generate_sigma_points();
 
   // Motion model f(x, dt): propagates a single sigma point
   StateVector process_model(const StateVector& x, double dt) const;

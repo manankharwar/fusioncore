@@ -11,8 +11,12 @@ fusioncore:
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
 
-    gnss.base_noise_xy: 1.0
-    gnss.base_noise_z: 2.0
+    gnss.base_noise_xy: 1.0   # baseline sigma (m) at HDOP=1. When NavSatFix provides
+                               # covariance, fusion_node sets fix.hdop = sqrt(var_xy),
+                               # so sigma = base_noise_xy * sqrt(var_xy). With base=1.0
+                               # this equals sqrt(var_xy) directly — the correct value.
+                               # Do NOT set this to NOISE_H; that double-shrinks R.
+    gnss.base_noise_z: 1.0    # same reasoning for vertical — set to 1.0, not NOISE_V
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
     gnss.heading_topic: ""
