@@ -31,7 +31,9 @@ FusionCore is that replacement.
 | TF validation | Silent failure | Silent failure | Startup check + exact fix commands |
 | Multiple sensor sources | No | No | Yes: 2x GPS, multiple IMUs |
 | compass_msgs/Azimuth | No | No | Yes: ROS 2 native port |
-| Delay compensation | No | No | Yes: retrodiction up to 500ms |
+| Delay compensation | No | No | Yes: full IMU replay retrodiction up to 500ms |
+| Ground constraint | No | No | Yes: VZ=0 pseudo-measurement for wheeled robots |
+| Sensor dropout detection | Silent | Silent | Per-sensor staleness with SensorHealth enum |
 | Maintenance | Abandoned | Slow | Active, issues answered in 24h |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
 | ROS 2 Jazzy | Ported | Native | Native, built from scratch |
@@ -236,6 +238,16 @@ FusionCore uses the covariance values sensors actually publish rather than ignor
 
 **IMU orientation:** Reads `orientation_covariance` from the message. Uses it directly when meaningful, falls back to config params when not.
 
+### Non-holonomic ground constraint
+
+For wheeled ground robots, FusionCore fuses a `VZ = 0` pseudo-measurement on every encoder update. This prevents vertical velocity from drifting due to IMU noise and keeps altitude estimation stable even when GPS has weak vertical observability.
+
+Call `update_ground_constraint(timestamp)` after every `update_encoder()` call in your integration. Do not call this for aerial vehicles or robots that can move vertically.
+
+### Sensor dropout detection
+
+FusionCore tracks the last update time for each sensor independently. If a sensor goes silent for longer than `stale_timeout` (default 1.0 second), `get_status()` returns `SensorHealth::STALE` for that sensor. The filter continues running on the remaining sensors and recovers automatically when the missing sensor resumes. This is reported via `FusionCoreStatus` so your application can alert the operator or take action without polling every topic individually.
+
 ### compass_msgs/Azimuth
 
 peci1 (Great Contributor, ROS Discourse) suggested using `compass_msgs/Azimuth` as a standard heading message format. The upstream package is ROS 1 only. FusionCore ships a ROS 2 native port with the identical message definition.
@@ -249,6 +261,8 @@ GPS messages arrive 100-300ms after the fix was taken. Without compensation, del
 FusionCore saves a full state snapshot (21-dimensional state + covariance) on every IMU update at 100Hz: 50 snapshots = 0.5 seconds of history. When a delayed GPS fix arrives, it finds the closest snapshot before the fix timestamp, restores that state, applies the fix at the correct time, then re-predicts forward to now.
 
 This is approximate retrodiction: the re-prediction uses the motion model rather than replaying actual IMU history. For smooth motion at normal robot speeds the approximation error is small compared to GPS noise. Full IMU replay retrodiction is on the roadmap.
+
+**Update:** Full IMU replay retrodiction is now implemented. Every raw IMU message is stored in a ring buffer (configurable size, default 100 messages = 1 second at 100Hz). When a delayed GPS fix arrives, FusionCore restores the closest snapshot before the fix timestamp, re-fuses the fix at the correct time, then replays all buffered IMU messages forward to now rather than using one big predict(dt). This eliminates the motion-model approximation error for delayed measurements entirely.
 
 ---
 
@@ -363,7 +377,9 @@ fusioncore/
 - Heading observability tracking: DUAL_ANTENNA / IMU_ORIENTATION / GPS_TRACK
 - Mahalanobis outlier rejection: GPS jumps verified rejected in testing
 - Adaptive noise covariance: automatic R estimation from innovation sequence
-- GPS delay compensation: retrodiction up to 500ms
+- GPS delay compensation: full IMU replay retrodiction up to 500ms (per-message replay, not approximate)
+- Non-holonomic ground constraint: VZ=0 pseudo-measurement for wheeled robots
+- Sensor dropout detection: per-sensor staleness tracking via FusionCoreStatus
 - ROS 2 Jazzy lifecycle node at 100Hz
 - Gazebo Harmonic simulation world
 
@@ -372,6 +388,7 @@ fusioncore/
 
 **Roadmap:**
 - Ackermann and omnidirectional steering motion models
+- ~~Full IMU replay retrodiction~~ ✓ implemented
 
 ---
 
