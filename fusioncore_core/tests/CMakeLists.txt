@@ -1,10 +1,3 @@
-include(FetchContent)
-FetchContent_Declare(
-  googletest
-  URL https://github.com/google/googletest/archive/v1.14.0.zip
-)
-FetchContent_MakeAvailable(googletest)
-
 find_package(ament_cmake_gtest REQUIRED)
 find_package(Eigen3 REQUIRED)
 
