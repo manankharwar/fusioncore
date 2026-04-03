@@ -88,9 +88,19 @@ inline ImuOrientationNoiseMatrix imu_orientation_noise_matrix(const ImuOrientati
   return R;
 }
 
-// Build orientation noise matrix from message covariance
-// orientation_covariance is a 9-element row-major 3x3 matrix
-// diagonal elements [0], [4], [8] are roll, pitch, yaw variances
+/**
+ * @brief Build orientation noise matrix from an IMU message covariance array.
+ *
+ * Extracts the diagonal variances from a row-major 3×3 covariance matrix
+ * published in sensor_msgs::msg::Imu::orientation_covariance.
+ * Falls back to the config-supplied noise values when the message covariance
+ * is zero or invalid (all-zero covariance is ROS convention for "unknown").
+ *
+ * @param cov Row-major 3×3 covariance matrix as a 9-element array.
+ *            Diagonal elements [0], [4], [8] are roll, pitch, yaw variances (rad²).
+ * @param fallback Default ImuOrientationParams used when cov diagonal is non-positive.
+ * @return 3×3 diagonal orientation noise matrix R.
+ */
 inline ImuOrientationNoiseMatrix imu_orientation_noise_from_covariance(
   const double cov[9],
   const ImuOrientationParams& fallback)
