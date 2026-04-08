@@ -1,5 +1,6 @@
-![GitHub](https://github.com/user-attachments/assets/f03a5458-761f-4bce-9e17-cc383bdcd57a)
-
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f03a5458-761f-4bce-9e17-cc383bdcd57a" width="600">
+</p>
 # FusionCore
 
 **ROS 2 sensor fusion SDK. Combines IMU, wheel encoders, and GPS into one reliable position estimate. Zero manual tuning. Apache 2.0.**
