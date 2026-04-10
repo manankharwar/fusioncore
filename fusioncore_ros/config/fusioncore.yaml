@@ -18,7 +18,7 @@ fusioncore:
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
 
-    # Antenna lever arm — offset from base_link to GNSS antenna in body frame
+    # Antenna lever arm — offset from base_link to primary GNSS antenna in body frame
     # x=forward, y=left, z=up (meters)
     # Leave at 0.0 if antenna is directly above base_link origin
     gnss.lever_arm_x: 0.0
@@ -27,6 +27,13 @@ fusioncore:
 
     # Optional second GNSS receiver — leave empty to disable
     gnss.fix2_topic: ""
+
+    # Lever arm for the secondary GNSS receiver (fix2_topic).
+    # Set if the second antenna is at a different position than the first.
+    # Leave at 0.0 if fix2_topic is unused or both antennas are co-located.
+    gnss.lever_arm2_x: 0.0
+    gnss.lever_arm2_y: 0.0
+    gnss.lever_arm2_z: 0.0
 
     # compass_msgs/Azimuth heading topic (peci1 standard)
     # Preferred over gnss.heading_topic when available

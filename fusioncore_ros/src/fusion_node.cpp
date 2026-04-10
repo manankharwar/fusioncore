@@ -75,10 +75,17 @@ public:
     // Set to empty string to disable (use sensor_msgs/Imu heading instead)
     declare_parameter("gnss.azimuth_topic", "");
 
-    // Antenna lever arm params
+    // Antenna lever arm params — primary receiver
     declare_parameter("gnss.lever_arm_x", 0.0);
     declare_parameter("gnss.lever_arm_y", 0.0);
     declare_parameter("gnss.lever_arm_z", 0.0);
+
+    // Antenna lever arm params — secondary receiver (gnss.fix2_topic)
+    // Leave at 0.0 if second antenna is at the same position as the first,
+    // or if fix2_topic is not used.
+    declare_parameter("gnss.lever_arm2_x", 0.0);
+    declare_parameter("gnss.lever_arm2_y", 0.0);
+    declare_parameter("gnss.lever_arm2_z", 0.0);
 
     declare_parameter("outlier_rejection",      true);
     declare_parameter("outlier_threshold_gnss", 16.27);
@@ -142,16 +149,23 @@ public:
     config.gnss.heading_noise  = get_parameter("gnss.heading_noise").as_double();
     config.gnss.max_hdop       = get_parameter("gnss.max_hdop").as_double();
     config.gnss.min_satellites = get_parameter("gnss.min_satellites").as_int();
-    config.gnss.lever_arm.x    = get_parameter("gnss.lever_arm_x").as_double();
-    config.gnss.lever_arm.y    = get_parameter("gnss.lever_arm_y").as_double();
-    config.gnss.lever_arm.z    = get_parameter("gnss.lever_arm_z").as_double();
+    gnss_lever_arm_.x = get_parameter("gnss.lever_arm_x").as_double();
+    gnss_lever_arm_.y = get_parameter("gnss.lever_arm_y").as_double();
+    gnss_lever_arm_.z = get_parameter("gnss.lever_arm_z").as_double();
 
-    if (!config.gnss.lever_arm.is_zero()) {
+    gnss_lever_arm2_.x = get_parameter("gnss.lever_arm2_x").as_double();
+    gnss_lever_arm2_.y = get_parameter("gnss.lever_arm2_y").as_double();
+    gnss_lever_arm2_.z = get_parameter("gnss.lever_arm2_z").as_double();
+
+    if (!gnss_lever_arm_.is_zero()) {
       RCLCPP_INFO(get_logger(),
-        "GNSS lever arm set: x=%.3f y=%.3f z=%.3f m",
-        config.gnss.lever_arm.x,
-        config.gnss.lever_arm.y,
-        config.gnss.lever_arm.z);
+        "GNSS lever arm (primary) set: x=%.3f y=%.3f z=%.3f m",
+        gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z);
+    }
+    if (!gnss_lever_arm2_.is_zero()) {
+      RCLCPP_INFO(get_logger(),
+        "GNSS lever arm (secondary) set: x=%.3f y=%.3f z=%.3f m",
+        gnss_lever_arm2_.x, gnss_lever_arm2_.y, gnss_lever_arm2_.z);
     }
 
     this->input_gnss_crs_ = get_parameter("input.gnss_crs").as_string();
@@ -376,19 +390,31 @@ private:
       }
     }
 
-    // Check GNSS frame if lever arm is configured
-    double lx = get_parameter("gnss.lever_arm_x").as_double();
-    double ly = get_parameter("gnss.lever_arm_y").as_double();
-    double lz = get_parameter("gnss.lever_arm_z").as_double();
-    bool lever_arm_set = std::abs(lx) > 1e-6 || std::abs(ly) > 1e-6 || std::abs(lz) > 1e-6;
-
-    if (lever_arm_set) {
+    // Check GNSS frame if primary lever arm is configured
+    if (!gnss_lever_arm_.is_zero()) {
       if (check_transform("gnss_link", base_frame_)) {
         RCLCPP_INFO(get_logger(), "  [OK]      gnss_link -> %s", base_frame_.c_str());
       } else {
-        RCLCPP_WARN(get_logger(), "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss_link",
-          base_frame_.c_str(), lx, ly, lz, base_frame_.c_str());
-        all_ok = false;  // Fix 1: lever arm TF missing also marks as not ok
+        RCLCPP_WARN(get_logger(),
+          "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss_link",
+          base_frame_.c_str(),
+          gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z,
+          base_frame_.c_str());
+        all_ok = false;
+      }
+    }
+
+    // Check GNSS2 frame if secondary lever arm is configured
+    if (!gnss_lever_arm2_.is_zero()) {
+      if (check_transform("gnss2_link", base_frame_)) {
+        RCLCPP_INFO(get_logger(), "  [OK]      gnss2_link -> %s", base_frame_.c_str());
+      } else {
+        RCLCPP_WARN(get_logger(),
+          "  [MISSING] gnss2_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss2_link",
+          base_frame_.c_str(),
+          gnss_lever_arm2_.x, gnss_lever_arm2_.y, gnss_lever_arm2_.z,
+          base_frame_.c_str());
+        all_ok = false;
       }
     }
 
@@ -603,6 +629,7 @@ private:
     fix.z = enu[2];
     fix.fix_type  = fusioncore::sensors::GnssFixType::GPS_FIX;
     fix.source_id = source_id;
+    fix.lever_arm = (source_id == 0) ? gnss_lever_arm_ : gnss_lever_arm2_;
 
     // Use message covariance when meaningful (peci1 fix)
     // position_covariance_type:
@@ -966,6 +993,9 @@ private:
   bool gnss_reference_set_ = false;
   fusioncore::sensors::LLAPoint  gnss_reference_lla_;
   fusioncore::sensors::CartesianPoint gnss_reference_;
+
+  fusioncore::sensors::GnssLeverArm gnss_lever_arm_;   // primary receiver
+  fusioncore::sensors::GnssLeverArm gnss_lever_arm2_;  // secondary receiver (fix2_topic)
 
   // Callback groups: sensor callbacks are mutually exclusive (protect UKF state);
   // publish timer runs in its own group so it never waits on a sensor callback.
