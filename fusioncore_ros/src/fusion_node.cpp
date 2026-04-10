@@ -19,6 +19,8 @@
 #include <mutex>
 #include <optional>
 
+#include <proj.h>
+
 using namespace std::chrono_literals;
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -98,6 +100,22 @@ public:
     declare_parameter("ukf.q_gyro_bias",    1e-5);
     declare_parameter("ukf.q_accel_bias",   1e-5);
 
+    declare_parameter("reference.use_first_fix", true);
+    declare_parameter("reference.x", 0.0);
+    declare_parameter("reference.y", 0.0);
+    declare_parameter("reference.z", 0.0);
+
+    // Use EPSG4326 (WGS84 lat/lon) as the coordinate reference system for GNSS input
+    declare_parameter("input.gnss_crs", "EPSG:4326");
+
+    // Use local ENU frame at reference point for output instead of gnss.crs.out directly
+    // Set to true to convert ECEF to a local ENU frame centered at the reference point.
+    // If false, use gnss.crs.out directly for output (useful for NAD83 UTM zone + fixed reference)
+    declare_parameter("output.crs", "EPSG:4978");
+    // If true, convert output from gnss.crs.out (e.g. ECEF) to local ENU coordinates centered at the reference point
+    // Typically should be true for geodetic crs like ECEF  and false for projected crs like UTM zones
+    declare_parameter("output.convert_to_enu_at_reference", true);
+
     base_frame_   = get_parameter("base_frame").as_string();
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
@@ -135,6 +153,35 @@ public:
         config.gnss.lever_arm.y,
         config.gnss.lever_arm.z);
     }
+
+    this->input_gnss_crs_ = get_parameter("input.gnss_crs").as_string();
+    this->output_crs_ = get_parameter("output.crs").as_string();
+
+    init_proj();
+
+    this->convert_to_enu_at_reference_ = get_parameter("output.convert_to_enu_at_reference").as_bool();
+    this->reference_use_first_fix_ = get_parameter("reference.use_first_fix").as_bool();
+    if (reference_use_first_fix_) {
+      RCLCPP_INFO(get_logger(),
+        "Using first GNSS fix as local reference origin");
+    } else {
+      gnss_reference_set_ = true;
+      gnss_reference_.x = get_parameter("reference.x").as_double();
+      gnss_reference_.y = get_parameter("reference.y").as_double();
+      gnss_reference_.z = get_parameter("reference.z").as_double();
+      // generate gnss_reference_lla_ in case we need it
+      output_to_gnss(gnss_reference_, gnss_reference_lla_);
+
+       RCLCPP_INFO(get_logger(),
+        "Using fixed local reference origin (x=%.3f, y=%.3f, z=%.3f), corresponding to (lat=%.6f, lon=%.6f, alt=%.2f)",
+        get_parameter("reference.x").as_double(),
+        get_parameter("reference.y").as_double(),
+        get_parameter("reference.z").as_double(),
+        gnss_reference_lla_.lat_rad * 180.0 / M_PI,
+        gnss_reference_lla_.lon_rad * 180.0 / M_PI,
+        gnss_reference_lla_.alt_m);
+    }
+    
 
     config.outlier_rejection      = get_parameter("outlier_rejection").as_bool();
     config.outlier_threshold_gnss = get_parameter("outlier_threshold_gnss").as_double();
@@ -282,6 +329,7 @@ public:
     azimuth_sub_.reset();
     publish_timer_.reset();
     odom_pub_.reset();
+    deinit_proj();
     RCLCPP_INFO(get_logger(), "FusionCore deactivated.");
     return CallbackReturn::SUCCESS;
   }
@@ -505,12 +553,12 @@ private:
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
-    if (!gnss_ref_set_) {
-      gnss_ref_lla_.lat_rad = msg->latitude  * M_PI / 180.0;
-      gnss_ref_lla_.lon_rad = msg->longitude * M_PI / 180.0;
-      gnss_ref_lla_.alt_m   = msg->altitude;
-      lla_to_ecef(gnss_ref_lla_, gnss_ref_ecef_);
-      gnss_ref_set_ = true;
+    if (!gnss_reference_set_) {
+      gnss_reference_lla_.lat_rad = msg->latitude  * M_PI / 180.0;
+      gnss_reference_lla_.lon_rad = msg->longitude * M_PI / 180.0;
+      gnss_reference_lla_.alt_m   = msg->altitude;
+      gnss_to_output(gnss_reference_lla_, gnss_reference_);
+      gnss_reference_set_ = true;
       RCLCPP_INFO(get_logger(), "GNSS reference set: lat=%.6f lon=%.6f",
         msg->latitude, msg->longitude);
       // Fix 3: do NOT return — fall through and fuse ENU [0,0,0] as first fix.
@@ -524,7 +572,7 @@ private:
     lla.alt_m   = msg->altitude;
 
     fusioncore::sensors::CartesianPoint ecef;
-    lla_to_ecef(lla, ecef);
+    gnss_to_output(lla, ecef);
 
     // Pre-filter: drop fixes more than 10km from the reference origin.
     // This is the correct defense against the Gazebo NavSat bug (gz-sim #2163)
@@ -534,9 +582,9 @@ private:
     // this handles physically impossible jumps (>10km) that would corrupt the
     // filter state before Mahalanobis can recover.
     {
-      double dx = ecef.x - gnss_ref_ecef_.x;
-      double dy = ecef.y - gnss_ref_ecef_.y;
-      double dz = ecef.z - gnss_ref_ecef_.z;
+      double dx = ecef.x - gnss_reference_.x;
+      double dy = ecef.y - gnss_reference_.y;
+      double dz = ecef.z - gnss_reference_.z;
       double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
       if (dist > 10000.0) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
@@ -547,7 +595,7 @@ private:
     }
 
     Eigen::Vector3d enu = fusioncore::sensors::ecef_to_enu(
-      ecef, gnss_ref_ecef_, gnss_ref_lla_);
+      ecef, gnss_reference_, gnss_reference_lla_);
 
     fusioncore::sensors::GnssFix fix;
     fix.x = enu[0];
@@ -791,22 +839,105 @@ private:
     tf_broadcaster_->sendTransform(tf);
   }
 
-  // ─── LLA to ECEF ──────────────────────────────────────────────────────────
+  // ─── PROJ CRS handling ──────────────────────────────────────────────────────────
 
-  void lla_to_ecef(
-    const fusioncore::sensors::LLAPoint& lla,
+  void init_proj()
+  {
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    if (proj_initialized_) return;
+
+    proj_transform_ctx_ = proj_context_create();
+
+    // note: using the PROJ C api since it automatically selects the "best" conversion
+    // details: https://proj.org/en/stable/development/quickstart_cpp.html
+    // The C++ api is more low-level and requires manually selecting the transformation pipeline.
+
+    PJ * raw_proj = proj_create_crs_to_crs(
+      proj_transform_ctx_,
+      input_gnss_crs_.c_str(),
+      output_crs_.c_str(),
+      nullptr);
+
+    if (!raw_proj) {
+      RCLCPP_ERROR(get_logger(), "Failed to create PROJ transform from %s to %s",
+        input_gnss_crs_.c_str(), output_crs_.c_str());
+      return;
+    } 
+  
+    RCLCPP_INFO(get_logger(), "PROJ transform created: %s -> %s",
+      input_gnss_crs_.c_str(), output_crs_.c_str());
+
+    // normalize the transform axis order
+    // this is to handle the fact that axis order is defined by the CRS
+    // this ensures LLA (lat, lon, alt) and ENU (east, north, up) is used for projected CRS regardless of that.
+    proj_transform_gnss_to_output_ = proj_normalize_for_visualization(proj_transform_ctx_, raw_proj);
+    proj_destroy(raw_proj);  // clean up the un-normalized projection
+
+    if (!proj_transform_gnss_to_output_) {
+      RCLCPP_ERROR(get_logger(), "Failed to normalize PROJ transform");
+      return;
+    }
+    proj_initialized_ = true;
+
+  }
+
+  void deinit_proj()
+  {
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+
+    if (proj_transform_gnss_to_output_) {
+      proj_destroy(proj_transform_gnss_to_output_);
+      proj_transform_gnss_to_output_ = nullptr;
+    }
+    if (proj_transform_ctx_) {
+      proj_context_destroy(proj_transform_ctx_);
+      proj_transform_ctx_ = nullptr;
+    }
+    proj_initialized_ = false;
+  }
+
+  void gnss_to_output(const fusioncore::sensors::LLAPoint& lla,
     fusioncore::sensors::CartesianPoint& ecef)
   {
-    const double a  = 6378137.0;
-    const double e2 = 0.00669437999014;
-    double sin_lat = std::sin(lla.lat_rad);
-    double cos_lat = std::cos(lla.lat_rad);
-    double sin_lon = std::sin(lla.lon_rad);
-    double cos_lon = std::cos(lla.lon_rad);
-    double N = a / std::sqrt(1.0 - e2 * sin_lat * sin_lat);
-    ecef.x = (N + lla.alt_m) * cos_lat * cos_lon;
-    ecef.y = (N + lla.alt_m) * cos_lat * sin_lon;
-    ecef.z = (N * (1.0 - e2) + lla.alt_m) * sin_lat;
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    if (!proj_initialized_) {
+      RCLCPP_ERROR(get_logger(), "PROJ transform not initialized");
+      return;
+    }
+
+    PJ_COORD input = {{
+      lla.lat_rad,
+      lla.lon_rad,
+      lla.alt_m,
+      HUGE_VAL  // time value not used currently
+    }};
+
+    PJ_COORD output = proj_trans(proj_transform_gnss_to_output_, PJ_FWD, input);
+    ecef.x = output.xyz.x;
+    ecef.y = output.xyz.y;
+    ecef.z = output.xyz.z;
+  }
+
+  void output_to_gnss(const fusioncore::sensors::CartesianPoint& ecef,
+    fusioncore::sensors::LLAPoint& lla)
+  {
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    if (!proj_initialized_) {
+      RCLCPP_ERROR(get_logger(), "PROJ transform not initialized");
+      return;
+    }
+
+    PJ_COORD input = {{
+      ecef.x,
+      ecef.y,
+      ecef.z,
+      HUGE_VAL  // time value not used currently
+    }};
+
+    PJ_COORD output = proj_trans(proj_transform_gnss_to_output_, PJ_INV, input);
+    lla.lat_rad = output.lpzt.phi;
+    lla.lon_rad = output.lpzt.lam;
+    lla.alt_m = output.lpzt.z;
   }
 
   // ─── Members ──────────────────────────────────────────────────────────────
@@ -832,15 +963,25 @@ private:
   std::string gnss2_topic_;
   std::string azimuth_topic_;
 
-  bool gnss_ref_set_ = false;
-  fusioncore::sensors::LLAPoint  gnss_ref_lla_;
-  fusioncore::sensors::CartesianPoint gnss_ref_ecef_;
+  bool gnss_reference_set_ = false;
+  fusioncore::sensors::LLAPoint  gnss_reference_lla_;
+  fusioncore::sensors::CartesianPoint gnss_reference_;
 
   // Callback groups: sensor callbacks are mutually exclusive (protect UKF state);
   // publish timer runs in its own group so it never waits on a sensor callback.
   rclcpp::CallbackGroup::SharedPtr sensor_cb_group_;
   rclcpp::CallbackGroup::SharedPtr publish_cb_group_;
   std::mutex fc_mutex_;
+
+  bool reference_use_first_fix_;
+  std::string input_gnss_crs_;
+  std::string output_crs_;
+  bool convert_to_enu_at_reference_;
+
+  std::mutex proj_mutex_;
+  bool proj_initialized_ = false;
+  PJ * proj_transform_gnss_to_output_ = nullptr;
+  PJ_CONTEXT * proj_transform_ctx_ = nullptr;
 };
 
 int main(int argc, char ** argv)

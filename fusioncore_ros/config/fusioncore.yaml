@@ -18,17 +18,6 @@ fusioncore:
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
 
-    # coordinate reference systems for GNSS input (in), and for fusioncore to use (out)
-    gnss.crs.in: "EPSG:4326"  # ( WSG84 lat/lon/alt https://epsg.io/4326 )
-    gnss.crs.out: "EPSG:4978" # ( ECEF https://epsg.io/4978 )
-    gnss.local_reference.convert_to_enu: true  # Use local ENU frame at reference point for output instead of crs.out directly
-    # use the first fix received as the local reference origin, or specify a fixed reference point
-    gnss.local_reference.use_first_fix: true  # Use first GNSS fix as local reference origin (x=0, y=0, z=0)
-    # used only if first_fix is false:
-    gnss.local_reference.x: 0.0  # Latitude of local reference origin (crs.out meters)
-    gnss.local_reference.y: 0.0  # Longitude of local reference origin (crs.out meters)
-    gnss.local_reference.z: 0.0  # Altitude of local reference origin (crs.out meters)
-
     # Antenna lever arm — offset from base_link to GNSS antenna in body frame
     # x=forward, y=left, z=up (meters)
     # Leave at 0.0 if antenna is directly above base_link origin
@@ -68,3 +57,21 @@ fusioncore:
     ukf.q_acceleration: 1.0
     ukf.q_gyro_bias: 1.0e-5
     ukf.q_accel_bias: 1.0e-5
+
+    # use the first fix received as the local reference origin, or specify a fixed reference point
+    reference.use_first_fix: true  # Use first GNSS fix as local reference origin (x=0, y=0, z=0)
+    # used only if first_fix is false:
+    reference.x: 0.0  # position of local reference origin (crs.out meters)
+    reference.y: 0.0  # position of local reference origin (crs.out meters)
+    reference.z: 0.0  # position of local reference origin (crs.out meters)
+
+    # Use EPSG4326 (WGS84 lat/lon) as the coordinate reference system for GNSS input
+    input.gnss_crs: "EPSG:4326"
+
+    # Use local ENU frame at reference point for output instead of gnss.crs.out directly
+    # Set to true to convert ECEF to a local ENU frame centered at the reference point.
+    # If false, use gnss.crs.out directly for output (useful for NAD83 UTM zone + fixed reference)
+    output.crs: "EPSG:4978"
+    # If true, convert output from gnss.crs.out (e.g. ECEF) to local ENU coordinates centered at the reference point
+    # Typically should be true for geodetic crs like ECEF  and false for projected crs like UTM zones
+    output.convert_to_enu_at_reference: true  
