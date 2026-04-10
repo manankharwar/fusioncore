@@ -218,7 +218,7 @@ inline GnssHdgNoiseMatrix gnss_hdg_noise_matrix(
 
 // ─── ECEF / ENU conversion ────────────────────────────────────────────────────
 
-struct ECEFPoint {
+struct CartesianPoint {
   double x, y, z;
 };
 
@@ -229,8 +229,8 @@ struct LLAPoint {
 };
 
 inline Eigen::Vector3d ecef_to_enu(
-  const ECEFPoint& point,
-  const ECEFPoint& ref,
+  const CartesianPoint& point,
+  const CartesianPoint& ref,
   const LLAPoint&  ref_lla)
 {
   double dx = point.x - ref.x;

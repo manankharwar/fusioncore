@@ -98,7 +98,7 @@ TEST(GNSSTest, ECEFtoENUAtOriginIsZero) {
   ref_lla.lon_rad = -79.87 * M_PI / 180.0;
   ref_lla.alt_m   = 100.0;
 
-  ECEFPoint ref;
+  CartesianPoint ref;
   ref.x = 918151.0;
   ref.y = -4346071.0;
   ref.z = 4561977.0;

@@ -523,7 +523,7 @@ private:
     lla.lon_rad = msg->longitude * M_PI / 180.0;
     lla.alt_m   = msg->altitude;
 
-    fusioncore::sensors::ECEFPoint ecef;
+    fusioncore::sensors::CartesianPoint ecef;
     lla_to_ecef(lla, ecef);
 
     // Pre-filter: drop fixes more than 10km from the reference origin.
@@ -795,7 +795,7 @@ private:
 
   void lla_to_ecef(
     const fusioncore::sensors::LLAPoint& lla,
-    fusioncore::sensors::ECEFPoint& ecef)
+    fusioncore::sensors::CartesianPoint& ecef)
   {
     const double a  = 6378137.0;
     const double e2 = 0.00669437999014;
@@ -834,7 +834,7 @@ private:
 
   bool gnss_ref_set_ = false;
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
-  fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
+  fusioncore::sensors::CartesianPoint gnss_ref_ecef_;
 
   // Callback groups: sensor callbacks are mutually exclusive (protect UKF state);
   // publish timer runs in its own group so it never waits on a sensor callback.
