@@ -550,10 +550,10 @@ bool FusionCore::apply_gnss_update(
       if (R(i,i) < 1e-6) R(i,i) = 1e-6;
   }
 
-  bool use_lever_arm = !config_.gnss.lever_arm.is_zero() && heading_validated_;
+  bool use_lever_arm = !fix.lever_arm.is_zero() && heading_validated_;
 
   auto h_gnss = use_lever_arm
-    ? sensors::gnss_pos_measurement_function_with_lever_arm(config_.gnss.lever_arm)
+    ? sensors::gnss_pos_measurement_function_with_lever_arm(fix.lever_arm)
     : std::function<sensors::GnssPosMeasurement(const StateVector&)>(
         sensors::gnss_pos_measurement_function);
 

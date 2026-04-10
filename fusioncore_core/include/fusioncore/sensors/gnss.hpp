@@ -85,6 +85,11 @@ struct GnssFix {
   // 0 = primary, 1 = secondary, etc.
   int source_id = 0;
 
+  // Per-measurement lever arm (antenna offset from base_link in body frame).
+  // Set by the ROS node based on which receiver produced this fix.
+  // Defaults to zero — no correction applied.
+  GnssLeverArm lever_arm;
+
   // Full 3x3 position covariance matrix (row-major, ENU frame).
   // peci1 fix: real GNSS covariance often has off-diagonal elements
   // (correlated X/Y errors). When has_full_covariance is true, this

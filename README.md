@@ -48,7 +48,7 @@ FusionCore is that replacement.
 ## Installation
 
 ### Prerequisites
-- ROS 2 Jazzy Jalisco
+- ROS 2 Jazzy Jalisco (primary) or ROS 2 Kilted (community tested)
 - A colcon workspace (`~/ros2_ws`)
 
 ### Clone into your workspace
@@ -152,6 +152,11 @@ fusioncore:
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
 
+    # Second GPS receiver lever arm (if using gnss.fix2_topic)
+    gnss.lever_arm2_x: 0.0
+    gnss.lever_arm2_y: 0.0
+    gnss.lever_arm2_z: 0.0
+
     # Optional second GPS receiver
     gnss.fix2_topic: ""
 
@@ -225,6 +230,8 @@ If the GPS antenna is not at `base_link`: mounted on top of the robot, forward o
 
 FusionCore corrects for this using the rotation matrix from the current state: `p_antenna = p_base + R * lever_arm`. But this correction depends on heading: if heading is wrong the correction makes things worse. So FusionCore only activates lever arm correction when heading has been **independently validated** from a real source.
 
+Each GPS receiver has its own independent lever arm. Primary receiver uses `gnss.lever_arm_x/y/z`, secondary receiver uses `gnss.lever_arm2_x/y/z`.
+
 ### Heading observability
 
 A Kalman filter can reduce its own uncertainty about heading even when it has no real heading sensor: it does this by fitting the motion model to GPS position updates. The variance goes down, but the heading might still be wrong. Using that fake confidence to activate lever arm correction can destabilize the filter.
@@ -283,7 +290,7 @@ One thing worth knowing up front: Gazebo Harmonic's built-in NavSat sensor has a
 
 ### Running the simulation
 
-If you haven\'t built yet, add `fusioncore_gazebo` to the build command from the Installation section:
+If you haven't built yet, add `fusioncore_gazebo` to the build command from the Installation section:
 ```bash
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
@@ -319,8 +326,20 @@ python3 ~/ros2_ws/src/fusioncore/fusioncore_gazebo/launch/integration_test.py
 
 All four pass on a clean session.
 
-## Architecture
+---
 
+## Real robot configs
+
+FusionCore ships with configs for real hardware setups tested by community members:
+
+- `fusioncore_ros/config/duatic_mecanum.yaml` — Duatic industrial mecanum manipulator. BNO085 IMU, no GPS, mecanum wheel odometry.
+- `fusioncore_ros/launch/fusioncore_duatic.launch.py` — One-command launch for the Duatic setup, handles all topic remapping automatically.
+
+To add your robot's config, open a GitHub issue or submit a PR.
+
+---
+
+## Architecture
 
 ```
 fusioncore/
@@ -340,6 +359,7 @@ fusioncore/
 ├── fusioncore_ros/               # ROS 2 Jazzy wrapper
 │   ├── src/fusion_node.cpp       # Lifecycle node: all sensor callbacks, TF validation
 │   ├── config/fusioncore.yaml    # Default configuration
+│   ├── config/duatic_mecanum.yaml  # Duatic mecanum robot config
 │   └── launch/fusioncore.launch.py
 └── fusioncore_gazebo/            # Simulation world
     ├── worlds/fusioncore_test.sdf     # Outdoor world, GPS origin Hamilton ON
@@ -372,6 +392,7 @@ fusioncore/
 ## Status
 
 **Working and tested:**
+- Hardware testing in progress: industrial mecanum manipulator (Duatic), agricultural RTK robot (Southern Ontario)
 - UKF core: 42 unit tests passing via colcon test
 - UKF numerical stability: P symmetrization + identity-shift Cholesky repair
 - IMU + encoder + GPS fusion
@@ -380,7 +401,7 @@ fusioncore/
 - Dual antenna heading: both `sensor_msgs/Imu` and `compass_msgs/Azimuth`
 - IMU frame transform via TF
 - TF validation at startup with exact fix commands
-- GPS lever arm with heading observability guard
+- GPS lever arm with heading observability guard — independent params for primary and secondary receivers
 - Full 3x3 GPS covariance support
 - Wheel odometry covariance support
 - Multiple GPS receivers
@@ -396,9 +417,13 @@ fusioncore/
 **Known limitations:**
 - GNSS antenna lever arm is fixed and known: does not estimate it from data.
 - In Gazebo simulation, residual y-axis drift (~0.3m) can occur from real Gazebo physics (wheel contact forces, slight crabbing). This is not a filter error: the robot's true center of mass drifts relative to the GPS-derived ENU origin.
+- Mecanum drive lateral velocity is not predicted by the motion model — filter fuses odometry as velocity measurement but does not estimate sideways drift.
 
 **Roadmap:**
 - Ackermann and omnidirectional steering motion models
+- Mecanum drive motion model
+- UTM coordinate mode for GNSS (community contributed, in progress)
+- Auto-derive GNSS lever arm from TF header.frame_id
 
 ---
 

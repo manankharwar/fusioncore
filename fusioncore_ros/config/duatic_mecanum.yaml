@@ -25,6 +25,10 @@ fusioncore:
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
 
+    gnss.lever_arm2_x: 0.0
+    gnss.lever_arm2_y: 0.0
+    gnss.lever_arm2_z: 0.0
+
     # Mahalanobis outlier rejection
     outlier_rejection: true
     outlier_threshold_gnss: 16.27
