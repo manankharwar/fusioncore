@@ -17,6 +17,8 @@ find_package(compass_msgs REQUIRED)
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fusioncore_core REQUIRED)
+# Handling newer versions will eventually be required...
+find_package(PROJ 9.4.0 REQUIRED)
 
 add_executable(fusioncore_node
   src/fusion_node.cpp
@@ -46,6 +48,7 @@ ament_target_dependencies(fusioncore_node
 
 target_link_libraries(fusioncore_node
   Eigen3::Eigen
+  ${PROJ_LIBRARIES}
 )
 
 # Explicitly link the static library
