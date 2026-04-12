@@ -332,8 +332,8 @@ All four pass on a clean session.
 
 FusionCore ships with configs for real hardware setups tested by community members:
 
-- `fusioncore_ros/config/duatic_mecanum.yaml` — Duatic industrial mecanum manipulator. BNO085 IMU, no GPS, mecanum wheel odometry.
-- `fusioncore_ros/launch/fusioncore_duatic.launch.py` — One-command launch for the Duatic setup, handles all topic remapping automatically.
+- `fusioncore_ros/config/duatic_mecanum.yaml`: Duatic industrial mecanum manipulator. BNO085 IMU, no GPS, mecanum wheel odometry.
+- `fusioncore_ros/launch/fusioncore_duatic.launch.py`: One-command launch for the Duatic setup, handles all topic remapping automatically.
 
 To add your robot's config, open a GitHub issue or submit a PR.
 
@@ -401,7 +401,7 @@ fusioncore/
 - Dual antenna heading: both `sensor_msgs/Imu` and `compass_msgs/Azimuth`
 - IMU frame transform via TF
 - TF validation at startup with exact fix commands
-- GPS lever arm with heading observability guard — independent params for primary and secondary receivers
+- GPS lever arm with heading observability guard: independent params for primary and secondary receivers
 - Full 3x3 GPS covariance support
 - Wheel odometry covariance support
 - Multiple GPS receivers
@@ -417,7 +417,7 @@ fusioncore/
 **Known limitations:**
 - GNSS antenna lever arm is fixed and known: does not estimate it from data.
 - In Gazebo simulation, residual y-axis drift (~0.3m) can occur from real Gazebo physics (wheel contact forces, slight crabbing). This is not a filter error: the robot's true center of mass drifts relative to the GPS-derived ENU origin.
-- Mecanum drive lateral velocity is not predicted by the motion model — filter fuses odometry as velocity measurement but does not estimate sideways drift.
+- Mecanum drive lateral velocity is not predicted by the motion model: filter fuses odometry as velocity measurement but does not estimate sideways drift.
 
 **Roadmap:**
 - Ackermann and omnidirectional steering motion models
