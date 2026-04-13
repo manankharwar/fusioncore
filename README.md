@@ -261,10 +261,10 @@ FusionCore uses the covariance values sensors actually publish rather than ignor
 
 ### GPS fix quality gating
 
-FusionCore maps `sensor_msgs/NavSatFix.status` to an internal fix type enum and rejects fixes below a configurable minimum quality. The default (`gnss.min_fix_type: 1`) accepts any valid GPS fix — identical to previous behavior. Set to 2 for DGPS-or-better, or 4 to require RTK_FIXED.
+FusionCore maps `sensor_msgs/NavSatFix.status` to an internal fix type enum and rejects fixes below a configurable minimum quality. The default (`gnss.min_fix_type: 1`) accepts any valid GPS fix: identical to previous behavior. Set to 2 for DGPS-or-better, or 4 to require RTK_FIXED.
 
 ```yaml
-gnss.min_fix_type: 4   # require RTK_FIXED — reject basic GPS entirely
+gnss.min_fix_type: 4   # require RTK_FIXED: reject basic GPS entirely
 ```
 
 When a fix is rejected due to quality, the rejection log shows the fix type and threshold so you can see exactly why:
