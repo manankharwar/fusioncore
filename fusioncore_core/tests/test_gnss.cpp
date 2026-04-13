@@ -89,6 +89,41 @@ TEST(GNSSTest, FixValidityCheck) {
   EXPECT_FALSE(few_sats.is_valid(params));
 }
 
+// ─── Test 4b: min_fix_type gating ───────────────────────────────────────────
+
+TEST(GNSSTest, MinFixTypeGating) {
+  GnssParams params;
+  params.min_fix_type = GnssFixType::RTK_FLOAT;
+
+  GnssFix gps_fix;
+  gps_fix.fix_type   = GnssFixType::GPS_FIX;
+  gps_fix.satellites = 8;
+  gps_fix.hdop       = 1.0;
+  gps_fix.vdop       = 1.5;
+  EXPECT_FALSE(gps_fix.is_valid(params));  // GPS_FIX < RTK_FLOAT
+
+  GnssFix dgps_fix;
+  dgps_fix.fix_type   = GnssFixType::DGPS_FIX;
+  dgps_fix.satellites = 8;
+  dgps_fix.hdop       = 1.0;
+  dgps_fix.vdop       = 1.5;
+  EXPECT_FALSE(dgps_fix.is_valid(params));  // DGPS < RTK_FLOAT
+
+  GnssFix rtk_float;
+  rtk_float.fix_type   = GnssFixType::RTK_FLOAT;
+  rtk_float.satellites = 8;
+  rtk_float.hdop       = 1.0;
+  rtk_float.vdop       = 1.5;
+  EXPECT_TRUE(rtk_float.is_valid(params));  // RTK_FLOAT == min
+
+  GnssFix rtk_fixed;
+  rtk_fixed.fix_type   = GnssFixType::RTK_FIXED;
+  rtk_fixed.satellites = 8;
+  rtk_fixed.hdop       = 1.0;
+  rtk_fixed.vdop       = 1.5;
+  EXPECT_TRUE(rtk_fixed.is_valid(params));  // RTK_FIXED > min
+}
+
 // ─── Test 5: ECEF to ENU conversion ─────────────────────────────────────────
 
 TEST(GNSSTest, ECEFtoENUAtOriginIsZero) {
