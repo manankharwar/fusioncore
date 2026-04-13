@@ -139,6 +139,67 @@ TEST(FusionCoreTest, ResetClearsState) {
   EXPECT_FALSE(fc.is_initialized());
 }
 
+// ─── Test 7: 6-axis IMU — yaw blocked, roll/pitch still fused ────────────────
+// When imu_has_magnetometer=false, cedbossneo's fix sets R(2,2)=1e6 so the
+// Kalman gain for yaw is ~0. A wildly wrong yaw measurement must not move
+// the filter's heading. Roll and pitch must still converge normally.
+
+TEST(FusionCoreTest, SixAxisIMUYawBlockedRollPitchFused) {
+  FusionCoreConfig config;
+  config.imu_has_magnetometer = false;
+  config.adaptive_imu = false;  // keep R stable — we're testing the fix, not adaption
+
+  FusionCore fc(config);
+
+  State initial;
+  initial.x         = StateVector::Zero();
+  initial.x[ROLL]   = 0.3;   // deliberately wrong — should converge toward 0
+  initial.x[YAW]    = 0.0;   // starts at 0
+  initial.P         = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  // Feed 200 orientation updates: correct roll=0, but yaw=π (wildly wrong).
+  // With R(2,2)=1e6 the Kalman gain for yaw ≈ P(yaw)/(P(yaw)+1e6) ≈ 1e-7,
+  // so the total yaw drift over 200 steps is < 0.001 rad.
+  for (int i = 1; i <= 200; ++i) {
+    fc.update_imu_orientation(i * 0.01, 0.0, 0.0, M_PI, nullptr);
+  }
+
+  // Yaw must not have moved — the fix blocks it
+  EXPECT_NEAR(fc.get_state().x[YAW], 0.0, 0.01);
+
+  // Roll must have converged — R(0,0) is normal so gain is high
+  EXPECT_NEAR(fc.get_state().x[ROLL], 0.0, 0.05);
+}
+
+// ─── Test 8: 9-axis IMU — yaw IS fused normally ──────────────────────────────
+// When imu_has_magnetometer=true, the fix is skipped entirely.
+// The yaw measurement must pull the filter heading toward the target.
+
+TEST(FusionCoreTest, NineAxisIMUYawFusedNormally) {
+  FusionCoreConfig config;
+  config.imu_has_magnetometer = true;
+  config.adaptive_imu = false;
+
+  FusionCore fc(config);
+
+  State initial;
+  initial.x       = StateVector::Zero();
+  initial.x[YAW]  = 0.0;
+  initial.P       = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  // Feed 200 orientation updates with yaw=0.5 rad.
+  // Small enough that the first update passes the Mahalanobis gate
+  // (d² ≈ 0.25/0.1025 ≈ 2.4, well below the 15.09 threshold).
+  for (int i = 1; i <= 200; ++i) {
+    fc.update_imu_orientation(i * 0.01, 0.0, 0.0, 0.5, nullptr);
+  }
+
+  // Yaw must have converged toward 0.5
+  EXPECT_GT(fc.get_state().x[YAW], 0.3);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
