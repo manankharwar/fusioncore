@@ -17,6 +17,8 @@ fusioncore:
     gnss.heading_noise: 0.02
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
+    # Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+    gnss.min_fix_type: 1
 
     # Antenna lever arm — offset from base_link to primary GNSS antenna in body frame
     # x=forward, y=left, z=up (meters)

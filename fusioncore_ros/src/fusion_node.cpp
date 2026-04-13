@@ -60,6 +60,8 @@ public:
     declare_parameter("gnss.heading_noise",  0.02);
     declare_parameter("gnss.max_hdop",       4.0);
     declare_parameter("gnss.min_satellites", 4);
+    // Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+    declare_parameter("gnss.min_fix_type",  1);
 
     // Topic for dual antenna heading — sensor_msgs/Imu used as heading carrier.
     // The yaw component of orientation is the heading.
@@ -131,6 +133,12 @@ public:
     config.gnss.heading_noise  = get_parameter("gnss.heading_noise").as_double();
     config.gnss.max_hdop       = get_parameter("gnss.max_hdop").as_double();
     config.gnss.min_satellites = get_parameter("gnss.min_satellites").as_int();
+    min_fix_type_ = static_cast<fusioncore::sensors::GnssFixType>(
+        get_parameter("gnss.min_fix_type").as_int());
+    config.gnss.min_fix_type = min_fix_type_;
+    RCLCPP_INFO(get_logger(),
+                "GNSS min_fix_type: %d (1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED)",
+                static_cast<int>(min_fix_type_));
     gnss_lever_arm_.x = get_parameter("gnss.lever_arm_x").as_double();
     gnss_lever_arm_.y = get_parameter("gnss.lever_arm_y").as_double();
     gnss_lever_arm_.z = get_parameter("gnss.lever_arm_z").as_double();
@@ -579,7 +587,16 @@ private:
     fix.x = enu[0];
     fix.y = enu[1];
     fix.z = enu[2];
-    fix.fix_type  = fusioncore::sensors::GnssFixType::GPS_FIX;
+    // Map NavSatFix status to GnssFixType:
+    //   -1 = STATUS_NO_FIX  (already rejected above)
+    //    0 = STATUS_FIX      → GPS_FIX
+    //    1 = STATUS_SBAS_FIX → DGPS_FIX
+    //    2 = STATUS_GBAS_FIX → RTK_FIXED (RTK/GBAS augmented)
+    switch (msg->status.status) {
+      case 2:  fix.fix_type = fusioncore::sensors::GnssFixType::RTK_FIXED; break;
+      case 1:  fix.fix_type = fusioncore::sensors::GnssFixType::DGPS_FIX; break;
+      default: fix.fix_type = fusioncore::sensors::GnssFixType::GPS_FIX;  break;
+    }
     fix.source_id = source_id;
     fix.lever_arm = (source_id == 0) ? gnss_lever_arm_ : gnss_lever_arm2_;
 
@@ -631,7 +648,11 @@ private:
     bool accepted = fc_->update_gnss(t, fix);
     if (!accepted) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-        "GNSS fix rejected (quality check failed or Mahalanobis outlier gate)");
+        "GNSS fix rejected (fix_type=%d, min=%d, hdop=%.2f, "
+        "quality check or Mahalanobis gate)",
+        static_cast<int>(fix.fix_type),
+        static_cast<int>(min_fix_type_),
+        fix.hdop);
     }
 
     // Log heading observability status
@@ -863,6 +884,7 @@ private:
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
 
+  fusioncore::sensors::GnssFixType min_fix_type_ = fusioncore::sensors::GnssFixType::GPS_FIX;
   fusioncore::sensors::GnssLeverArm gnss_lever_arm_;   // primary receiver
   fusioncore::sensors::GnssLeverArm gnss_lever_arm2_;  // secondary receiver (fix2_topic)
 

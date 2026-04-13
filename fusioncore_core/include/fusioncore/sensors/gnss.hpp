@@ -46,6 +46,16 @@ struct GnssLeverArm {
   }
 };
 
+// ─── GNSS fix type ───────────────────────────────────────────────────────────
+
+enum class GnssFixType {
+  NO_FIX    = 0,
+  GPS_FIX   = 1,
+  DGPS_FIX  = 2,
+  RTK_FLOAT = 3,
+  RTK_FIXED = 4
+};
+
 // ─── GNSS quality parameters ─────────────────────────────────────────────────
 
 struct GnssParams {
@@ -56,19 +66,15 @@ struct GnssParams {
   double max_vdop      = 6.0;
   int    min_satellites = 4;
 
+  // Minimum fix type required for fusion (default: any fix accepted).
+  // Set to RTK_FLOAT or RTK_FIXED to reject non-RTK fixes.
+  GnssFixType min_fix_type = GnssFixType::GPS_FIX;
+
   // Antenna offset from base_link in body frame
   GnssLeverArm lever_arm;
 };
 
 // ─── GNSS fix ────────────────────────────────────────────────────────────────
-
-enum class GnssFixType {
-  NO_FIX    = 0,
-  GPS_FIX   = 1,
-  DGPS_FIX  = 2,
-  RTK_FLOAT = 3,
-  RTK_FIXED = 4
-};
 
 struct GnssFix {
   double x = 0.0;
@@ -98,7 +104,7 @@ struct GnssFix {
   Eigen::Matrix3d full_covariance = Eigen::Matrix3d::Identity();
 
   bool is_valid(const GnssParams& p) const {
-    return fix_type != GnssFixType::NO_FIX
+    return fix_type >= p.min_fix_type
         && hdop <= p.max_hdop
         && vdop <= p.max_vdop
         && satellites >= p.min_satellites;
