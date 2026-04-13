@@ -31,6 +31,7 @@ FusionCore is that replacement.
 | Message covariances | Ignored | Partial | Full 3x3 GNSS + odometry |
 | GNSS antenna offset | Ignored | Ignored | Lever arm with observability guard |
 | Outlier rejection | None | None | Mahalanobis chi-squared gating |
+| GPS fix quality gating | None | None | Configurable min fix type (GPS/DGPS/RTK) |
 | Adaptive noise | None | None | Automatic from innovation sequence |
 | TF validation | Silent failure | Silent failure | Startup check + exact fix commands |
 | Multiple sensor sources | No | No | Yes: 2x GPS, multiple IMUs |
@@ -72,7 +73,7 @@ colcon test --packages-select fusioncore_core
 colcon test-result --verbose
 ```
 
-Expected output: `42 tests, 0 errors, 0 failures, 0 skipped`
+Expected output: `45 tests, 0 errors, 0 failures, 0 skipped`
 
 ---
 
@@ -144,6 +145,10 @@ fusioncore:
     gnss.heading_noise: 0.02    # rad: for dual antenna
     gnss.max_hdop: 4.0          # reject fixes worse than this
     gnss.min_satellites: 4
+    gnss.min_fix_type: 1        # minimum fix quality: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+                                # note: sensor_msgs/NavSatFix status=2 maps to RTK_FIXED only.
+                                # RTK_FLOAT (3) is unreachable via NavSatFix alone.
+                                # set to 4 to require RTK_FIXED, 2 to require any augmented fix.
 
     # Antenna lever arm: offset from base_link to GPS antenna in body frame
     # x=forward, y=left, z=up (meters). Leave at 0 if antenna is above base_link.
@@ -253,6 +258,22 @@ FusionCore uses the covariance values sensors actually publish rather than ignor
 **Wheel odometry:** Reads `twist.covariance` per-axis when available. A wheel-slip estimating odometry node that publishes real covariances gets the benefit automatically.
 
 **IMU orientation:** Reads `orientation_covariance` from the message. Uses it directly when meaningful, falls back to config params when not.
+
+### GPS fix quality gating
+
+FusionCore maps `sensor_msgs/NavSatFix.status` to an internal fix type enum and rejects fixes below a configurable minimum quality. The default (`gnss.min_fix_type: 1`) accepts any valid GPS fix — identical to previous behavior. Set to 2 for DGPS-or-better, or 4 to require RTK_FIXED.
+
+```yaml
+gnss.min_fix_type: 4   # require RTK_FIXED — reject basic GPS entirely
+```
+
+When a fix is rejected due to quality, the rejection log shows the fix type and threshold so you can see exactly why:
+
+```
+[WARN] GNSS fix rejected (fix_type=1, min=4, hdop=1.20, quality check or Mahalanobis gate)
+```
+
+One important limitation: `sensor_msgs/NavSatFix` has no `STATUS_RTK_FLOAT` value. Status 2 (GBAS) maps to RTK_FIXED. Setting `min_fix_type: 3` (RTK_FLOAT) will therefore silently starve the filter on NavSatFix topics. Use 2 or 4 as meaningful thresholds.
 
 ### Non-holonomic ground constraint
 
@@ -393,7 +414,7 @@ fusioncore/
 
 **Working and tested:**
 - Hardware testing in progress: industrial mecanum manipulator (Duatic), agricultural RTK robot (Southern Ontario)
-- UKF core: 42 unit tests passing via colcon test
+- UKF core: 45 unit tests passing via colcon test
 - UKF numerical stability: P symmetrization + identity-shift Cholesky repair
 - IMU + encoder + GPS fusion
 - Automatic IMU bias estimation
@@ -406,6 +427,8 @@ fusioncore/
 - Wheel odometry covariance support
 - Multiple GPS receivers
 - Heading observability tracking: DUAL_ANTENNA / IMU_ORIENTATION / GPS_TRACK
+- GPS fix quality gating: configurable `gnss.min_fix_type` rejects fixes below a minimum quality (GPS / DGPS / RTK_FIXED)
+- 6-axis IMU yaw correctly blocked: when `imu.has_magnetometer: false`, yaw from IMU orientation is not fused (prevents gyro drift from corrupting heading); roll and pitch still fused normally
 - Mahalanobis outlier rejection: GPS jumps verified rejected in testing
 - Adaptive noise covariance: automatic R estimation from innovation sequence
 - GPS delay compensation: full IMU replay retrodiction up to 500ms (per-message replay, not approximate)
