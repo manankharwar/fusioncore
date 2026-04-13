@@ -379,6 +379,13 @@ void FusionCore::update_imu_orientation(
     R = adaptive_initialized_ ? R_imu_orient_ : sensors::imu_orientation_noise_matrix(fallback);
   }
 
+  // Without a magnetometer, the IMU yaw is just integrated gyro drift —
+  // not a real heading reference.  Set yaw noise to effectively infinite
+  // so the UKF update has near-zero gain on yaw, preserving roll/pitch.
+  if (!config_.imu_has_magnetometer) {
+    R(2, 2) = 1e6;
+  }
+
   // Mahalanobis outlier rejection for IMU orientation
   if (config_.outlier_rejection) {
     sensors::ImuOrientationMeasurement innovation_pre;
