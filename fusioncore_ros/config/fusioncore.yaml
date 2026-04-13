@@ -18,6 +18,9 @@ fusioncore:
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
     # Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+    # Note: NavSatFix status=2 maps to RTK_FIXED only.
+    # RTK_FLOAT (3) is unreachable with this message type.
+    # Use 4 to require RTK_FIXED, 2 to require any augmented fix.
     gnss.min_fix_type: 1
 
     # Antenna lever arm — offset from base_link to primary GNSS antenna in body frame

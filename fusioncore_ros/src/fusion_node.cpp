@@ -61,6 +61,8 @@ public:
     declare_parameter("gnss.max_hdop",       4.0);
     declare_parameter("gnss.min_satellites", 4);
     // Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+    // Note: NavSatFix status only goes up to 2 (GBAS) which maps to RTK_FIXED.
+    // RTK_FLOAT (3) is unreachable via NavSatFix alone.
     declare_parameter("gnss.min_fix_type",  1);
 
     // Topic for dual antenna heading — sensor_msgs/Imu used as heading carrier.
