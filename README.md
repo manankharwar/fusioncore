@@ -53,7 +53,10 @@ FusionCore is that replacement.
 - A colcon workspace (`~/ros2_ws`)
 
 ### Clone into your workspace
+The repo must live inside `src/` — colcon only searches there for packages.
+
 ```bash
+mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 git clone https://github.com/manankharwar/fusioncore.git
 cd ~/ros2_ws
