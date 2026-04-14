@@ -56,7 +56,7 @@ FusionCore is that replacement.
 - A colcon workspace (`~/ros2_ws`)
 
 ### Clone into your workspace
-This is a monorepo containing 4 packages: `compass_msgs`, `fusioncore_core`, `fusioncore_ros`, and `fusioncore_gazebo`. There is no `package.xml` at the repo root — colcon finds the packages by scanning subdirectories recursively. The repo must live inside `src/` so colcon can find them.
+This is a monorepo containing 4 packages: `compass_msgs`, `fusioncore_core`, `fusioncore_ros`, and `fusioncore_gazebo`. There is no `package.xml` at the repo root: colcon finds the packages by scanning subdirectories recursively. The repo must live inside `src/` so colcon can find them.
 
 ```bash
 mkdir -p ~/ros2_ws/src
