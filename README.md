@@ -118,8 +118,16 @@ FusionCore uses a ROS 2 lifecycle node. Configure first (load parameters, valida
 
 | Topic | Type | What it is |
 |---|---|---|
-| `/fusion/odom` | `nav_msgs/Odometry` | Fused position + orientation + velocity at 100Hz |
+| `/fusion/odom` | `nav_msgs/Odometry` | Fused position + orientation + velocity + covariance at 100Hz |
+| `/fusion/pose` | `geometry_msgs/PoseWithCovarianceStamped` | Same pose — compatible with AMCL, slam_toolbox, Nav2 |
+| `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | Per-sensor health, outlier counts, heading status at 1Hz |
 | `/tf` | TF | `odom -> base_link` for Nav2 |
+
+**Services:**
+
+| Service | Type | What it does |
+|---|---|---|
+| `~/reset` | `std_srvs/Trigger` | Re-initializes the filter without restarting the node. Clears GPS reference. Useful after teleportation in simulation or catastrophic GPS jumps. |
 
 ---
 

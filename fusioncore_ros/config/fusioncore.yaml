@@ -53,6 +53,15 @@ fusioncore:
     outlier_threshold_enc: 11.34    # chi2(3, 0.999)
     outlier_threshold_hdg: 10.83    # chi2(1, 0.999)
 
+    # Zero-velocity updates (ZUPT)
+    # When encoder speed and UKF angular rate are both below threshold,
+    # the robot is considered stationary and velocity is fused to zero.
+    # This suppresses IMU drift during standstill.
+    zupt.enabled: true
+    zupt.velocity_threshold: 0.05   # m/s — below this = stationary
+    zupt.angular_threshold: 0.05    # rad/s — below this = not rotating
+    zupt.noise_sigma: 0.01          # m/s — tighter = stronger correction
+
     # Adaptive noise covariance
     # Automatically estimates true sensor noise from innovation sequence
     # Set to false to use fixed config params only

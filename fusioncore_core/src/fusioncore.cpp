@@ -491,6 +491,27 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
     z, sensors::ground_constraint_measurement_function, R);
 }
 
+void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
+  if (!initialized_) return;
+
+  predict_to(timestamp_seconds);
+
+  // Fuse [VX=0, VY=0, WZ=0] using the encoder measurement function.
+  // This is a pseudo-measurement — the robot asserts it is not moving.
+  // Outlier rejection is intentionally skipped: ZUPT is only called when
+  // the encoder already confirms near-zero velocity, so rejection would
+  // fight against the one thing we know is true.
+  sensors::EncoderMeasurement z = sensors::EncoderMeasurement::Zero();
+
+  sensors::EncoderNoiseMatrix R = sensors::EncoderNoiseMatrix::Zero();
+  double var = noise_sigma * noise_sigma;
+  R(0,0) = var;
+  R(1,1) = var;
+  R(2,2) = var;
+
+  ukf_.update<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R);
+}
+
 bool FusionCore::update_gnss(
   double timestamp_seconds,
   const sensors::GnssFix& fix

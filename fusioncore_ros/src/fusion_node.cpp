@@ -16,6 +16,10 @@
 #include <tf2/LinearMath/Vector3.h>
 #include <tf2/LinearMath/Matrix3x3.h>
 #include <rclcpp/executors/multi_threaded_executor.hpp>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
+#include <std_srvs/srv/trigger.hpp>
 #include <mutex>
 #include <optional>
 
@@ -101,6 +105,14 @@ public:
     declare_parameter("adaptive.window",  50);
     declare_parameter("adaptive.alpha",   0.01);
 
+    // Zero-velocity update (ZUPT)
+    // When encoder velocity and IMU angular rate are both below threshold,
+    // the robot is considered stationary and a zero-velocity measurement is fused.
+    declare_parameter("zupt.enabled",            true);
+    declare_parameter("zupt.velocity_threshold", 0.05);  // m/s
+    declare_parameter("zupt.angular_threshold",  0.05);  // rad/s
+    declare_parameter("zupt.noise_sigma",        0.01);  // m/s — tight
+
     declare_parameter("ukf.q_position",     0.01);
     declare_parameter("ukf.q_orientation",  0.01);
     declare_parameter("ukf.q_velocity",     0.1);
@@ -179,6 +191,11 @@ public:
     config.ukf.q_acceleration = get_parameter("ukf.q_acceleration").as_double();
     config.ukf.q_gyro_bias    = get_parameter("ukf.q_gyro_bias").as_double();
     config.ukf.q_accel_bias   = get_parameter("ukf.q_accel_bias").as_double();
+
+    zupt_enabled_            = get_parameter("zupt.enabled").as_bool();
+    zupt_velocity_threshold_ = get_parameter("zupt.velocity_threshold").as_double();
+    zupt_angular_threshold_  = get_parameter("zupt.angular_threshold").as_double();
+    zupt_noise_sigma_        = get_parameter("zupt.noise_sigma").as_double();
 
     fc_ = std::make_unique<fusioncore::FusionCore>(config);
 
@@ -282,13 +299,43 @@ public:
         "Subscribed to dual antenna heading: %s", heading_topic_.c_str());
     }
 
-    odom_pub_ = create_publisher<nav_msgs::msg::Odometry>("/fusion/odom", 100);
+    odom_pub_  = create_publisher<nav_msgs::msg::Odometry>("/fusion/odom", 100);
+    pose_pub_  = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>("/fusion/pose", 100);
+    diag_pub_  = create_publisher<diagnostic_msgs::msg::DiagnosticArray>("/diagnostics", 10);
 
     auto period = std::chrono::duration<double>(1.0 / publish_rate_);
     publish_timer_ = create_wall_timer(
       std::chrono::duration_cast<std::chrono::nanoseconds>(period),
       [this]() { publish_state(); },
       publish_cb_group_);
+
+    // Diagnostics at 1 Hz — standard ROS convention
+    diag_timer_ = create_wall_timer(
+      std::chrono::seconds(1),
+      [this]() { publish_diagnostics(); },
+      publish_cb_group_);
+
+    // Reset service — re-initializes the filter without restarting the node.
+    // Useful after GPS jumps, teleportation in simulation, or catastrophic drift.
+    reset_srv_ = create_service<std_srvs::srv::Trigger>(
+      "~/reset",
+      [this](
+        const std_srvs::srv::Trigger::Request::SharedPtr,
+        std_srvs::srv::Trigger::Response::SharedPtr response)
+      {
+        std::lock_guard<std::mutex> lock(fc_mutex_);
+        fusioncore::State initial;
+        initial.x = fusioncore::StateVector::Zero();
+        initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+        initial.P(0,0) = 1000.0;
+        initial.P(1,1) = 1000.0;
+        initial.P(2,2) = 1000.0;
+        fc_->init(initial, now().seconds());
+        gnss_ref_set_ = false;  // re-anchor GPS reference on next fix
+        response->success = true;
+        response->message = "FusionCore filter reset. GPS reference cleared.";
+        RCLCPP_INFO(get_logger(), "Filter reset via ~/reset service.");
+      });
 
     RCLCPP_INFO(get_logger(), "FusionCore active. Listening for sensors.");
     return CallbackReturn::SUCCESS;
@@ -305,7 +352,11 @@ public:
     gnss_heading_sub_.reset();
     azimuth_sub_.reset();
     publish_timer_.reset();
+    diag_timer_.reset();
+    reset_srv_.reset();
     odom_pub_.reset();
+    pose_pub_.reset();
+    diag_pub_.reset();
     RCLCPP_INFO(get_logger(), "FusionCore deactivated.");
     return CallbackReturn::SUCCESS;
   }
@@ -530,15 +581,26 @@ private:
     double var_vy = (cov[7]  > 0.0) ? cov[7]  : -1.0;
     double var_wz = (cov[35] > 0.0) ? cov[35] : -1.0;
 
-    fc_->update_encoder(t,
-      msg->twist.twist.linear.x,
-      msg->twist.twist.linear.y,
-      msg->twist.twist.angular.z,
-      var_vx, var_vy, var_wz);
+    const double vx = msg->twist.twist.linear.x;
+    const double vy = msg->twist.twist.linear.y;
+    const double wz = msg->twist.twist.angular.z;
+
+    fc_->update_encoder(t, vx, vy, wz, var_vx, var_vy, var_wz);
 
     // Non-holonomic ground constraint: wheeled robots cannot move vertically.
     // Fuses VZ=0 as a pseudo-measurement to prevent altitude drift.
     fc_->update_ground_constraint(t);
+
+    // Zero-velocity update (ZUPT): when the robot is stationary, assert
+    // [VX=0, VY=0, WZ=0] with tight noise to suppress IMU drift.
+    // Uses encoder velocity AND current UKF angular rate for detection.
+    if (zupt_enabled_) {
+      double speed = std::sqrt(vx*vx + vy*vy);
+      double yaw_rate = std::abs(fc_->get_state().x[fusioncore::WZ]);
+      if (speed < zupt_velocity_threshold_ && yaw_rate < zupt_angular_threshold_) {
+        fc_->update_zupt(t, zupt_noise_sigma_);
+      }
+    }
   }
 
   // ─── GNSS position callback ────────────────────────────────────────────────
@@ -858,6 +920,13 @@ private:
 
     odom_pub_->publish(odom);
 
+    // Also publish PoseWithCovarianceStamped — expected by AMCL, slam_toolbox,
+    // Nav2 pose initializer, and many visualization tools.
+    geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
+    pose_msg.header = odom.header;
+    pose_msg.pose   = odom.pose;
+    pose_pub_->publish(pose_msg);
+
     geometry_msgs::msg::TransformStamped tf;
     tf.header.stamp    = stamp;
     tf.header.frame_id = odom_frame_;
@@ -872,6 +941,107 @@ private:
     tf.transform.rotation.w = q.w();
 
     tf_broadcaster_->sendTransform(tf);
+  }
+
+  // ─── Diagnostics ─────────────────────────────────────────────────────────
+  // Published at 1 Hz on /diagnostics (standard ROS convention).
+  // Consumed by rqt_robot_monitor, Nav2 bringup, and production monitoring.
+
+  void publish_diagnostics()
+  {
+    std::lock_guard<std::mutex> lock(fc_mutex_);
+    if (!fc_->is_initialized()) return;
+
+    auto status = fc_->get_status();
+    auto stamp  = now();
+
+    diagnostic_msgs::msg::DiagnosticArray diag_array;
+    diag_array.header.stamp = stamp;
+
+    auto make_status = [&](
+      const std::string& name,
+      uint8_t level,
+      const std::string& message,
+      const std::vector<std::pair<std::string,std::string>>& kv)
+    {
+      diagnostic_msgs::msg::DiagnosticStatus s;
+      s.name        = "fusioncore: " + name;
+      s.hardware_id = "fusioncore";
+      s.level       = level;
+      s.message     = message;
+      for (const auto& [k, v] : kv) {
+        diagnostic_msgs::msg::KeyValue kv_msg;
+        kv_msg.key   = k;
+        kv_msg.value = v;
+        s.values.push_back(kv_msg);
+      }
+      return s;
+    };
+
+    auto health_to_level = [](fusioncore::SensorHealth h) -> uint8_t {
+      switch (h) {
+        case fusioncore::SensorHealth::OK:       return diagnostic_msgs::msg::DiagnosticStatus::OK;
+        case fusioncore::SensorHealth::STALE:    return diagnostic_msgs::msg::DiagnosticStatus::WARN;
+        case fusioncore::SensorHealth::NOT_INIT: return diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      }
+      return diagnostic_msgs::msg::DiagnosticStatus::WARN;
+    };
+
+    auto health_to_str = [](fusioncore::SensorHealth h) -> std::string {
+      switch (h) {
+        case fusioncore::SensorHealth::OK:       return "OK";
+        case fusioncore::SensorHealth::STALE:    return "STALE — no recent data";
+        case fusioncore::SensorHealth::NOT_INIT: return "Not yet initialized";
+      }
+      return "Unknown";
+    };
+
+    // IMU
+    diag_array.status.push_back(make_status("IMU",
+      health_to_level(status.imu_health),
+      health_to_str(status.imu_health),
+      {{"outlier_count", std::to_string(status.imu_outliers)}}));
+
+    // Encoder
+    diag_array.status.push_back(make_status("Encoder",
+      health_to_level(status.encoder_health),
+      health_to_str(status.encoder_health),
+      {{"outlier_count", std::to_string(status.enc_outliers)}}));
+
+    // GNSS
+    diag_array.status.push_back(make_status("GNSS",
+      health_to_level(status.gnss_health),
+      health_to_str(status.gnss_health),
+      {{"outlier_count",     std::to_string(status.gnss_outliers)},
+       {"heading_outliers",  std::to_string(status.hdg_outliers)}}));
+
+    // Filter
+    auto heading_src_str = [](fusioncore::HeadingSource src) -> std::string {
+      switch (src) {
+        case fusioncore::HeadingSource::NONE:            return "NONE — lever arm inactive";
+        case fusioncore::HeadingSource::DUAL_ANTENNA:    return "DUAL_ANTENNA";
+        case fusioncore::HeadingSource::IMU_ORIENTATION: return "IMU_ORIENTATION (9-axis)";
+        case fusioncore::HeadingSource::GPS_TRACK:       return "GPS_TRACK";
+      }
+      return "Unknown";
+    };
+
+    uint8_t filter_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
+    std::string filter_msg = "Running";
+    if (!status.heading_validated) {
+      filter_level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
+      filter_msg   = "Heading not validated — lever arm inactive";
+    }
+
+    diag_array.status.push_back(make_status("Filter",
+      filter_level, filter_msg,
+      {{"heading_source",        heading_src_str(status.heading_source)},
+       {"heading_validated",     status.heading_validated ? "true" : "false"},
+       {"distance_traveled_m",   std::to_string(status.distance_traveled)},
+       {"position_uncertainty_m", std::to_string(std::sqrt(status.position_uncertainty))},
+       {"update_count",          std::to_string(status.update_count)}}));
+
+    diag_pub_->publish(diag_array);
   }
 
   // ─── LLA to ECEF ──────────────────────────────────────────────────────────
@@ -904,9 +1074,13 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss_sub_;
-  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss2_sub_;
-  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr           odom_pub_;
-  rclcpp::TimerBase::SharedPtr                                    publish_timer_;
+  rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr                gnss2_sub_;
+  rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                       odom_pub_;
+  rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pose_pub_;
+  rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr         diag_pub_;
+  rclcpp::TimerBase::SharedPtr                                                publish_timer_;
+  rclcpp::TimerBase::SharedPtr                                                diag_timer_;
+  rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr                          reset_srv_;
 
   std::string base_frame_;
   std::string odom_frame_;
@@ -919,9 +1093,15 @@ private:
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
 
-  fusioncore::sensors::GnssFixType min_fix_type_ = fusioncore::sensors::GnssFixType::GPS_FIX;
-  fusioncore::sensors::GnssLeverArm gnss_lever_arm_;   // primary receiver
-  fusioncore::sensors::GnssLeverArm gnss_lever_arm2_;  // secondary receiver (fix2_topic)
+  fusioncore::sensors::GnssFixType  min_fix_type_   = fusioncore::sensors::GnssFixType::GPS_FIX;
+  fusioncore::sensors::GnssLeverArm gnss_lever_arm_;    // primary receiver
+  fusioncore::sensors::GnssLeverArm gnss_lever_arm2_;   // secondary receiver (fix2_topic)
+
+  // ZUPT parameters
+  bool   zupt_enabled_            = true;
+  double zupt_velocity_threshold_ = 0.05;
+  double zupt_angular_threshold_  = 0.05;
+  double zupt_noise_sigma_        = 0.01;
 
   // Callback groups: sensor callbacks are mutually exclusive (protect UKF state);
   // publish timer runs in its own group so it never waits on a sensor callback.
