@@ -540,7 +540,7 @@ fusioncore/
 
 ## License
 
-Apache 2.0. Includes explicit patent license grant that BSD-3 does not provide. Commercially safe.
+Apache 2.0. Includes explicit patent license grant that BSD-3 does not provide. Commercially safe
 
 ---
 
