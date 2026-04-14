@@ -17,6 +17,8 @@ find_package(compass_msgs REQUIRED)
 find_package(eigen3_cmake_module REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(fusioncore_core REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
 
 add_executable(fusioncore_node
   src/fusion_node.cpp
@@ -40,8 +42,9 @@ ament_target_dependencies(fusioncore_node
   tf2_ros
   tf2_geometry_msgs
   fusioncore_core
-
   compass_msgs
+  diagnostic_msgs
+  std_srvs
 )
 
 target_link_libraries(fusioncore_node

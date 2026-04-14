@@ -61,6 +61,13 @@ struct FusionCoreConfig {
   // At 100Hz IMU and 500ms max delay: 50 messages minimum.
   int imu_buffer_size = 100;
 
+  // Zero-velocity update (ZUPT) parameters
+  // Velocity threshold below which the robot is considered stationary (m/s and rad/s)
+  double zupt_velocity_threshold = 0.05;
+  double zupt_angular_threshold  = 0.05;
+  // Noise sigma applied during ZUPT (m/s). Tight = filter strongly believes zero velocity.
+  double zupt_noise_sigma = 0.01;
+
   // Does the IMU have a magnetometer (9-axis)?
   // true  — IMU orientation includes magnetically-referenced yaw (BNO08x,
   //         VectorNav, Xsens). Orientation update validates heading.
@@ -147,6 +154,12 @@ public:
   // Call this every encoder update to prevent altitude drift in the UKF.
   // Only applies to wheeled ground robots; do not call for aerial vehicles.
   void update_ground_constraint(double timestamp_seconds);
+
+  // Zero-velocity update (ZUPT) — fuses [VX=0, VY=0, WZ=0] with tight noise
+  // when the robot is stationary. Prevents IMU drift from corrupting velocity
+  // states during standstill. Call this when encoder velocity is near zero.
+  // noise_sigma: velocity uncertainty in m/s (default 0.01 — very tight)
+  void update_zupt(double timestamp_seconds, double noise_sigma = 0.01);
 
   // GNSS dual antenna heading update
   // Calling this validates heading via HeadingSource::DUAL_ANTENNA
