@@ -521,10 +521,20 @@ private:
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
+    // Extract per-axis variances from the Odometry twist covariance (6x6, row-major).
+    // Indices: vx=0, vy=7, wz=35 (diagonal elements for linear.x, linear.y, angular.z).
+    // Pass -1.0 for any axis where the message reports zero or negative variance,
+    // so update_encoder falls back to adaptive/config noise for that axis.
+    const auto& cov = msg->twist.covariance;
+    double var_vx = (cov[0]  > 0.0) ? cov[0]  : -1.0;
+    double var_vy = (cov[7]  > 0.0) ? cov[7]  : -1.0;
+    double var_wz = (cov[35] > 0.0) ? cov[35] : -1.0;
+
     fc_->update_encoder(t,
       msg->twist.twist.linear.x,
       msg->twist.twist.linear.y,
-      msg->twist.twist.angular.z);
+      msg->twist.twist.angular.z,
+      var_vx, var_vy, var_wz);
 
     // Non-holonomic ground constraint: wheeled robots cannot move vertically.
     // Fuses VZ=0 as a pseudo-measurement to prevent altitude drift.

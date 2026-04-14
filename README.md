@@ -23,23 +23,23 @@ FusionCore is that replacement.
 | Capability | robot_localization | Fuse | FusionCore |
 |---|---|---|---|
 | Core filter | EKF | Factor graph | UKF |
-| 3D support | Partial | PR open 1+ year | Full 3D, native |
+| 3D support | Yes | PR open 1+ year | Full 3D, native |
 | IMU bias estimation | None | Complex | Automatic |
-| GPS fusion | UTM workaround | Not implemented | ECEF, proper |
-| Dual antenna heading | Hack required | Not supported | Native |
-| IMU frame transform | Manual | Manual | Automatic via TF |
-| Message covariances | Ignored | Partial | Full 3x3 GNSS + odometry |
+| GPS fusion | navsat_transform node (ENU/WGS84) | Not implemented | ECEF-native, no separate node |
+| Dual antenna heading | Not supported | Not supported | Native |
+| IMU frame transform | Manual config | Manual config | Automatic via TF at runtime |
+| Message covariances | Used | Partial | Full 3x3 GNSS + diagonal odometry |
 | GNSS antenna offset | Ignored | Ignored | Lever arm with observability guard |
-| Outlier rejection | None | None | Mahalanobis chi-squared gating |
+| Outlier rejection | mahalanobis_threshold | None | Mahalanobis chi-squared, all sensors |
 | GPS fix quality gating | None | None | Configurable min fix type (GPS/DGPS/RTK) |
 | Adaptive noise | None | None | Automatic from innovation sequence |
 | TF validation | Silent failure | Silent failure | Startup check + exact fix commands |
-| Multiple sensor sources | No | No | Yes: 2x GPS, multiple IMUs |
+| Multiple GNSS receivers | No | No | Yes: 2x GPS with independent lever arms |
 | compass_msgs/Azimuth | No | No | Yes: ROS 2 native port |
-| Delay compensation | No | No | Yes: full IMU replay retrodiction up to 500ms |
+| Delay compensation | history_length (limited) | No | Full IMU replay retrodiction up to 500ms |
 | Ground constraint | No | No | Yes: VZ=0 pseudo-measurement for wheeled robots |
 | Sensor dropout detection | Silent | Silent | Per-sensor staleness with SensorHealth enum |
-| Maintenance | Abandoned | Slow | Active, issues answered in 24h |
+| Maintenance | Deprecated Sep 2023 | Active, slow | Active, issues answered in 24h |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
 | ROS 2 Jazzy | Ported | Native | Native, built from scratch |
 | Working examples | Minimal | None | Real robot configs |
