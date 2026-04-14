@@ -22,7 +22,7 @@ FusionCore is that replacement.
 
 | Capability | robot_localization | Fuse | FusionCore |
 |---|---|---|---|
-| Core filter | EKF | Factor graph | UKF |
+| Core filter | EKF or UKF | Factor graph | UKF (21D state + bias) |
 | 3D support | Yes | Yes | Full 3D, native |
 | IMU bias estimation | No built-in states | Plugin-dependent | Gyro + accel bias states |
 | GPS fusion | navsat_transform node | Plugin, no ECEF/RTK | ECEF-native, single node |
