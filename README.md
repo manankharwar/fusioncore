@@ -24,7 +24,7 @@ FusionCore is that replacement.
 |---|---|---|---|
 | Core filter | EKF | Factor graph | UKF |
 | 3D support | Yes | Yes | Full 3D, native |
-| IMU bias estimation | No | No | Gyro + accel bias states |
+| IMU bias estimation | No built-in states | Plugin-dependent | Gyro + accel bias states |
 | GPS fusion | navsat_transform node | Plugin, no ECEF/RTK | ECEF-native, single node |
 | Dual antenna heading | No | No | Yes |
 | IMU frame transform | Manual (YAML) | Manual (YAML) | Automatic via TF |
@@ -33,16 +33,15 @@ FusionCore is that replacement.
 | Outlier rejection | mahalanobis_threshold | Robust loss functions | Chi-squared gating, all sensors |
 | GPS fix quality gating | No | No | GPS / DGPS / RTK_FLOAT / RTK_FIXED |
 | Adaptive noise | Manual | Manual | Auto from innovation sequence |
-| TF validation at startup | No | No | Startup check + fix commands |
-| Multiple GNSS receivers | No | No | 2× GPS, independent lever arms |
+| TF validation at startup | Basic | No | Startup check + fix commands |
+| Multiple GNSS receivers | Workaround | Workaround | Native, independent lever arms |
 | compass_msgs/Azimuth | No | No | Yes (ENU/NED, rad/deg) |
 | Delay compensation | history_length | Factor graph inherent | Full IMU replay, 500ms |
-| Ground constraint | No | No | VZ=0 pseudo-measurement |
-| ZUPT | No | No | Auto when stationary |
+| Ground constraint | Not built-in | Not built-in | VZ=0 pseudo-measurement |
+| ZUPT | Not built-in | Not built-in | Auto when stationary |
 | Sensor dropout detection | Basic | Basic | Per-sensor SensorHealth enum |
 | /diagnostics | Basic | Basic | Per-sensor health + outliers |
 | Published covariance | Yes | Yes | Full UKF P matrix |
-| /fusion/pose | No | No | PoseWithCovarianceStamped |
 | Filter reset service | No | No | ~/reset (no restart needed) |
 | Maintenance | Deprecated Sep 2023 | Active | Active, 24h response |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
