@@ -63,6 +63,7 @@ mkdir -p ~/ros2_ws/src
 cd ~/ros2_ws/src
 git clone https://github.com/manankharwar/fusioncore.git
 cd ~/ros2_ws
+source /opt/ros/jazzy/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 colcon build
 source install/setup.bash
@@ -74,8 +75,8 @@ source install/setup.bash
 ```bash
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select fusioncore --cmake-args -DBUILD_TESTING=ON
-colcon test --packages-select fusioncore
+colcon build --packages-select fusioncore_core --cmake-args -DBUILD_TESTING=ON
+colcon test --packages-select fusioncore_core
 colcon test-result --verbose
 ```
 
@@ -100,7 +101,7 @@ ros2 topic hz /fusion/odom
 
 FusionCore uses a ROS 2 lifecycle node. Configure first (load parameters, validate TF tree, check transforms), then activate (start processing sensor data). This prevents the filter from starting with bad initial values or missing transforms.
 
-> **WSL2 note:** If `ros2 lifecycle set` returns "Node not found", use the launch file's built-in auto-configure instead. The Gazebo launch file (`fusioncore_gazebo.launch.py`) configures and activates the node automatically via `EmitEvent(ChangeState(...))` 12 seconds after startup, bypassing DDS discovery latency that affects WSL2.
+> **WSL2 note:** If `ros2 lifecycle set` returns "Node not found", use the launch file's built-in auto-configure instead. The Gazebo launch file (`fusioncore_gazebo.launch.py`) configures and activates the node automatically via `EmitEvent(ChangeState(...))` 15 seconds after startup, bypassing DDS discovery latency that affects WSL2.
 
 ---
 
@@ -406,7 +407,7 @@ Gazebo Harmonic's built-in NavSat sensor has a known bug (gz-sim issue #2163) wh
 ```bash
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select fusioncore_gazebo
+colcon build
 source install/setup.bash
 ros2 launch fusioncore_gazebo fusioncore_gazebo.launch.py
 ```
