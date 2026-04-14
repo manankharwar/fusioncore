@@ -23,26 +23,26 @@ FusionCore is that replacement.
 | Capability | robot_localization | Fuse | FusionCore |
 |---|---|---|---|
 | Core filter | EKF | Factor graph | UKF |
-| 3D support | Yes | PR open 1+ year | Full 3D, native |
-| IMU bias estimation | None | Complex | Automatic |
-| GPS fusion | navsat_transform node (ENU/WGS84) | Not implemented | ECEF-native, no separate node |
+| 3D support | Yes | Yes (configuration-dependent) | Full 3D, native |
+| IMU bias estimation | No explicit bias states | No explicit bias states | Gyro + accel bias in state vector |
+| GPS fusion | Via navsat_transform (separate node) | Plugin support, no ECEF or RTK gating | ECEF-native, no separate node |
 | Dual antenna heading | Not supported | Not supported | Native |
-| IMU frame transform | Manual config | Manual config | Automatic via TF at runtime |
-| Message covariances | Used | Partial | Full 3x3 GNSS + diagonal odometry |
-| GNSS antenna offset | Ignored | Ignored | Lever arm with observability guard |
-| Outlier rejection | mahalanobis_threshold | None | Mahalanobis chi-squared, all sensors |
-| GPS fix quality gating | None | None | Configurable min fix type (GPS/DGPS/RTK) |
-| Adaptive noise | None | None | Automatic from innovation sequence |
-| TF validation | Silent failure | Silent failure | Startup check + exact fix commands |
-| Multiple GNSS receivers | No | No | Yes: 2x GPS with independent lever arms |
-| compass_msgs/Azimuth | No | No | Yes: ROS 2 native port |
-| Delay compensation | history_length (limited) | No | Full IMU replay retrodiction up to 500ms |
-| Ground constraint | No | No | Yes: VZ=0 pseudo-measurement for wheeled robots |
-| Sensor dropout detection | Silent | Silent | Per-sensor staleness with SensorHealth enum |
-| Maintenance | Deprecated Sep 2023 | Active, slow | Active, issues answered in 24h |
+| IMU frame transform | Configured in YAML | Configured in YAML | Read from message frame_id via TF at runtime |
+| Message covariances | Used | Partial | Full 3×3 GNSS + diagonal odometry |
+| GNSS antenna offset | Not handled | Not handled | Lever arm with heading observability guard |
+| Outlier rejection | mahalanobis_threshold | Possible via robust loss functions | Mahalanobis chi-squared gating, all sensors |
+| GPS fix quality gating | Not supported | Not supported | Configurable: GPS / DGPS / RTK_FLOAT / RTK_FIXED |
+| Adaptive noise | Manual re-tuning | Manual re-tuning | Automatic from innovation sequence |
+| TF validation at startup | Not provided | Not provided | Startup check with exact fix commands |
+| Multiple GNSS receivers | Not supported | Not supported | 2× GPS with independent lever arms |
+| compass_msgs/Azimuth | Not supported | Not supported | Supported: ENU/NED, rad/deg, magnetic warning |
+| Delay compensation | history_length (re-linearizes at current state) | Inherent in factor graph design | Full IMU replay retrodiction up to 500ms |
+| Ground constraint | Not built-in | Not built-in | VZ=0 pseudo-measurement for wheeled robots |
+| Sensor dropout detection | Basic diagnostics | Basic diagnostics | Per-sensor staleness with SensorHealth enum |
+| Published covariance | Yes | Yes | Yes (full UKF P → pose + twist covariance) |
+| Maintenance | Deprecated Sep 2023 | Active | Active — issues answered in 24h |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
-| ROS 2 Jazzy | Ported | Native | Native, built from scratch |
-| Working examples | Minimal | None | Real robot configs |
+| ROS 2 Jazzy | Ported from ROS 1 | Native | Native, built from scratch |
 
 ---
 
