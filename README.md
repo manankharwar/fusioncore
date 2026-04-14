@@ -74,8 +74,8 @@ source install/setup.bash
 ```bash
 cd ~/ros2_ws
 source /opt/ros/jazzy/setup.bash
-colcon build --packages-select fusioncore_core --cmake-args -DBUILD_TESTING=ON
-colcon test --packages-select fusioncore_core
+colcon build --packages-select fusioncore --cmake-args -DBUILD_TESTING=ON
+colcon test --packages-select fusioncore
 colcon test-result --verbose
 ```
 
