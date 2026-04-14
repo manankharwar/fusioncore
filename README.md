@@ -87,10 +87,10 @@ Expected output: `45 tests, 0 errors, 0 failures, 0 skipped`
 ## Running FusionCore
 
 ```bash
-# Terminal 1 — launch the node
+# Terminal 1: launch the node
 ros2 launch fusioncore_ros fusioncore.launch.py
 
-# Terminal 2 — configure and activate the lifecycle node
+# Terminal 2: configure and activate the lifecycle node
 ros2 lifecycle set /fusioncore configure
 ros2 lifecycle set /fusioncore activate
 
@@ -109,14 +109,14 @@ FusionCore uses a ROS 2 lifecycle node. Configure first (load parameters, valida
 
 You can test every FusionCore feature without a physical robot using fake sensor data. Open 4 terminals:
 
-**Terminal 1 — Launch FusionCore:**
+**Terminal 1: Launch FusionCore:**
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/ros2_ws/install/setup.bash
 ros2 launch fusioncore_ros fusioncore.launch.py
 ```
 
-**Terminal 2 — Configure and activate:**
+**Terminal 2: Configure and activate:**
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/ros2_ws/install/setup.bash
@@ -125,7 +125,7 @@ sleep 1
 ros2 lifecycle set /fusioncore activate
 ```
 
-**Terminal 3 — Feed fake sensors:**
+**Terminal 3: Feed fake sensors:**
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/ros2_ws/install/setup.bash
@@ -138,7 +138,7 @@ ros2 topic pub /imu/data sensor_msgs/msg/Imu "{
   orientation_covariance: [-1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
 }" --rate 100 &
 
-# Fake wheel encoder at 50Hz (stationary — triggers ZUPT)
+# Fake wheel encoder at 50Hz (stationary: triggers ZUPT)
 ros2 topic pub /odom/wheels nav_msgs/msg/Odometry "{
   header: {frame_id: 'odom'},
   twist: {twist: {linear: {x: 0.0}, angular: {z: 0.0}}}
@@ -156,7 +156,7 @@ ros2 topic pub /gnss/fix sensor_msgs/msg/NavSatFix "{
 }" --rate 5
 ```
 
-**Terminal 4 — Verify each feature:**
+**Terminal 4: Verify each feature:**
 
 Check what topics and services are live:
 ```bash
@@ -168,25 +168,25 @@ ros2 service list | grep fusioncore
 
 You should see `/fusion/odom`, `/fusion/pose`, and `/fusioncore/reset`.
 
-Test `/fusion/pose` — what Nav2, AMCL, and slam_toolbox expect:
+Test `/fusion/pose`: what Nav2, AMCL, and slam_toolbox expect:
 ```bash
 ros2 topic echo /fusion/pose --once
 ```
 You should see a pose message with a full 6×6 covariance matrix from the UKF.
 
-Test `/diagnostics` — per-sensor health at 1Hz:
+Test `/diagnostics`: per-sensor health at 1Hz:
 ```bash
 ros2 topic echo /diagnostics --once
 ```
 You should see 4 status entries: `fusioncore: IMU`, `fusioncore: Encoder`, `fusioncore: GNSS`, `fusioncore: Filter`. Each shows OK or WARN with outlier counts and heading status.
 
-Test ZUPT — velocity should stay near zero while stationary:
+Test ZUPT: velocity should stay near zero while stationary:
 ```bash
 ros2 topic echo /fusion/odom --field twist.twist.linear
 ```
 Values should be essentially zero (`~1e-10`) even while the IMU is running. This confirms ZUPT is suppressing velocity drift when the robot is not moving.
 
-Test the reset service — reinitializes filter without restarting the node:
+Test the reset service: reinitializes filter without restarting the node:
 ```bash
 ros2 service call /fusioncore/reset std_srvs/srv/Trigger
 ```
@@ -212,7 +212,7 @@ Expected: `success: True, message: 'FusionCore filter reset. GPS reference clear
 | Topic | Type | What it is |
 |---|---|---|
 | `/fusion/odom` | `nav_msgs/Odometry` | Fused position + orientation + velocity + covariance at 100Hz |
-| `/fusion/pose` | `geometry_msgs/PoseWithCovarianceStamped` | Same pose — compatible with AMCL, slam_toolbox, Nav2 pose initializer |
+| `/fusion/pose` | `geometry_msgs/PoseWithCovarianceStamped` | Same pose: compatible with AMCL, slam_toolbox, Nav2 pose initializer |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | Per-sensor health, outlier counts, heading status at 1Hz |
 | `/tf` | TF | `odom -> base_link` for Nav2 |
 
@@ -248,7 +248,7 @@ fusioncore:
     gnss.min_satellites: 4
     gnss.min_fix_type: 1        # minimum fix quality: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
                                 # note: sensor_msgs/NavSatFix status=2 maps to RTK_FIXED only.
-                                # RTK_FLOAT (3) is unreachable via NavSatFix — use 2 or 4.
+                                # RTK_FLOAT (3) is unreachable via NavSatFix: use 2 or 4.
 
     # Antenna lever arm: offset from base_link to primary GPS antenna in body frame
     # x=forward, y=left, z=up (meters). Leave at 0 if antenna is above base_link.
@@ -324,7 +324,7 @@ This handles GPS jumps, multipath errors, and encoder slip spikes. The filter po
 
 ### Zero velocity updates (ZUPT)
 
-When the robot is stationary — encoder speed below 0.05 m/s and angular rate below 0.05 rad/s — FusionCore fuses a zero velocity pseudo-measurement with very tight noise. This stops the IMU from drifting the velocity estimate while the robot is sitting still. Every serious inertial navigation system does this. Without ZUPT, IMU noise accumulates into a false velocity estimate over time even when the robot has not moved.
+When the robot is stationary: encoder speed below 0.05 m/s and angular rate below 0.05 rad/s: FusionCore fuses a zero velocity pseudo-measurement with very tight noise. This stops the IMU from drifting the velocity estimate while the robot is sitting still. Every serious inertial navigation system does this. Without ZUPT, IMU noise accumulates into a false velocity estimate over time even when the robot has not moved.
 
 ### Adaptive noise covariance
 
@@ -332,7 +332,7 @@ FusionCore tracks a sliding window of 50 innovation sequences per sensor and est
 
 ### GPS antenna offset (lever arm)
 
-If the GPS antenna is not at `base_link` — mounted on top of the robot, forward of center — its readings correspond to a different trajectory than `base_link`. FusionCore corrects for this using the rotation matrix from the current state: `p_antenna = p_base + R * lever_arm`. Lever arm correction only activates when heading has been independently validated — applying it with wrong heading makes things worse, not better.
+If the GPS antenna is not at `base_link`: mounted on top of the robot, forward of center: its readings correspond to a different trajectory than `base_link`. FusionCore corrects for this using the rotation matrix from the current state: `p_antenna = p_base + R * lever_arm`. Lever arm correction only activates when heading has been independently validated: applying it with wrong heading makes things worse, not better.
 
 Each GPS receiver has its own independent lever arm. Primary receiver uses `gnss.lever_arm_x/y/z`, secondary receiver uses `gnss.lever_arm2_x/y/z`.
 
@@ -341,7 +341,7 @@ Each GPS receiver has its own independent lever arm. Primary receiver uses `gnss
 FusionCore tracks a `heading_validated_` flag that is only set true from a genuine independent source:
 
 - **`DUAL_ANTENNA`**: dual antenna heading message received
-- **`IMU_ORIENTATION`**: 9-axis AHRS published full orientation (only when `imu.has_magnetometer: true` — 6-axis IMUs drift in yaw and don't count)
+- **`IMU_ORIENTATION`**: 9-axis AHRS published full orientation (only when `imu.has_magnetometer: true`: 6-axis IMUs drift in yaw and don't count)
 - **`GPS_TRACK`**: robot has traveled >= 5 meters at speed >= 0.2 m/s with yaw rate <= 0.3 rad/s
 
 Before any of these, lever arm is disabled regardless of what yaw variance says.
@@ -439,8 +439,8 @@ Four automated tests: IMU drift rate, outlier rejection, GPS correction after dr
 
 FusionCore ships with configs for real hardware setups tested by community members:
 
-- `fusioncore_ros/config/duatic_mecanum.yaml` — Duatic industrial mecanum manipulator. BNO085 IMU, no GPS, mecanum wheel odometry.
-- `fusioncore_ros/launch/fusioncore_duatic.launch.py` — One-command launch for the Duatic setup, handles all topic remapping automatically.
+- `fusioncore_ros/config/duatic_mecanum.yaml`: Duatic industrial mecanum manipulator. BNO085 IMU, no GPS, mecanum wheel odometry.
+- `fusioncore_ros/launch/fusioncore_duatic.launch.py`: One-command launch for the Duatic setup, handles all topic remapping automatically.
 
 To add your robot's config, open a GitHub issue or submit a PR.
 
@@ -528,7 +528,7 @@ fusioncore/
 
 **Known limitations:**
 - GNSS antenna lever arm is fixed and known: does not estimate it from data
-- In Gazebo simulation, residual y-axis drift (~0.3m) can occur from Gazebo physics — not a filter error
+- In Gazebo simulation, residual y-axis drift (~0.3m) can occur from Gazebo physics: not a filter error
 - Mecanum drive lateral velocity is not predicted by the motion model
 
 **Roadmap:**
