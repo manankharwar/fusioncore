@@ -56,7 +56,7 @@ FusionCore is that replacement.
 - A colcon workspace (`~/ros2_ws`)
 
 ### Clone into your workspace
-The repo must live inside `src/`, colcon only searches there for packages.
+This is a monorepo containing 4 packages: `compass_msgs`, `fusioncore_core`, `fusioncore_ros`, and `fusioncore_gazebo`. There is no `package.xml` at the repo root — colcon finds the packages by scanning subdirectories recursively. The repo must live inside `src/` so colcon can find them.
 
 ```bash
 mkdir -p ~/ros2_ws/src
@@ -401,6 +401,14 @@ FusionCore ships a ROS 2 native port of `compass_msgs/Azimuth` (upstream is ROS 
 FusionCore ships with a Gazebo Harmonic simulation world so you can test the full fusion pipeline without physical hardware. It includes a differential drive robot with a 100Hz IMU and GPS, in an outdoor environment with the GPS origin set to Hamilton, Ontario.
 
 Gazebo Harmonic's built-in NavSat sensor has a known bug (gz-sim issue #2163) where it periodically outputs GPS fixes at completely wrong coordinates. Rather than fight a broken sensor, the simulation derives GPS from Gazebo's ground truth world pose and adds realistic Gaussian noise (0.5m horizontal, 0.3m vertical 1-sigma).
+
+### Prerequisites for simulation
+
+Gazebo Harmonic and the ROS-Gazebo bridge are not installed by `rosdep` automatically. Install them first:
+
+```bash
+sudo apt install ros-jazzy-ros-gz
+```
 
 ### Running the simulation
 
