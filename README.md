@@ -23,30 +23,30 @@ FusionCore is that replacement.
 | Capability | robot_localization | Fuse | FusionCore |
 |---|---|---|---|
 | Core filter | EKF | Factor graph | UKF |
-| 3D support | Yes | Yes (configuration-dependent) | Full 3D, native |
-| IMU bias estimation | No explicit bias states | No explicit bias states | Gyro + accel bias in state vector |
-| GPS fusion | Via navsat_transform (separate node) | Plugin support, no ECEF or RTK gating | ECEF-native, no separate node |
-| Dual antenna heading | Not supported | Not supported | Native |
-| IMU frame transform | Configured in YAML | Configured in YAML | Read from message frame_id via TF at runtime |
-| Message covariances | Used | Partial | Full 3×3 GNSS + diagonal odometry |
-| GNSS antenna offset | Not handled | Not handled | Lever arm with heading observability guard |
-| Outlier rejection | mahalanobis_threshold | Possible via robust loss functions | Mahalanobis chi-squared gating, all sensors |
-| GPS fix quality gating | Not supported | Not supported | Configurable: GPS / DGPS / RTK_FLOAT / RTK_FIXED |
-| Adaptive noise | Manual re-tuning | Manual re-tuning | Automatic from innovation sequence |
-| TF validation at startup | Not provided | Not provided | Startup check with exact fix commands |
-| Multiple GNSS receivers | Not supported | Not supported | 2× GPS with independent lever arms |
-| compass_msgs/Azimuth | Not supported | Not supported | Supported: ENU/NED, rad/deg, magnetic warning |
-| Delay compensation | history_length (re-linearizes at current state) | Inherent in factor graph design | Full IMU replay retrodiction up to 500ms |
-| Ground constraint | Not built-in | Not built-in | VZ=0 pseudo-measurement for wheeled robots |
-| Zero velocity updates (ZUPT) | Not built-in | Not built-in | Automatic when stationary |
-| Sensor dropout detection | Basic diagnostics | Basic diagnostics | Per-sensor staleness with SensorHealth enum |
-| /diagnostics topic | Basic | Basic | Full per-sensor health, outlier counts, heading status |
-| Published covariance | Yes | Yes | Yes (full UKF P → pose + twist covariance) |
-| /fusion/pose topic | No | No | Yes: PoseWithCovarianceStamped for Nav2/AMCL |
-| Filter reset service | No | No | Yes: ~/reset clears filter without node restart |
-| Maintenance | Deprecated Sep 2023 | Active | Active: issues answered in 24h |
+| 3D support | Yes | Yes | Full 3D, native |
+| IMU bias estimation | No | No | Gyro + accel bias states |
+| GPS fusion | navsat_transform node | Plugin, no ECEF/RTK | ECEF-native, single node |
+| Dual antenna heading | No | No | Yes |
+| IMU frame transform | Manual (YAML) | Manual (YAML) | Automatic via TF |
+| Message covariances | Used | Partial | Full 3×3 GNSS + odometry |
+| GNSS antenna offset | Ignored | Ignored | Lever arm + observability guard |
+| Outlier rejection | mahalanobis_threshold | Robust loss functions | Chi-squared gating, all sensors |
+| GPS fix quality gating | No | No | GPS / DGPS / RTK_FLOAT / RTK_FIXED |
+| Adaptive noise | Manual | Manual | Auto from innovation sequence |
+| TF validation at startup | No | No | Startup check + fix commands |
+| Multiple GNSS receivers | No | No | 2× GPS, independent lever arms |
+| compass_msgs/Azimuth | No | No | Yes (ENU/NED, rad/deg) |
+| Delay compensation | history_length | Factor graph inherent | Full IMU replay, 500ms |
+| Ground constraint | No | No | VZ=0 pseudo-measurement |
+| ZUPT | No | No | Auto when stationary |
+| Sensor dropout detection | Basic | Basic | Per-sensor SensorHealth enum |
+| /diagnostics | Basic | Basic | Per-sensor health + outliers |
+| Published covariance | Yes | Yes | Full UKF P matrix |
+| /fusion/pose | No | No | PoseWithCovarianceStamped |
+| Filter reset service | No | No | ~/reset (no restart needed) |
+| Maintenance | Deprecated Sep 2023 | Active | Active, 24h response |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
-| ROS 2 Jazzy | Ported from ROS 1 | Native | Native, built from scratch |
+| ROS 2 Jazzy | Ported from ROS 1 | Native | Native, from scratch |
 
 ---
 
