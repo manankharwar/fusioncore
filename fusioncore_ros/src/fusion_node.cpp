@@ -833,6 +833,29 @@ private:
     odom.twist.twist.angular.y = s.x[fusioncore::WY];
     odom.twist.twist.angular.z = s.x[fusioncore::WZ];
 
+    // Publish UKF covariance so Nav2 and other consumers see real uncertainty.
+    // pose.covariance is 6x6 row-major for [x, y, z, roll, pitch, yaw].
+    // twist.covariance is 6x6 row-major for [vx, vy, vz, wx, wy, wz].
+    // Extract the relevant 6x6 sub-blocks from the 21x21 P matrix.
+    const fusioncore::StateMatrix& P = s.P;
+    // Pose state indices: X=0,Y=1,Z=2,ROLL=3,PITCH=4,YAW=5
+    static constexpr int pose_idx[6] = {
+      fusioncore::X, fusioncore::Y, fusioncore::Z,
+      fusioncore::ROLL, fusioncore::PITCH, fusioncore::YAW
+    };
+    for (int i = 0; i < 6; ++i)
+      for (int j = 0; j < 6; ++j)
+        odom.pose.covariance[i * 6 + j] = P(pose_idx[i], pose_idx[j]);
+
+    // Twist state indices: VX=6,VY=7,VZ=8,WX=9,WY=10,WZ=11
+    static constexpr int twist_idx[6] = {
+      fusioncore::VX, fusioncore::VY, fusioncore::VZ,
+      fusioncore::WX, fusioncore::WY, fusioncore::WZ
+    };
+    for (int i = 0; i < 6; ++i)
+      for (int j = 0; j < 6; ++j)
+        odom.twist.covariance[i * 6 + j] = P(twist_idx[i], twist_idx[j]);
+
     odom_pub_->publish(odom);
 
     geometry_msgs::msg::TransformStamped tf;
