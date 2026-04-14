@@ -40,7 +40,7 @@ FusionCore is that replacement.
 | Ground constraint | Not built-in | Not built-in | VZ=0 pseudo-measurement for wheeled robots |
 | Sensor dropout detection | Basic diagnostics | Basic diagnostics | Per-sensor staleness with SensorHealth enum |
 | Published covariance | Yes | Yes | Yes (full UKF P → pose + twist covariance) |
-| Maintenance | Deprecated Sep 2023 | Active | Active — issues answered in 24h |
+| Maintenance | Deprecated Sep 2023 | Active | Active: issues answered in 24h |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
 | ROS 2 Jazzy | Ported from ROS 1 | Native | Native, built from scratch |
 
