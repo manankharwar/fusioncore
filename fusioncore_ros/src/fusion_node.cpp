@@ -227,15 +227,12 @@ public:
   {
     RCLCPP_INFO(get_logger(), "Activating FusionCore...");
 
-    fusioncore::State initial;
-    initial.x = fusioncore::StateVector::Zero();
-    initial.P = fusioncore::StateMatrix::Identity() * 0.1;
-    // Large position uncertainty so first GPS fixes are accepted, not Mahalanobis-rejected.
-    // Critical for Gazebo and any real robot where GPS arrives before position is known.
-    initial.P(0,0) = 1000.0;  // X
-    initial.P(1,1) = 1000.0;  // Y
-    initial.P(2,2) = 1000.0;  // Z
-    fc_->init(initial, now().seconds());
+    // Do NOT initialize the filter here with now().seconds().
+    // With use_sim_time:true, now() may return 0 if /clock hasn't started yet.
+    // Initializing at t=0 then receiving the first IMU at sim t=T causes a
+    // T-second dead prediction step that can blow up the state covariance.
+    // Instead, initialize lazily on the first IMU message using its timestamp.
+    pending_init_ = true;
 
     rclcpp::SubscriptionOptions sensor_opts;
     sensor_opts.callback_group = sensor_cb_group_;
@@ -390,7 +387,7 @@ private:
     // Check common sensor transforms
     std::vector<std::pair<std::string,std::string>> to_check = {
       {"imu_link", base_frame_},
-      {"base_link", odom_frame_},
+      {base_frame_, odom_frame_},
     };
 
     for (const auto& [from, to] : to_check) {
@@ -456,9 +453,24 @@ private:
 
   void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
-    if (!fc_->is_initialized()) return;
-
     double t = rclcpp::Time(msg->header.stamp).seconds();
+
+    // Lazy init: initialize the filter on the first IMU message using the
+    // message timestamp. This avoids a large dead prediction step when
+    // use_sim_time:true and /clock hasn't started before on_activate().
+    if (pending_init_) {
+      fusioncore::State initial;
+      initial.x = fusioncore::StateVector::Zero();
+      initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+      initial.P(0,0) = 1000.0;  // large position uncertainty — accept first GPS
+      initial.P(1,1) = 1000.0;
+      initial.P(2,2) = 1000.0;
+      fc_->init(initial, t);
+      pending_init_ = false;
+      RCLCPP_INFO(get_logger(), "Filter initialized at t=%.3f (first IMU)", t);
+    }
+
+    if (!fc_->is_initialized()) return;
 
     std::string imu_frame = msg->header.frame_id;
     if (imu_frame.empty()) imu_frame = "imu_link";
@@ -1089,7 +1101,8 @@ private:
   std::string gnss2_topic_;
   std::string azimuth_topic_;
 
-  bool gnss_ref_set_ = false;
+  bool pending_init_  = false;
+  bool gnss_ref_set_  = false;
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
 
