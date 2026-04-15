@@ -41,7 +41,7 @@ class IntegrationTest(Node):
 
         self.gnss_pub = self.create_publisher(NavSatFix, '/gnss/fix', 10)
 
-        # GPS origin — must match gz_pose_to_gps.py
+        # GPS origin: must match gz_pose_to_gps.py
         self.ORIGIN_LAT = 43.2557
         self.ORIGIN_LON = -79.8711
         self.ORIGIN_ALT = 100.0
@@ -109,7 +109,7 @@ class IntegrationTest(Node):
         start = self.get_pos()
         print(f'Start position: x={start[0]:.3f} y={start[1]:.3f}')
 
-        # Wait 10 seconds — GPS is still publishing but robot is stationary
+        # Wait 10 seconds: GPS is still publishing but robot is stationary
         # We're measuring how much the filter drifts with no motion
         time.sleep(10.0)
 
@@ -161,7 +161,7 @@ class IntegrationTest(Node):
         pos_after_drive = self.get_pos()
         print(f'Position after drive: x={pos_after_drive[0]:.3f} y={pos_after_drive[1]:.3f}')
 
-        # GPS is already running — check that position stays stable (converged)
+        # GPS is already running: check that position stays stable (converged)
         time.sleep(3.0)
         pos_stable = self.get_pos()
         drift_after_stop = self.dist(pos_after_drive, pos_stable)

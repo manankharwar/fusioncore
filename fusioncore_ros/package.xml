@@ -3,7 +3,7 @@
 <package format="3">
   <name>fusioncore_ros</name>
   <version>0.1.1</version>
-  <description>FusionCore ROS 2 Jazzy wrapper — sensor fusion node</description>
+  <description>FusionCore ROS 2 Jazzy wrapper: sensor fusion node</description>
   <maintainer email="kharwarm@mcmaster.ca">FusionCore</maintainer>
   <license>Apache-2.0</license>
 

@@ -23,7 +23,7 @@
             name="gz::sim::systems::Imu"/>
 
 
-    <!-- GPS origin — Hamilton, Ontario (your location) -->
+    <!-- GPS origin: Hamilton, Ontario (your location) -->
     <spherical_coordinates>
       <surface_model>EARTH_WGS84</surface_model>
       <latitude_deg>43.2557</latitude_deg>

@@ -162,7 +162,7 @@ def build():
              color=GREY, fontsize=8, fontfamily='monospace')
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PANEL 1 — Main map (left, full height)
+    # PANEL 1: Main map (left, full height)
     # ═══════════════════════════════════════════════════════════════════════════
     ax_map = fig.add_subplot(gs[0:4, 0:3])
     ax_map.set_facecolor(BG2)
@@ -185,13 +185,13 @@ def build():
                              fill=False, linewidth=0.3, alpha=0.5)
         ax_map.add_patch(circle)
 
-    # FusionCore trail — glowing effect with two layers
+    # FusionCore trail: glowing effect with two layers
     trail_glow, = ax_map.plot([], [], color=CYAN2, linewidth=5,
                                alpha=0.15, zorder=3)
     trail,      = ax_map.plot([], [], color=CYAN, linewidth=2,
                                alpha=0.9, zorder=4, solid_capstyle='round')
 
-    # Robot dot — pulsing
+    # Robot dot: pulsing
     robot_outer, = ax_map.plot([], [], 'o', color=CYAN, markersize=18,
                                 alpha=0.2, zorder=7)
     robot_dot,   = ax_map.plot([], [], 'o', color=CYAN, markersize=8,
@@ -205,7 +205,7 @@ def build():
                                          lw=2.0, mutation_scale=15),
                                      zorder=9)
 
-    # GPS scatter — small dim orange dots
+    # GPS scatter: small dim orange dots
     gps_sc = ax_map.scatter([], [], s=12, c=ORANGE,
                              alpha=0.4, zorder=2,
                              label='Raw GPS (noise)')
@@ -235,7 +235,7 @@ def build():
                   labelcolor=WHITE, markerscale=1.3)
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PANEL 2 — Velocity waveform (top center)
+    # PANEL 2: Velocity waveform (top center)
     # ═══════════════════════════════════════════════════════════════════════════
     ax_vel = fig.add_subplot(gs[0, 3:6])
     ax_vel.set_facecolor(PANEL)
@@ -258,7 +258,7 @@ def build():
                   labelcolor=WHITE, ncol=2)
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PANEL 3 — Mahalanobis waveform (second row center)
+    # PANEL 3: Mahalanobis waveform (second row center)
     # ═══════════════════════════════════════════════════════════════════════════
     ax_mah = fig.add_subplot(gs[1, 3:6])
     ax_mah.set_facecolor(PANEL)
@@ -295,7 +295,7 @@ def build():
                            fontfamily='monospace', fontweight='bold')
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PANEL 4 — Stats (third row right)
+    # PANEL 4: Stats (third row right)
     # ═══════════════════════════════════════════════════════════════════════════
     ax_stats = fig.add_subplot(gs[2, 3:6])
     ax_stats.set_facecolor(PANEL)
@@ -326,7 +326,7 @@ def build():
         stat_vals.append(v)
 
     # ═══════════════════════════════════════════════════════════════════════════
-    # PANEL 5 — Event log (bottom right)
+    # PANEL 5: Event log (bottom right)
     # ═══════════════════════════════════════════════════════════════════════════
     ax_log = fig.add_subplot(gs[3, 3:6])
     ax_log.set_facecolor(PANEL)

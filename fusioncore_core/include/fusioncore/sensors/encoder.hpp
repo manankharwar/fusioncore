@@ -16,7 +16,7 @@ using EncoderMeasurement = Eigen::Matrix<double, ENCODER_DIM, 1>;
 using EncoderNoiseMatrix = Eigen::Matrix<double, ENCODER_DIM, ENCODER_DIM>;
 
 struct EncoderParams {
-  // Velocity noise (m/s) — depends on encoder resolution and wheel slip
+  // Velocity noise (m/s): depends on encoder resolution and wheel slip
   double vel_noise_x  = 0.05;
   double vel_noise_y  = 0.05;
 
@@ -60,7 +60,7 @@ inline GroundConstraintMeasurement ground_constraint_measurement_function(const 
   return z;
 }
 
-// Noise: 0.1 m/s — loose enough to stay numerically stable when applied
+// Noise: 0.1 m/s: loose enough to stay numerically stable when applied
 // back-to-back with the encoder update (no intermediate predict step),
 // tight enough to suppress altitude drift over time.
 inline GroundConstraintNoiseMatrix ground_constraint_noise_matrix() {

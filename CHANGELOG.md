@@ -6,33 +6,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.1.1] — 2026-04-03
+## [0.1.1]: 2026-04-03
 
 ### Fixed
-- **UKF stability** — resolved numerical instability in predict step; covariance matrix
+- **UKF stability**: resolved numerical instability in predict step; covariance matrix
   no longer diverges during long runs without sensor updates.
-- **GPS fusion** — corrected position bias introduced by incorrect ECEF→ENU origin
+- **GPS fusion**: corrected position bias introduced by incorrect ECEF→ENU origin
   anchoring; fixes steady-state position offset.
-- **Position bias** — removed residual bias accumulation in the motion model that
+- **Position bias**: removed residual bias accumulation in the motion model that
   appeared after extended straight-line travel.
-- **Eigen rosdep key** — added missing `eigen` entry to `rosdep` dependencies so
+- **Eigen rosdep key**: added missing `eigen` entry to `rosdep` dependencies so
   the buildfarm can resolve the dependency without manual intervention.
-- **Sensor dropout handling** — improved graceful degradation when IMU or GNSS
+- **Sensor dropout handling**: improved graceful degradation when IMU or GNSS
   messages stop arriving mid-run.
 
 ### Added
-- **`compass_msgs`** — moved into this repo as a first-party package; provides the
+- **`compass_msgs`**: moved into this repo as a first-party package; provides the
   `compass_msgs/Azimuth` message type for dual-antenna and magnetometer heading.
-- **Mahalanobis outlier rejection** — GPS jumps and other sensor spikes are now
+- **Mahalanobis outlier rejection**: GPS jumps and other sensor spikes are now
   gated before the UKF update step; position remains stable during brief GNSS outages.
-- **UKF numerical stability hardening** — symmetric covariance enforcement and
+- **UKF numerical stability hardening**: symmetric covariance enforcement and
   near-zero variance clamping added throughout the filter.
-- **IMU gravity model** — accelerometer measurement function now correctly accounts
+- **IMU gravity model**: accelerometer measurement function now correctly accounts
   for the gravity vector in the body frame (ENU z-up convention).
-- **Full IMU replay retrodiction** — GNSS delay compensation now replays every
+- **Full IMU replay retrodiction**: GNSS delay compensation now replays every
   buffered IMU message rather than using a single approximate `predict(dt)` call;
   handles up to 500 ms late measurements.
-- **Docs published to docs.ros.org** — all four packages (`fusioncore_core`,
+- **Docs published to docs.ros.org**: all four packages (`fusioncore_core`,
   `fusioncore_ros`, `fusioncore_gazebo`, `compass_msgs`) are now live under the
   Jazzy distribution.
 
@@ -42,7 +42,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.1.0] — initial release
+## [0.1.0]: initial release
 
 ### Added
 - UKF core: predict, update, motion model, angle normalisation (7/7 tests passing).

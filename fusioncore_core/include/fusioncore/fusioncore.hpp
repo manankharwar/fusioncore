@@ -28,16 +28,16 @@ struct FusionCoreConfig {
   // geometrically observable from GPS track alone.
   double heading_observable_distance = 5.0;
 
-  // Delay compensation — state snapshot buffer
+  // Delay compensation: state snapshot buffer
   // Mahalanobis outlier rejection
   // Rejects measurements that are statistically implausible.
   // Threshold is chi-squared percentile for the measurement dimension.
-  // 99.9th percentile recommended — rejects GPS jumps, encoder spikes.
+  // 99.9th percentile recommended: rejects GPS jumps, encoder spikes.
   bool   outlier_rejection       = true;
-  double outlier_threshold_gnss  = 16.27;  // chi2(3, 0.999) — 3D position
-  double outlier_threshold_imu   = 15.09;  // chi2(6, 0.999) — 6D IMU
-  double outlier_threshold_enc   = 11.34;  // chi2(3, 0.999) — 3D encoder
-  double outlier_threshold_hdg   = 10.83;  // chi2(1, 0.999) — 1D heading
+  double outlier_threshold_gnss  = 16.27;  // chi2(3, 0.999): 3D position
+  double outlier_threshold_imu   = 15.09;  // chi2(6, 0.999): 6D IMU
+  double outlier_threshold_enc   = 11.34;  // chi2(3, 0.999): 3D encoder
+  double outlier_threshold_hdg   = 10.83;  // chi2(1, 0.999): 1D heading
 
   // Adaptive noise covariance
   // Whether to enable adaptive R estimation for each sensor
@@ -48,7 +48,7 @@ struct FusionCoreConfig {
   // Sliding window size for innovation tracking (number of updates)
   int adaptive_window = 50;
 
-  // Learning rate — how fast R adapts to estimated noise (0.0 = off, 0.1 = fast)
+  // Learning rate: how fast R adapts to estimated noise (0.0 = off, 0.1 = fast)
   double adaptive_alpha = 0.01;
 
   // Max delay to compensate for (seconds). GNSS is typically 100-300ms late.
@@ -69,17 +69,17 @@ struct FusionCoreConfig {
   double zupt_noise_sigma = 0.01;
 
   // Does the IMU have a magnetometer (9-axis)?
-  // true  — IMU orientation includes magnetically-referenced yaw (BNO08x,
+  // true : IMU orientation includes magnetically-referenced yaw (BNO08x,
   //         VectorNav, Xsens). Orientation update validates heading.
-  // false — IMU is 6-axis only. Yaw is integrated gyro and drifts.
+  // false: IMU is 6-axis only. Yaw is integrated gyro and drifts.
   //         Orientation update validates roll/pitch ONLY, not heading.
   //         Lever arm will not activate from IMU orientation alone.
   bool imu_has_magnetometer = false;
 };
 
-// How heading was validated — tracked per filter run
+// How heading was validated: tracked per filter run
 enum class HeadingSource {
-  NONE           = 0,  // no independent heading — lever arm disabled
+  NONE           = 0,  // no independent heading: lever arm disabled
   DUAL_ANTENNA   = 1,  // dual GNSS antenna heading received
   IMU_ORIENTATION = 2, // AHRS/IMU published full orientation
   GPS_TRACK      = 3,  // robot moved enough for heading to be geometric
@@ -99,12 +99,12 @@ struct FusionCoreStatus {
   double       position_uncertainty = 0.0;
   int          update_count         = 0;
 
-  // Heading observability — the real fix for peci1's concern
+  // Heading observability: the real fix for peci1's concern
   bool          heading_validated   = false;
   HeadingSource heading_source      = HeadingSource::NONE;
   double        distance_traveled   = 0.0;  // meters since init
 
-  // Outlier rejection counters — cumulative since init()
+  // Outlier rejection counters: cumulative since init()
   int gnss_outliers = 0;
   int imu_outliers  = 0;
   int enc_outliers  = 0;
@@ -124,7 +124,7 @@ public:
     double ax, double ay, double az
   );
 
-  // IMU orientation update — for IMUs that publish full orientation
+  // IMU orientation update: for IMUs that publish full orientation
   // (BNO08x, VectorNav, Xsens, etc.)
   // Calling this validates heading via HeadingSource::IMU_ORIENTATION
   void update_imu_orientation(
@@ -144,21 +144,21 @@ public:
     double var_wz = -1.0
   );
 
-  // GNSS position update — ENU frame
+  // GNSS position update: ENU frame
   bool update_gnss(
     double timestamp_seconds,
     const sensors::GnssFix& fix
   );
 
-  // Non-holonomic ground constraint — fuses VZ=0 as a pseudo-measurement.
+  // Non-holonomic ground constraint: fuses VZ=0 as a pseudo-measurement.
   // Call this every encoder update to prevent altitude drift in the UKF.
   // Only applies to wheeled ground robots; do not call for aerial vehicles.
   void update_ground_constraint(double timestamp_seconds);
 
-  // Zero-velocity update (ZUPT) — fuses [VX=0, VY=0, WZ=0] with tight noise
+  // Zero-velocity update (ZUPT): fuses [VX=0, VY=0, WZ=0] with tight noise
   // when the robot is stationary. Prevents IMU drift from corrupting velocity
   // states during standstill. Call this when encoder velocity is near zero.
-  // noise_sigma: velocity uncertainty in m/s (default 0.01 — very tight)
+  // noise_sigma: velocity uncertainty in m/s (default 0.01: very tight)
   void update_zupt(double timestamp_seconds, double noise_sigma = 0.01);
 
   // GNSS dual antenna heading update
@@ -191,7 +191,7 @@ private:
   // Estimates actual noise from innovation sequence.
   // Slowly adjusts R toward estimated value.
 
-  // Generic innovation window — stores squared innovations per dimension
+  // Generic innovation window: stores squared innovations per dimension
   template <int z_dim>
   struct InnovationWindow {
     using ZMatrix = Eigen::Matrix<double, z_dim, z_dim>;
@@ -209,7 +209,7 @@ private:
     // Estimate covariance from innovation window.
     // Uses the sample covariance (mean-subtracted), not the autocorrelation.
     // In a well-tuned filter innovations are zero-mean, but during startup
-    // or model mismatch the mean can be nonzero — subtracting it prevents
+    // or model mismatch the mean can be nonzero: subtracting it prevents
     // R from being inflated by a squared bias term.
     ZMatrix estimate_covariance() const {
       // Compute sample mean
@@ -233,7 +233,7 @@ private:
   InnovationWindow<sensors::GNSS_POS_DIM>         gnss_innovations_;
   InnovationWindow<sensors::IMU_ORIENTATION_DIM>  imu_orient_innovations_;
 
-  // Current adaptive R estimates — start at config values, drift toward truth
+  // Current adaptive R estimates: start at config values, drift toward truth
   sensors::ImuNoiseMatrix             R_imu_;
   sensors::EncoderNoiseMatrix         R_encoder_;
   sensors::GnssPosNoiseMatrix         R_gnss_;
@@ -241,7 +241,7 @@ private:
 
   bool adaptive_initialized_ = false;
 
-  // Outlier rejection counters — for status reporting
+  // Outlier rejection counters: for status reporting
   int gnss_outliers_   = 0;
   int imu_outliers_    = 0;
   int enc_outliers_    = 0;

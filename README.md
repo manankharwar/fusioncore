@@ -311,7 +311,7 @@ FusionCore uses [PROJ](https://proj.org/) to convert incoming GNSS fixes between
     reference.z: 0.0
 ```
 
-**Agricultural RTK example** — receiver outputs UTM zone 17N (easting/northing) directly:
+**Agricultural RTK example**: receiver outputs UTM zone 17N (easting/northing) directly:
 ```yaml
     input.gnss_crs: "EPSG:32617"
     output.crs: "EPSG:32617"
@@ -518,7 +518,7 @@ fusioncore/
 
 - **Filter:** Unscented Kalman Filter, 43 sigma points
 - **State vector:** 21-dimensional: position (x,y,z), orientation (roll,pitch,yaw), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z)
-- **GPS coordinate system:** Configurable via PROJ — default ECEF (EPSG:4978, globally valid); supports any PROJ-compatible input CRS including UTM zones
+- **GPS coordinate system:** Configurable via PROJ: default ECEF (EPSG:4978, globally valid); supports any PROJ-compatible input CRS including UTM zones
 - **Bias estimation:** Continuous online estimation, no calibration required
 - **GPS quality scaling:** Noise covariance scaled by HDOP/VDOP, or full 3x3 message covariance when available
 - **Outlier rejection:** Mahalanobis chi-squared gating at 99.9th percentile per sensor dimension

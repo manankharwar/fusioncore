@@ -53,7 +53,7 @@ public:
 
     declare_parameter("imu.gyro_noise",  0.005);
     // Set to true if IMU has a magnetometer (9-axis: BNO08x, VectorNav, Xsens)
-    // Set to false for 6-axis IMUs — yaw from gyro integration drifts
+    // Set to false for 6-axis IMUs: yaw from gyro integration drifts
     declare_parameter("imu.has_magnetometer", false);
     declare_parameter("imu.accel_noise", 0.1);
 
@@ -70,24 +70,24 @@ public:
     // RTK_FLOAT (3) is unreachable via NavSatFix alone.
     declare_parameter("gnss.min_fix_type",  1);
 
-    // Topic for dual antenna heading — sensor_msgs/Imu used as heading carrier.
+    // Topic for dual antenna heading: sensor_msgs/Imu used as heading carrier.
     // The yaw component of orientation is the heading.
     // Set to empty string to disable dual antenna heading.
     declare_parameter("gnss.heading_topic", "/gnss/heading");
 
-    // Optional second GNSS receiver topic — set to empty string to disable
+    // Optional second GNSS receiver topic: set to empty string to disable
     declare_parameter("gnss.fix2_topic", "");
 
-    // compass_msgs/Azimuth heading topic — peci1 standard
+    // compass_msgs/Azimuth heading topic: peci1 standard
     // Set to empty string to disable (use sensor_msgs/Imu heading instead)
     declare_parameter("gnss.azimuth_topic", "");
 
-    // Antenna lever arm params — primary receiver
+    // Antenna lever arm params: primary receiver
     declare_parameter("gnss.lever_arm_x", 0.0);
     declare_parameter("gnss.lever_arm_y", 0.0);
     declare_parameter("gnss.lever_arm_z", 0.0);
 
-    // Antenna lever arm params — secondary receiver (gnss.fix2_topic)
+    // Antenna lever arm params: secondary receiver (gnss.fix2_topic)
     // Leave at 0.0 if second antenna is at the same position as the first,
     // or if fix2_topic is not used.
     declare_parameter("gnss.lever_arm2_x", 0.0);
@@ -128,7 +128,7 @@ public:
     declare_parameter("zupt.enabled",            true);
     declare_parameter("zupt.velocity_threshold", 0.05);  // m/s
     declare_parameter("zupt.angular_threshold",  0.05);  // rad/s
-    declare_parameter("zupt.noise_sigma",        0.01);  // m/s — tight
+    declare_parameter("zupt.noise_sigma",        0.01);  // m/s: tight
 
     declare_parameter("ukf.q_position",     0.01);
     declare_parameter("ukf.q_orientation",  0.01);
@@ -255,7 +255,7 @@ public:
       "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
 
-    // TF validation — check transforms exist before starting
+    // TF validation: check transforms exist before starting
     rclcpp::sleep_for(std::chrono::milliseconds(500));
     validate_transforms();
 
@@ -299,7 +299,7 @@ public:
         gnss_callback(msg, 0);
       }, sensor_opts);
 
-    // compass_msgs/Azimuth heading — optional, preferred over sensor_msgs/Imu
+    // compass_msgs/Azimuth heading: optional, preferred over sensor_msgs/Imu
     if (!azimuth_topic_.empty()) {
       azimuth_sub_ = create_subscription<compass_msgs::msg::Azimuth>(
         azimuth_topic_, 10,
@@ -311,7 +311,7 @@ public:
         "compass_msgs/Azimuth heading enabled on topic: %s", azimuth_topic_.c_str());
     }
 
-    // Second GNSS receiver — optional
+    // Second GNSS receiver: optional
     if (!gnss2_topic_.empty()) {
       gnss2_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
         gnss2_topic_, 10,
@@ -323,7 +323,7 @@ public:
         "Second GNSS receiver enabled on topic: %s", gnss2_topic_.c_str());
     }
 
-    // Dual antenna heading subscriber — only if topic is configured
+    // Dual antenna heading subscriber: only if topic is configured
     // Expects sensor_msgs/Imu where orientation.z/w gives the yaw heading.
     // This is the standard way dual antenna GPS receivers report heading in ROS.
     if (!heading_topic_.empty()) {
@@ -347,13 +347,13 @@ public:
       [this]() { publish_state(); },
       publish_cb_group_);
 
-    // Diagnostics at 1 Hz — standard ROS convention
+    // Diagnostics at 1 Hz: standard ROS convention
     diag_timer_ = create_wall_timer(
       std::chrono::seconds(1),
       [this]() { publish_diagnostics(); },
       publish_cb_group_);
 
-    // Reset service — re-initializes the filter without restarting the node.
+    // Reset service: re-initializes the filter without restarting the node.
     // Useful after GPS jumps, teleportation in simulation, or catastrophic drift.
     reset_srv_ = create_service<std_srvs::srv::Trigger>(
       "~/reset",
@@ -438,7 +438,7 @@ private:
       } else {
         RCLCPP_WARN(get_logger(), "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 %s %s",
           from.c_str(), to.c_str(), to.c_str(), from.c_str());
-        all_ok = false;  // Fix 1: was never set — function always returned true
+        all_ok = false;  // Fix 1: was never set: function always returned true
       }
     }
 
@@ -491,7 +491,7 @@ private:
     }
   }
 
-  // ─── IMU callback — with frame transform ──────────────────────────────────
+  // ─── IMU callback: with frame transform ──────────────────────────────────
 
   void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
@@ -504,7 +504,7 @@ private:
       fusioncore::State initial;
       initial.x = fusioncore::StateVector::Zero();
       initial.P = fusioncore::StateMatrix::Identity() * 0.1;
-      initial.P(0,0) = 1000.0;  // large position uncertainty — accept first GPS
+      initial.P(0,0) = 1000.0;  // large position uncertainty: accept first GPS
       initial.P(1,1) = 1000.0;
       initial.P(2,2) = 1000.0;
       fc_->init(initial, t);
@@ -525,7 +525,7 @@ private:
         msg->linear_acceleration.x,
         msg->linear_acceleration.y,
         msg->linear_acceleration.z);
-      // No frame rotation needed — IMU is already in base_frame
+      // No frame rotation needed: IMU is already in base_frame
       fuse_imu_orientation_if_valid(t, msg, std::nullopt);
       return;
     }
@@ -588,7 +588,7 @@ private:
     // orientation_covariance[0] == -1 means "no orientation data"
     if (msg->orientation_covariance[0] < 0.0) return;
 
-    // All zeros also means unknown — skip
+    // All zeros also means unknown: skip
     bool has_orientation = false;
     for (int i = 0; i < 9; ++i) {
       if (msg->orientation_covariance[i] != 0.0) {
@@ -683,7 +683,7 @@ private:
       gnss_ref_set_ = true;
       RCLCPP_INFO(get_logger(), "GNSS reference set: lat=%.6f lon=%.6f",
         msg->latitude, msg->longitude);
-      // Do NOT return — fall through and fuse ENU [0,0,0] as first fix.
+      // Do NOT return: fall through and fuse ENU [0,0,0] as first fix.
     }
 
     // Pre-filter: drop fixes more than 10km from the reference origin.
@@ -734,9 +734,9 @@ private:
     //   0 = unknown
     //   1 = approximated (diagonal only)
     //   2 = diagonal known
-    //   3 = full matrix known — use off-diagonal elements too
+    //   3 = full matrix known: use off-diagonal elements too
     if (msg->position_covariance_type == 3) {
-      // Full 3x3 covariance available — use it directly including off-diagonals
+      // Full 3x3 covariance available: use it directly including off-diagonals
       Eigen::Matrix3d cov;
       for (int i = 0; i < 3; ++i)
         for (int j = 0; j < 3; ++j)
@@ -748,7 +748,7 @@ private:
         fix.full_covariance = cov;
         fix.hdop = std::sqrt(cov(0,0));  // for validity check
         fix.vdop = std::sqrt(cov(2,2));
-        fix.satellites = 4;  // Fix 10: honest minimum — was hardcoded 6, always passed quality gate
+        fix.satellites = 4;  // Fix 10: honest minimum: was hardcoded 6, always passed quality gate
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
@@ -768,7 +768,7 @@ private:
         fix.satellites = 4;  // Fix 10
       }
     } else {
-      // Unknown covariance — use config defaults
+      // Unknown covariance: use config defaults
       fix.hdop = 1.5;
       fix.vdop = 2.0;
       fix.satellites = 4;  // Fix 10
@@ -788,7 +788,7 @@ private:
     auto fc_status = fc_->get_status();
     if (!fc_status.heading_validated) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
-        "Heading not yet validated — lever arm inactive. "
+        "Heading not yet validated: lever arm inactive. "
         "Distance traveled: %.1fm (need %.1fm), or provide dual antenna / IMU orientation.",
         fc_status.distance_traveled,
         5.0);
@@ -813,7 +813,7 @@ private:
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
-    // Check orientation covariance — if all zeros the orientation is invalid
+    // Check orientation covariance: if all zeros the orientation is invalid
     bool orientation_valid = false;
     for (int i = 0; i < 9; ++i) {
       if (msg->orientation_covariance[i] != 0.0) {
@@ -879,8 +879,8 @@ private:
     }
 
     // Convert to ENU yaw if needed
-    // ENU: 0 = east, increases CCW — matches ROS REP-103
-    // NED: 0 = north, increases CW — needs conversion
+    // ENU: 0 = east, increases CCW: matches ROS REP-103
+    // NED: 0 = north, increases CW: needs conversion
     double yaw_enu;
     if (msg->orientation == compass_msgs::msg::Azimuth::ORIENTATION_NED) {
       // NED azimuth to ENU yaw: yaw_enu = pi/2 - azimuth_ned
@@ -901,7 +901,7 @@ private:
     heading.valid        = true;
 
     // Note magnetic vs geographic north
-    // Geographic is preferred — magnetic has declination error
+    // Geographic is preferred: magnetic has declination error
     if (msg->reference == compass_msgs::msg::Azimuth::REFERENCE_MAGNETIC) {
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 30000,
         "compass_msgs/Azimuth uses MAGNETIC north reference. "
@@ -975,7 +975,7 @@ private:
 
     odom_pub_->publish(odom);
 
-    // Also publish PoseWithCovarianceStamped — expected by AMCL, slam_toolbox,
+    // Also publish PoseWithCovarianceStamped: expected by AMCL, slam_toolbox,
     // Nav2 pose initializer, and many visualization tools.
     geometry_msgs::msg::PoseWithCovarianceStamped pose_msg;
     pose_msg.header = odom.header;
@@ -1045,7 +1045,7 @@ private:
     auto health_to_str = [](fusioncore::SensorHealth h) -> std::string {
       switch (h) {
         case fusioncore::SensorHealth::OK:       return "OK";
-        case fusioncore::SensorHealth::STALE:    return "STALE — no recent data";
+        case fusioncore::SensorHealth::STALE:    return "STALE: no recent data";
         case fusioncore::SensorHealth::NOT_INIT: return "Not yet initialized";
       }
       return "Unknown";
@@ -1073,7 +1073,7 @@ private:
     // Filter
     auto heading_src_str = [](fusioncore::HeadingSource src) -> std::string {
       switch (src) {
-        case fusioncore::HeadingSource::NONE:            return "NONE — lever arm inactive";
+        case fusioncore::HeadingSource::NONE:            return "NONE: lever arm inactive";
         case fusioncore::HeadingSource::DUAL_ANTENNA:    return "DUAL_ANTENNA";
         case fusioncore::HeadingSource::IMU_ORIENTATION: return "IMU_ORIENTATION (9-axis)";
         case fusioncore::HeadingSource::GPS_TRACK:       return "GPS_TRACK";
@@ -1085,7 +1085,7 @@ private:
     std::string filter_msg = "Running";
     if (!status.heading_validated) {
       filter_level = diagnostic_msgs::msg::DiagnosticStatus::WARN;
-      filter_msg   = "Heading not validated — lever arm inactive";
+      filter_msg   = "Heading not validated: lever arm inactive";
     }
 
     diag_array.status.push_back(make_status("Filter",
@@ -1254,7 +1254,7 @@ int main(int argc, char ** argv)
   rclcpp::init(argc, argv);
   auto node = std::make_shared<FusionNode>();
   // Two threads: one serves the sensor callback group (IMU/GPS/encoder),
-  // the other serves the publish timer group — so the 100 Hz publish never
+  // the other serves the publish timer group: so the 100 Hz publish never
   // stalls waiting for a sensor update to finish.
   rclcpp::executors::MultiThreadedExecutor executor(rclcpp::ExecutorOptions(), 2);
   executor.add_node(node->get_node_base_interface());

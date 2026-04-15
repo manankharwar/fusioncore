@@ -53,9 +53,9 @@ TEST(GNSSManagerTest, GoodFixIsAccepted) {
 TEST(GNSSManagerTest, GNSSCorrectsDriftedPosition) {
   FusionCore fc;
 
-  // Start at 5m from the GNSS fix — realistic drift, within Mahalanobis bounds.
+  // Start at 5m from the GNSS fix: realistic drift, within Mahalanobis bounds.
   // (A 99m error would be correctly rejected as a statistical outlier by the
-  // chi-squared gate. That is working as intended — outlier rejection guards
+  // chi-squared gate. That is working as intended: outlier rejection guards
   // against GPS jumps, not against bad initial conditions. Initialize from GPS.)
   State initial;
   initial.x     = StateVector::Zero();
@@ -122,7 +122,7 @@ TEST(GNSSManagerTest, InvalidHeadingRejected) {
 
 // ─── Test 6: Stefan's full configuration ─────────────────────────────────────
 // GNSS + IMU + encoders, outdoor wheeled robot, 10 seconds
-// GNSS corrects position drift — this is what Stefan needed
+// GNSS corrects position drift: this is what Stefan needed
 
 TEST(GNSSManagerTest, StefanFullConfigurationWithGNSSCorrection) {
   FusionCoreConfig config;
@@ -151,7 +151,7 @@ TEST(GNSSManagerTest, StefanFullConfigurationWithGNSSCorrection) {
   for (int i = 1; i <= 1000; ++i) {
     double t = i * 0.01;
 
-    // IMU @ 100Hz — flat robot driving forward, send gravity on az.
+    // IMU @ 100Hz: flat robot driving forward, send gravity on az.
     fc.update_imu(t, 0,0,0, 0,0,9.81);
 
     // Encoder @ 50Hz

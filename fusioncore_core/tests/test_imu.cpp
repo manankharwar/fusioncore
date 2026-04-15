@@ -62,7 +62,7 @@ TEST(IMUTest, NoiseMatrixIsDiagonalAndPositive) {
   }
 }
 
-// ─── Test 4: UKF fuses IMU — total signal (WZ + B_GZ) matches measurement ────
+// ─── Test 4: UKF fuses IMU: total signal (WZ + B_GZ) matches measurement ────
 // Observability note: IMU alone measures WZ + B_GZ, it cannot separate them.
 // That separation happens when motion changes (encoder + IMU together).
 // What we CAN verify: after fusion, the predicted measurement matches reality.

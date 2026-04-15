@@ -55,7 +55,7 @@ inline ImuNoiseMatrix imu_noise_matrix(const ImuParams& p) {
 
 // ─── IMU orientation measurement (3-dimensional) ─────────────────────────────
 // Some IMUs (BNO08x, VectorNav, Xsens) publish a full orientation estimate
-// directly as a quaternion — not just raw gyro/accel.
+// directly as a quaternion: not just raw gyro/accel.
 // peci1 fix: accept orientation as a direct measurement input.
 //
 // Measurement vector: [roll, pitch, yaw] in radians
@@ -66,9 +66,9 @@ using ImuOrientationMeasurement = Eigen::Matrix<double, IMU_ORIENTATION_DIM, 1>;
 using ImuOrientationNoiseMatrix = Eigen::Matrix<double, IMU_ORIENTATION_DIM, IMU_ORIENTATION_DIM>;
 
 struct ImuOrientationParams {
-  double roll_noise  = 0.01;  // rad — typical for a good AHRS
+  double roll_noise  = 0.01;  // rad: typical for a good AHRS
   double pitch_noise = 0.01;  // rad
-  double yaw_noise   = 0.05;  // rad — yaw is always less accurate without magnetometer
+  double yaw_noise   = 0.05;  // rad: yaw is always less accurate without magnetometer
 };
 
 // h(x): state -> expected orientation measurement

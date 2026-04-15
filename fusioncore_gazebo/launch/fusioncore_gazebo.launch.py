@@ -15,14 +15,14 @@ def generate_launch_description():
     config  = os.path.join(gz_pkg, "config",  "fusioncore_gazebo.yaml")
     model_path = os.path.join(gz_pkg, "models")
 
-    # 1 — Gazebo
+    # 1: Gazebo
     gazebo = ExecuteProcess(
         cmd=["gz", "sim", "-r", world],
         additional_env={"GZ_SIM_RESOURCE_PATH": model_path},
         output="screen"
     )
 
-    # 2 — ROS-Gazebo bridge
+    # 2: ROS-Gazebo bridge
     # override_timestamps_with_wall_time: true is the key fix.
     # It stamps all bridged messages with wall clock time so FusionCore's
     # wall clock filter and Gazebo's sim time never mismatch.
@@ -48,7 +48,7 @@ def generate_launch_description():
         ]
     )
 
-    # 3 — Static TF: imu_link -> base_link
+    # 3: Static TF: imu_link -> base_link
     imu_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -58,7 +58,7 @@ def generate_launch_description():
                    "--frame-id", "base_link", "--child-frame-id", "imu_link"]
     )
 
-    # 3b — Static TF for Gazebo's namespaced IMU frame
+    # 3b: Static TF for Gazebo's namespaced IMU frame
     # Gazebo Harmonic publishes IMU with frame_id fusioncore_robot/imu_link/imu_sensor
     # alongside the clean imu_link frame. This TF entry covers both.
     imu_tf_gz = Node(
@@ -71,7 +71,7 @@ def generate_launch_description():
                    "--child-frame-id", "fusioncore_robot/imu_link/imu_sensor"]
     )
 
-    # 4 — Static TF: base_link -> odom (identity at start)
+    # 4: Static TF: base_link -> odom (identity at start)
     odom_tf = Node(
         package="tf2_ros",
         executable="static_transform_publisher",
@@ -81,7 +81,7 @@ def generate_launch_description():
                    "--frame-id", "odom", "--child-frame-id", "base_link"]
     )
 
-    # 5 — FusionCore lifecycle node
+    # 5: FusionCore lifecycle node
     fusioncore_node = LifecycleNode(
         package="fusioncore_ros",
         executable="fusioncore_node",
@@ -91,7 +91,7 @@ def generate_launch_description():
         parameters=[config],
     )
 
-    # 6 — Configure FusionCore via the launch system's internal event bus.
+    # 6: Configure FusionCore via the launch system's internal event bus.
     # EmitEvent+ChangeState talks directly to the LifecycleNode action without
     # going through DDS, so it works even when 'ros2 lifecycle set' can't
     # discover the node (the root cause of "Node not found" on WSL2).
@@ -105,7 +105,7 @@ def generate_launch_description():
         ]
     )
 
-    # 7 — Activate FusionCore once it reaches the 'inactive' state.
+    # 7: Activate FusionCore once it reaches the 'inactive' state.
     # Event-driven: fires immediately after configure succeeds.
     activate_cmd = RegisterEventHandler(
         OnStateTransition(
@@ -121,7 +121,7 @@ def generate_launch_description():
         )
     )
 
-    # GPS publisher — converts ground truth odom to NavSatFix
+    # GPS publisher: converts ground truth odom to NavSatFix
     # Replaces broken Gazebo NavSat sensor (gz-sim issue #2163)
     gps_pub = Node(
         package="fusioncore_gazebo",

@@ -15,7 +15,7 @@ namespace fusioncore {
 
 constexpr int STATE_DIM = 21;
 
-// State indices — use these everywhere, never raw numbers
+// State indices: use these everywhere, never raw numbers
 enum StateIndex {
   X = 0, Y = 1, Z = 2,
   ROLL = 3, PITCH = 4, YAW = 5,

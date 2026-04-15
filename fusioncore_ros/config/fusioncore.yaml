@@ -23,14 +23,14 @@ fusioncore:
     # Use 4 to require RTK_FIXED, 2 to require any augmented fix.
     gnss.min_fix_type: 1
 
-    # Antenna lever arm — offset from base_link to primary GNSS antenna in body frame
+    # Antenna lever arm: offset from base_link to primary GNSS antenna in body frame
     # x=forward, y=left, z=up (meters)
     # Leave at 0.0 if antenna is directly above base_link origin
     gnss.lever_arm_x: 0.0
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
 
-    # Optional second GNSS receiver — leave empty to disable
+    # Optional second GNSS receiver: leave empty to disable
     gnss.fix2_topic: ""
 
     # Lever arm for the secondary GNSS receiver (fix2_topic).
@@ -58,9 +58,9 @@ fusioncore:
     # the robot is considered stationary and velocity is fused to zero.
     # This suppresses IMU drift during standstill.
     zupt.enabled: true
-    zupt.velocity_threshold: 0.05   # m/s — below this = stationary
-    zupt.angular_threshold: 0.05    # rad/s — below this = not rotating
-    zupt.noise_sigma: 0.01          # m/s — tighter = stronger correction
+    zupt.velocity_threshold: 0.05   # m/s: below this = stationary
+    zupt.angular_threshold: 0.05    # rad/s: below this = not rotating
+    zupt.noise_sigma: 0.01          # m/s: tighter = stronger correction
 
     # Adaptive noise covariance
     # Automatically estimates true sensor noise from innovation sequence
@@ -81,7 +81,7 @@ fusioncore:
 
     # PROJ coordinate reference system
     # input.gnss_crs: CRS of incoming NavSatFix messages
-    #   EPSG:4326 = WGS84 lat/lon (standard GPS — use this for almost all receivers)
+    #   EPSG:4326 = WGS84 lat/lon (standard GPS: use this for almost all receivers)
     #   EPSG:32617 = UTM zone 17N (example for agricultural RTK receivers in Ontario)
     # output.crs: internal computation CRS
     #   EPSG:4978 = ECEF XYZ (default, globally valid)

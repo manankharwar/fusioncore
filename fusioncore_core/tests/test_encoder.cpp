@@ -24,14 +24,14 @@ TEST(EncoderTest, MeasurementFunctionMapsState) {
 }
 
 // ─── Test 2: Encoder yaw rate maps directly to WZ (no gyro bias subtraction) ─
-// Encoders are wheel-based — they have no gyro bias. The gyro bias state B_GZ
+// Encoders are wheel-based: they have no gyro bias. The gyro bias state B_GZ
 // belongs only in the IMU measurement function. Subtracting B_GZ here would
 // incorrectly couple encoder updates to the gyro bias estimate.
 
 TEST(EncoderTest, EncoderYawRateMapsDirectlyToWZ) {
   StateVector x = StateVector::Zero();
   x[WZ]   = 0.5;    // angular velocity state
-  x[B_GZ] = 0.1;    // gyro bias — should NOT affect encoder measurement
+  x[B_GZ] = 0.1;    // gyro bias: should NOT affect encoder measurement
 
   EncoderMeasurement z = encoder_measurement_function(x);
 
@@ -62,7 +62,7 @@ TEST(EncoderTest, EncoderUpdateCorrectVelocity) {
 
   State initial;
   initial.x     = StateVector::Zero();
-  initial.x[VX] = 5.0;   // wrong — think we're going 5 m/s
+  initial.x[VX] = 5.0;   // wrong: think we're going 5 m/s
   initial.P     = StateMatrix::Identity() * 1.0;
 
   ukf.init(initial);
@@ -83,10 +83,10 @@ TEST(EncoderTest, EncoderUpdateCorrectVelocity) {
 }
 
 // ─── Test 5: IMU + encoder together break bias/velocity coupling ─────────────
-// This is the key test — the moment FusionCore does something no single sensor can.
+// This is the key test: the moment FusionCore does something no single sensor can.
 // IMU alone: cannot separate WZ from B_GZ (observability problem)
 // Encoder alone: gives WZ - B_GZ (independent velocity reference)
-// Together: the coupling breaks — filter estimates both correctly
+// Together: the coupling breaks: filter estimates both correctly
 
 TEST(EncoderTest, IMUAndEncoderTogetherEstimateBias) {
   UKFParams ukf_params;
@@ -96,7 +96,7 @@ TEST(EncoderTest, IMUAndEncoderTogetherEstimateBias) {
 
   State initial;
   initial.x       = StateVector::Zero();
-  initial.x[B_GZ] = 0.1;   // wrong bias — reality has zero bias
+  initial.x[B_GZ] = 0.1;   // wrong bias: reality has zero bias
   initial.P       = StateMatrix::Identity() * 0.1;
 
   ukf.init(initial);

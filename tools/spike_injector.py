@@ -15,7 +15,7 @@ import termios
 import tty
 import time
 
-# GPS origin (Hamilton ON — matches simulation)
+# GPS origin (Hamilton ON: matches simulation)
 ORIGIN_LAT = 43.2557
 ORIGIN_LON = -79.8711
 SPIKE_METERS = 500.0  # how far to inject the spike
@@ -50,7 +50,7 @@ class SpikeInjector(Node):
         for _ in range(3):
             self.pub.publish(msg)
             time.sleep(0.05)
-        print(f'\033[91m[SPIKE INJECTED] +{SPIKE_METERS}m north — watch FusionCore reject it!\033[0m')
+        print(f'\033[91m[SPIKE INJECTED] +{SPIKE_METERS}m north: watch FusionCore reject it!\033[0m')
 
 def get_key():
     fd = sys.stdin.fileno()

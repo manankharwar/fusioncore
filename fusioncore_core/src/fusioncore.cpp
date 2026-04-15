@@ -16,7 +16,7 @@ bool FusionCore::is_outlier(
   double threshold) const
 {
   // Mahalanobis distance squared: d² = νᵀ · S⁻¹ · ν
-  // Use LDLT decomposition — numerically stable when S is near-singular.
+  // Use LDLT decomposition: numerically stable when S is near-singular.
   double d2 = innovation.dot(S.ldlt().solve(innovation));
   return d2 > threshold;
 }
@@ -69,7 +69,7 @@ void FusionCore::adapt_R(
   // R_(k+1) = (1 - alpha) * R_k + alpha * C_hat
   R = (1.0 - config_.adaptive_alpha) * R + config_.adaptive_alpha * C_hat;
 
-  // Guard: diagonal must stay positive — clip to small minimum
+  // Guard: diagonal must stay positive: clip to small minimum
   for (int i = 0; i < z_dim; ++i) {
     if (R(i,i) < 1e-9) R(i,i) = 1e-9;
   }
@@ -149,16 +149,16 @@ bool FusionCore::apply_delayed_measurement(
 
   double delay = last_timestamp_ - measurement_timestamp;
 
-  // Too old — drop it
+  // Too old: drop it
   if (delay > config_.max_measurement_delay) return false;
 
-  // Not actually delayed — apply normally
+  // Not actually delayed: apply normally
   if (delay <= 0.0) {
     apply_fn();
     return true;
   }
 
-  // Fix 7: copy snapshot by value — raw pointer into std::deque is invalidated
+  // Fix 7: copy snapshot by value: raw pointer into std::deque is invalidated
   // by any push_back/pop_front between pointer capture and use.
   StateSnapshot best_snap;
   bool found = false;
@@ -236,13 +236,13 @@ void FusionCore::predict_to(double timestamp_seconds) {
   if (dt > config_.max_dt) {
     // Gap too large for a single step (sensor dropout, startup lag, etc.).
     // Step through in max_dt chunks so P accumulates Q proportionally to the
-    // actual elapsed time — keeps uncertainty calibrated over long dropouts.
+    // actual elapsed time: keeps uncertainty calibrated over long dropouts.
     double t = last_timestamp_;
     while (t + config_.max_dt < timestamp_seconds) {
       ukf_.predict(config_.max_dt);
       t += config_.max_dt;
     }
-    // Fix 4: predict the remaining partial chunk — state was only propagated to t, not timestamp_seconds
+    // Fix 4: predict the remaining partial chunk: state was only propagated to t, not timestamp_seconds
     double dt_remaining = timestamp_seconds - t;
     if (dt_remaining > config_.min_dt) {
       ukf_.predict(dt_remaining);
@@ -266,7 +266,7 @@ void FusionCore::update_distance_traveled(double x, double y, double pre_update_
   double dy = y - last_gnss_y_;
   double dist = std::sqrt(dx*dx + dy*dy);
 
-  // Minimum step size to filter GPS jitter — ignore sub-centimeter moves
+  // Minimum step size to filter GPS jitter: ignore sub-centimeter moves
   // This prevents GPS noise from accumulating fake distance
   const double MIN_STEP = 0.05;  // 5cm
   if (dist < MIN_STEP) return;
@@ -283,7 +283,7 @@ void FusionCore::update_distance_traveled(double x, double y, double pre_update_
   // Below this threshold: could be GPS jitter, spinning in place, or sliding
   const double MIN_SPEED = 0.2;  // m/s
 
-  // Maximum yaw rate — if spinning fast, heading is not observable from track
+  // Maximum yaw rate: if spinning fast, heading is not observable from track
   const double MAX_YAW_RATE = 0.3;  // rad/s (~17 deg/s)
   double yaw_rate = std::abs(ukf_.state().x[WZ]);
 
@@ -379,7 +379,7 @@ void FusionCore::update_imu_orientation(
     R = adaptive_initialized_ ? R_imu_orient_ : sensors::imu_orientation_noise_matrix(fallback);
   }
 
-  // Without a magnetometer, the IMU yaw is just integrated gyro drift —
+  // Without a magnetometer, the IMU yaw is just integrated gyro drift:
   // not a real heading reference.  Set yaw noise to effectively infinite
   // so the UKF update has near-zero gain on yaw, preserving roll/pitch.
   if (!config_.imu_has_magnetometer) {
@@ -399,7 +399,7 @@ void FusionCore::update_imu_orientation(
     }
   }
 
-  // Dimension 2 (yaw) is an angle — wrap z_diff across ±π boundary
+  // Dimension 2 (yaw) is an angle: wrap z_diff across ±π boundary
   constexpr unsigned int IMU_ORIENT_ANGLE_DIMS = 0b100;  // bit 2 = yaw
   auto imu_orient_innovation = ukf_.update<sensors::IMU_ORIENTATION_DIM>(
     z, sensors::imu_orientation_measurement_function, R, IMU_ORIENT_ANGLE_DIMS);
@@ -409,7 +409,7 @@ void FusionCore::update_imu_orientation(
     R_imu_orient_, imu_orient_innovations_, imu_orient_innovation, config_.adaptive_imu);
 
   // IMU orientation validates heading ONLY if the IMU has a magnetometer.
-  // 6-axis IMUs integrate gyro for yaw — this drifts and is not a valid
+  // 6-axis IMUs integrate gyro for yaw: this drifts and is not a valid
   // heading reference. 9-axis IMUs with magnetometer give true heading.
   // peci1 fix: don't blindly trust IMU orientation as heading source.
   if (config_.imu_has_magnetometer) {
@@ -420,7 +420,7 @@ void FusionCore::update_imu_orientation(
     }
   }
   // If no magnetometer: orientation still fused for roll/pitch accuracy,
-  // but heading_validated_ is NOT set — lever arm stays inactive.
+  // but heading_validated_ is NOT set: lever arm stays inactive.
 
   last_imu_time_ = timestamp_seconds;
   ++update_count_;
@@ -478,7 +478,7 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
   // This prevents Cholesky failure when called back-to-back with update_encoder
   // at the same timestamp (where predict_to would be a no-op and P gets two
   // consecutive reductions with no covariance recovery between them).
-  // Do NOT update last_timestamp_ here — advancing it would cause every
+  // Do NOT update last_timestamp_ here: advancing it would cause every
   // subsequent GNSS message to be misclassified as delayed (triggering the
   // retrodiction path). The 1µs UKF time mismatch is negligible.
   ukf_.predict(config_.min_dt);
@@ -497,7 +497,7 @@ void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
   predict_to(timestamp_seconds);
 
   // Fuse [VX=0, VY=0, WZ=0] using the encoder measurement function.
-  // This is a pseudo-measurement — the robot asserts it is not moving.
+  // This is a pseudo-measurement: the robot asserts it is not moving.
   // Outlier rejection is intentionally skipped: ZUPT is only called when
   // the encoder already confirms near-zero velocity, so rejection would
   // fight against the one thing we know is true.
@@ -545,7 +545,7 @@ bool FusionCore::update_gnss(
   }
 
   predict_to(timestamp_seconds);
-  // Fix 8: capture speed BEFORE gnss update — post-update velocity is corrected
+  // Fix 8: capture speed BEFORE gnss update: post-update velocity is corrected
   // and not representative of motion during this GPS step.
   double pre_update_speed = std::sqrt(
     ukf_.state().x[VX] * ukf_.state().x[VX] +
@@ -570,7 +570,7 @@ bool FusionCore::apply_gnss_update(
   sensors::GnssPosNoiseMatrix R = sensors::gnss_pos_noise_matrix(config_.gnss, fix);
 
   // Blend with adaptive R if the fix does NOT have full message covariance
-  // (if it does have full covariance, trust the receiver — don't override)
+  // (if it does have full covariance, trust the receiver: don't override)
   if (adaptive_initialized_ && config_.adaptive_gnss && !fix.has_full_covariance) {
     R = (1.0 - config_.adaptive_alpha) * R + config_.adaptive_alpha * R_gnss_;
     // Guard diagonal
@@ -621,7 +621,7 @@ bool FusionCore::update_gnss_heading(
   sensors::GnssHdgNoiseMatrix R =
     sensors::gnss_hdg_noise_matrix(config_.gnss, heading);
 
-  // Dimension 0 (heading) is an angle — wrap z_diff across ±π boundary
+  // Dimension 0 (heading) is an angle: wrap z_diff across ±π boundary
   constexpr unsigned int HDG_ANGLE_DIMS = 0b1;  // bit 0 = heading
 
   // Mahalanobis outlier rejection for heading

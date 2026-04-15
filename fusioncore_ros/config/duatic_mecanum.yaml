@@ -4,7 +4,7 @@ fusioncore:
     odom_frame: odom
     publish_rate: 50.0
 
-    # BNO085 without magnetometer — yaw from gyro integration (will drift)
+    # BNO085 without magnetometer: yaw from gyro integration (will drift)
     imu.has_magnetometer: false
     imu.gyro_noise: 0.005
     imu.accel_noise: 0.1
@@ -12,7 +12,7 @@ fusioncore:
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
 
-    # GPS disabled — IMU + odometry only
+    # GPS disabled: IMU + odometry only
     gnss.base_noise_xy: 1.0
     gnss.base_noise_z: 2.0
     gnss.heading_noise: 0.02

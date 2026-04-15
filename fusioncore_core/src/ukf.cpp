@@ -54,7 +54,7 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
   if (llt.info() != Eigen::Success) {
     // P has developed negative eigenvalues (common under sustained high-rate IMU
     // updates where the K*S*K^T subtraction overshoots in the bias dimensions).
-    // Fix: identity shift — add eps*I to raise all eigenvalues by |min_eigenvalue|.
+    // Fix: identity shift: add eps*I to raise all eigenvalues by |min_eigenvalue|.
     // Unlike the V*max(λ,ε)*V^T clamp, a shift preserves the eigenvectors and keeps
     // large position/velocity eigenvalues intact.  The clamp approach destroys them
     // because P's eigenvectors mix position and bias components after cross-coupling,
@@ -89,7 +89,7 @@ StateVector UKF::process_model(const StateVector& x, double dt) const {
   x_new[Z] += dt * (-sp*vx   + cp*sr*vy             + cp*cr*vz);
   // WX/WY/WZ are the true angular rates; B_GX/B_GY/B_GZ are gyro biases.
   // The measurement model predicts z = true_rate + bias, so propagation uses
-  // the true rate directly — do NOT subtract bias here.
+  // the true rate directly: do NOT subtract bias here.
   double wx = x[WX];
   double wy = x[WY];
   double wz = x[WZ];
@@ -116,7 +116,7 @@ void UKF::predict(double dt) {
   Eigen::MatrixXd sigma_pred(STATE_DIM, n_sigma);
   for (int i = 0; i < n_sigma; ++i)
     sigma_pred.col(i) = process_model(sigma.col(i), dt);
-  // Weighted mean — normalize_state handles angle wrapping.
+  // Weighted mean: normalize_state handles angle wrapping.
   // Note: circular mean (atan2) is NOT used here because when P is large (e.g.
   // during initialization with P=50*I), angle sigma points spread beyond ±π and
   // wrap around. atan2 then returns the wrong quadrant (±π instead of 0), making
@@ -165,7 +165,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
     sigma_z.col(i) = h(sigma.col(i));
 
   // Weighted mean of measurement sigma points.
-  // Circular mean (atan2) is NOT used here — UKF has Wm[0] ≈ -99 and Wm[i>0] ≈ +2.38.
+  // Circular mean (atan2) is NOT used here: UKF has Wm[0] ≈ -99 and Wm[i>0] ≈ +2.38.
   // With yaw near 0: sum_cos ≈ -99 + 99*cos(spread) ≈ -0.05 (negative due to cos < 1),
   // so atan2(0, -0.05) = π instead of 0, making every z_diff ≈ π → S goes negative
   // → K*S*K.T has wrong sign → P goes non-PSD → Cholesky crash.
@@ -189,7 +189,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   for (int d = 0; d < z_dim; ++d)
     if (angle_dims & (1u << d)) innovation[d] = normalize_angle(innovation[d]);
 
-  // Use LDLT decomposition instead of direct S.inverse() — numerically stable
+  // Use LDLT decomposition instead of direct S.inverse(): numerically stable
   // when S is near-singular. K = Pxz * S^{-1} = (S^{-1} * Pxz^T)^T.
   auto S_ldlt = S.ldlt();
   PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
@@ -220,7 +220,7 @@ void UKF::predict_measurement(
   for (int i = 0; i < n_sigma; ++i)
     sigma_z.col(i) = h(sigma.col(i));
 
-  // Same weighted mean as update() — no circular mean for same reason.
+  // Same weighted mean as update(): no circular mean for same reason.
   // Angle wrapping is handled via normalize_angle on z_diff and innovation_out below.
   ZVector z_pred = ZVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
@@ -266,7 +266,7 @@ template void UKF::predict_measurement<6>(
   unsigned int);
 
 double UKF::normalize_angle(double angle) {
-  // fmod-based normalization — O(1) regardless of magnitude, safe under drift
+  // fmod-based normalization: O(1) regardless of magnitude, safe under drift
   angle = std::fmod(angle + M_PI, 2.0 * M_PI);
   if (angle < 0.0) angle += 2.0 * M_PI;
   return angle - M_PI;

@@ -8,12 +8,12 @@ namespace fusioncore {
 
 // UKF tuning parameters
 struct UKFParams {
-  // Sigma point spread — standard defaults, rarely need changing
+  // Sigma point spread: standard defaults, rarely need changing
   double alpha = 0.1;    // spread of sigma points around mean (1e-4 to 1.0)
   double beta  = 2.0;    // prior knowledge of distribution (2.0 = Gaussian)
   double kappa = 0.0;    // secondary scaling (0.0 is standard)
 
-  // Process noise — how much we trust the motion model
+  // Process noise: how much we trust the motion model
   double q_position     = 0.01;   // m²/s
   double q_orientation  = 0.01;   // rad²/s
   double q_velocity     = 0.1;    // (m/s)²/s
@@ -30,10 +30,10 @@ public:
   // Initialize state
   void init(const State& initial_state);
 
-  // Predict step — propagate state forward by dt seconds
+  // Predict step: propagate state forward by dt seconds
   void predict(double dt);
 
-  // Update step — fuse a measurement
+  // Update step: fuse a measurement
   // Returns innovation vector (z - z_pred) for adaptive noise tracking
   // angle_dims: bitmask of measurement dimensions that are angles and need
   //             wrapping to [-pi, pi] during innovation computation.
@@ -50,7 +50,7 @@ public:
   // Predict measurement without updating state.
   // Returns innovation and innovation covariance S for Mahalanobis test.
   // Call this BEFORE update() to check if measurement should be rejected.
-  // angle_dims: same bitmask as update() — wrap angle dimensions in z_diff.
+  // angle_dims: same bitmask as update(): wrap angle dimensions in z_diff.
   template <int z_dim>
   void predict_measurement(
     const Eigen::Matrix<double, z_dim, 1>& z,

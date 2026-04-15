@@ -51,7 +51,7 @@ class GzPoseToGps(Node):
         # child_frame_id of the link we've locked onto as the robot body.
         # Set on the first callback; used exclusively afterwards so that
         # the reference altitude and all subsequent ENU positions use
-        # exactly the same link — preventing wheel-vs-body switch bias.
+        # exactly the same link: preventing wheel-vs-body switch bias.
         self.body_frame_id = None
         # True after the very first NavSatFix is published.
         # The first publish uses z = best.z (no vertical noise) so that
@@ -64,7 +64,7 @@ class GzPoseToGps(Node):
         """Return the translation of the robot body link.
 
         Priority:
-          1. Previously locked-on frame (sticky — avoids inter-callback switching).
+          1. Previously locked-on frame (sticky: avoids inter-callback switching).
           2. Any frame whose tail name is "base_link" (robust across SDF / ROS naming).
           3. Max x²+y² magnitude fallback (original heuristic, kept for other models).
         """
