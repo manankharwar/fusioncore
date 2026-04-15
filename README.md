@@ -292,6 +292,33 @@ fusioncore:
     ukf.q_accel_bias: 1.0e-5
 ```
 
+### GPS Coordinate Reference System (CRS)
+
+FusionCore uses [PROJ](https://proj.org/) to convert incoming GNSS fixes between coordinate systems. The defaults handle any standard GPS receiver (WGS84 lat/lon → ECEF). Change these only if your receiver outputs a different CRS.
+
+```yaml
+    # PROJ coordinate reference system
+    input.gnss_crs: "EPSG:4326"              # CRS of incoming NavSatFix messages
+                                              # EPSG:4326 = WGS84 lat/lon (standard GPS)
+                                              # EPSG:32617 = UTM zone 17N (some RTK receivers)
+    output.crs: "EPSG:4978"                  # internal computation CRS
+                                              # EPSG:4978 = ECEF XYZ (default, globally valid)
+    output.convert_to_enu_at_reference: true  # true when output.crs is ECEF
+                                              # false when output.crs is already a local projected CRS
+    reference.use_first_fix: true            # anchor local ENU origin to first GPS fix
+    reference.x: 0.0                         # fixed origin in output.crs (when use_first_fix: false)
+    reference.y: 0.0
+    reference.z: 0.0
+```
+
+**Agricultural RTK example** — receiver outputs UTM zone 17N (easting/northing) directly:
+```yaml
+    input.gnss_crs: "EPSG:32617"
+    output.crs: "EPSG:32617"
+    output.convert_to_enu_at_reference: false
+    reference.use_first_fix: true
+```
+
 ---
 
 ## How FusionCore handles the hard problems
@@ -491,7 +518,7 @@ fusioncore/
 
 - **Filter:** Unscented Kalman Filter, 43 sigma points
 - **State vector:** 21-dimensional: position (x,y,z), orientation (roll,pitch,yaw), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z)
-- **GPS coordinate system:** ECEF: globally valid, no UTM zone boundaries or discontinuities
+- **GPS coordinate system:** Configurable via PROJ — default ECEF (EPSG:4978, globally valid); supports any PROJ-compatible input CRS including UTM zones
 - **Bias estimation:** Continuous online estimation, no calibration required
 - **GPS quality scaling:** Noise covariance scaled by HDOP/VDOP, or full 3x3 message covariance when available
 - **Outlier rejection:** Mahalanobis chi-squared gating at 99.9th percentile per sensor dimension
@@ -531,6 +558,7 @@ fusioncore/
 - `/fusion/pose`: PoseWithCovarianceStamped for Nav2 / AMCL / slam_toolbox
 - Filter reset service: `~/reset` clears filter and GPS reference without node restart
 - Sensor dropout detection: per-sensor staleness tracking via SensorHealth enum
+- PROJ CRS coordinate transform: configurable input/output CRS via PROJ library (WGS84, UTM, ECEF, any EPSG code)
 - ROS 2 Jazzy lifecycle node at 100Hz
 - Gazebo Harmonic simulation world
 
@@ -542,7 +570,6 @@ fusioncore/
 **Roadmap:**
 - Ackermann and omnidirectional steering motion models
 - Mecanum drive motion model
-- UTM coordinate mode for GNSS (community contributed, in progress)
 - Auto-derive GNSS lever arm from TF header.frame_id
 
 ---
