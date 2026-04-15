@@ -120,6 +120,12 @@ ros2 launch fusioncore_ros fusioncore.launch.py
 ```bash
 source /opt/ros/jazzy/setup.bash
 source ~/YOUR_WS/install/setup.bash
+
+# Publish required TF transforms (stays running in background)
+ros2 run tf2_ros static_transform_publisher --frame-id base_link --child-frame-id imu_link &
+ros2 run tf2_ros static_transform_publisher --frame-id odom --child-frame-id base_link &
+sleep 1
+
 ros2 lifecycle set /fusioncore configure
 sleep 1
 ros2 lifecycle set /fusioncore activate
@@ -336,7 +342,7 @@ IMUs are almost never mounted at `base_link`. FusionCore reads `frame_id` from e
 
 ```
 [WARN] Cannot transform IMU from imu_link to base_link.
-Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link imu_link
+Fix: ros2 run tf2_ros static_transform_publisher --frame-id base_link --child-frame-id imu_link
 ```
 
 ### TF validation at startup
@@ -346,7 +352,7 @@ During `configure`, FusionCore checks that all required TF transforms exist befo
 ```
 --- TF Validation ---
   [OK]      imu_link -> base_link
-  [MISSING] base_link -> odom  Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 odom base_link
+  [MISSING] base_link -> odom  Fix: ros2 run tf2_ros static_transform_publisher --frame-id odom --child-frame-id base_link
 ---------------------
 ```
 

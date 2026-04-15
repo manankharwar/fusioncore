@@ -436,7 +436,7 @@ private:
       if (check_transform(from, to)) {
         RCLCPP_INFO(get_logger(), "  [OK]      %s -> %s", from.c_str(), to.c_str());
       } else {
-        RCLCPP_WARN(get_logger(), "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 %s %s",
+        RCLCPP_WARN(get_logger(), "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher --frame-id %s --child-frame-id %s",
           from.c_str(), to.c_str(), to.c_str(), from.c_str());
         all_ok = false;  // Fix 1: was never set: function always returned true
       }
@@ -448,7 +448,7 @@ private:
         RCLCPP_INFO(get_logger(), "  [OK]      gnss_link -> %s", base_frame_.c_str());
       } else {
         RCLCPP_WARN(get_logger(),
-          "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss_link",
+          "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher --x %.3f --y %.3f --z %.3f --frame-id %s --child-frame-id gnss_link",
           base_frame_.c_str(),
           gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z,
           base_frame_.c_str());
@@ -462,7 +462,7 @@ private:
         RCLCPP_INFO(get_logger(), "  [OK]      gnss2_link -> %s", base_frame_.c_str());
       } else {
         RCLCPP_WARN(get_logger(),
-          "  [MISSING] gnss2_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher %.3f %.3f %.3f 0 0 0 %s gnss2_link",
+          "  [MISSING] gnss2_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher --x %.3f --y %.3f --z %.3f --frame-id %s --child-frame-id gnss2_link",
           base_frame_.c_str(),
           gnss_lever_arm2_.x, gnss_lever_arm2_.y, gnss_lever_arm2_.z,
           base_frame_.c_str());
@@ -540,7 +540,7 @@ private:
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
         "Cannot transform IMU from %s to %s: %s"
         " -- Fix: ros2 run tf2_ros static_transform_publisher"
-        " 0 0 0 0 0 0 %s %s",
+        " --frame-id %s --child-frame-id %s",
         imu_frame.c_str(), base_frame_.c_str(), ex.what(),
         base_frame_.c_str(), imu_frame.c_str());
       fc_->update_imu(t,
