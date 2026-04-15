@@ -78,3 +78,22 @@ fusioncore:
     ukf.q_acceleration: 1.0
     ukf.q_gyro_bias: 1.0e-5
     ukf.q_accel_bias: 1.0e-5
+
+    # PROJ coordinate reference system
+    # input.gnss_crs: CRS of incoming NavSatFix messages
+    #   EPSG:4326 = WGS84 lat/lon (standard GPS — use this for almost all receivers)
+    #   EPSG:32617 = UTM zone 17N (example for agricultural RTK receivers in Ontario)
+    # output.crs: internal computation CRS
+    #   EPSG:4978 = ECEF XYZ (default, globally valid)
+    # output.convert_to_enu_at_reference: convert output to local ENU frame
+    #   true = required when output.crs is ECEF (EPSG:4978)
+    #   false = when output.crs is already a local projected CRS (e.g. UTM)
+    # reference.use_first_fix: anchor local origin to the first GPS fix received
+    #   false = use fixed reference.x/y/z in output.crs coordinates
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true
+    reference.x: 0.0
+    reference.y: 0.0
+    reference.z: 0.0
