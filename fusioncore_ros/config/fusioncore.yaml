@@ -8,6 +8,9 @@ fusioncore:
     # Set true if IMU has magnetometer (9-axis). False for 6-axis gyro/accel only.
     imu.has_magnetometer: false
     imu.accel_noise: 0.1
+    # Set true if your IMU reports raw specific force (gravity included).
+    # Most IMUs do. Enable if the robot drifts in Z while stationary.
+    imu.remove_gravitational_acceleration: false
 
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02

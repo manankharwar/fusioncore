@@ -56,6 +56,11 @@ public:
     // Set to false for 6-axis IMUs: yaw from gyro integration drifts
     declare_parameter("imu.has_magnetometer", false);
     declare_parameter("imu.accel_noise", 0.1);
+    // Set to true if the IMU does NOT subtract gravity internally.
+    // Most IMUs report raw specific force (gravity included). Enable this
+    // to remove the gravity vector using the current filter orientation
+    // before fusing, preventing Z-axis drift on stationary robots.
+    declare_parameter("imu.remove_gravitational_acceleration", false);
 
     declare_parameter("encoder.vel_noise", 0.05);
     declare_parameter("encoder.yaw_noise", 0.02);
@@ -154,6 +159,7 @@ public:
     config.imu_has_magnetometer = get_parameter("imu.has_magnetometer").as_bool();
     config.imu.accel_noise_y = config.imu.accel_noise_x;
     config.imu.accel_noise_z = config.imu.accel_noise_x;
+    imu_remove_gravity_ = get_parameter("imu.remove_gravitational_acceleration").as_bool();
 
     config.encoder.vel_noise_x  = get_parameter("encoder.vel_noise").as_double();
     config.encoder.vel_noise_y  = config.encoder.vel_noise_x;
@@ -520,13 +526,18 @@ private:
     if (imu_frame.empty()) imu_frame = "imu_link";
 
     if (imu_frame == base_frame_) {
+      double ax = msg->linear_acceleration.x;
+      double ay = msg->linear_acceleration.y;
+      double az = msg->linear_acceleration.z;
+      if (imu_remove_gravity_ && fc_->is_initialized()) {
+        tf2::Vector3 g_base = gravity_in_body_frame();
+        ax -= g_base.x(); ay -= g_base.y(); az -= g_base.z();
+      }
       fc_->update_imu(t,
         msg->angular_velocity.x,
         msg->angular_velocity.y,
         msg->angular_velocity.z,
-        msg->linear_acceleration.x,
-        msg->linear_acceleration.y,
-        msg->linear_acceleration.z);
+        ax, ay, az);
       // No frame rotation needed: IMU is already in base_frame
       fuse_imu_orientation_if_valid(t, msg, std::nullopt);
       return;
@@ -543,13 +554,18 @@ private:
         " --frame-id %s --child-frame-id %s",
         imu_frame.c_str(), base_frame_.c_str(), ex.what(),
         base_frame_.c_str(), imu_frame.c_str());
+      double ax = msg->linear_acceleration.x;
+      double ay = msg->linear_acceleration.y;
+      double az = msg->linear_acceleration.z;
+      if (imu_remove_gravity_ && fc_->is_initialized()) {
+        tf2::Vector3 g_base = gravity_in_body_frame();
+        ax -= g_base.x(); ay -= g_base.y(); az -= g_base.z();
+      }
       fc_->update_imu(t,
         msg->angular_velocity.x,
         msg->angular_velocity.y,
         msg->angular_velocity.z,
-        msg->linear_acceleration.x,
-        msg->linear_acceleration.y,
-        msg->linear_acceleration.z);
+        ax, ay, az);
       return;
     }
 
@@ -570,11 +586,30 @@ private:
                    msg->linear_acceleration.z);
     tf2::Vector3 a_base = R * a;
 
+    if (imu_remove_gravity_ && fc_->is_initialized()) {
+      tf2::Vector3 g_base = gravity_in_body_frame();
+      a_base -= g_base;
+    }
+
     fc_->update_imu(t,
       w_base.x(), w_base.y(), w_base.z(),
       a_base.x(), a_base.y(), a_base.z());
     // Fix 11: pass the rotation quaternion so orientation is also transformed
     fuse_imu_orientation_if_valid(t, msg, q);
+  }
+
+  // Returns the gravity component present in raw IMU specific-force readings,
+  // expressed in body frame. For an upright ENU robot this is [0, 0, +9.81].
+  // Subtract from the raw accelerometer reading to get true body acceleration.
+  tf2::Vector3 gravity_in_body_frame()
+  {
+    const fusioncore::State& s = fc_->get_state();
+    tf2::Quaternion q_body;
+    q_body.setRPY(s.x[fusioncore::ROLL], s.x[fusioncore::PITCH], s.x[fusioncore::YAW]);
+    // In ENU world frame the apparent gravity in a stationary IMU = [0, 0, +9.80665].
+    // Rotate from world to body using the inverse quaternion (q maps body→world).
+    tf2::Vector3 g_world(0.0, 0.0, 9.80665);
+    return tf2::quatRotate(q_body.inverse(), g_world);
   }
 
   // ─── IMU orientation helper ───────────────────────────────────────────────
@@ -1219,9 +1254,10 @@ private:
   std::string gnss2_topic_;
   std::string azimuth_topic_;
 
-  bool   pending_init_   = false;
-  bool   gnss_ref_set_   = false;
-  double last_imu_time_  = 0.0;   // timestamp of most recent IMU message
+  bool   pending_init_        = false;
+  bool   gnss_ref_set_        = false;
+  bool   imu_remove_gravity_  = false;
+  double last_imu_time_       = 0.0;   // timestamp of most recent IMU message
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
 

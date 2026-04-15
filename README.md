@@ -250,6 +250,9 @@ fusioncore:
     imu.accel_noise: 0.1        # m/s²
     imu.has_magnetometer: false # true for 9-axis IMUs (BNO08x, VectorNav, Xsens)
                                 # false for 6-axis: yaw from gyro integration drifts
+    imu.remove_gravitational_acceleration: false  # set true if robot drifts in Z while stationary
+                                                   # most IMUs report raw specific force (gravity included)
+                                                   # FusionCore removes gravity using current filter orientation
 
     encoder.vel_noise: 0.05     # m/s
     encoder.yaw_noise: 0.02     # rad/s
