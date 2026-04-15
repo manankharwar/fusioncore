@@ -368,7 +368,7 @@ public:
         initial.P(0,0) = 1000.0;
         initial.P(1,1) = 1000.0;
         initial.P(2,2) = 1000.0;
-        fc_->init(initial, now().seconds());
+        fc_->init(initial, last_imu_time_);
         gnss_ref_set_ = false;  // re-anchor GPS reference on next fix
         response->success = true;
         response->message = "FusionCore filter reset. GPS reference cleared.";
@@ -500,6 +500,8 @@ private:
     // Lazy init: initialize the filter on the first IMU message using the
     // message timestamp. This avoids a large dead prediction step when
     // use_sim_time:true and /clock hasn't started before on_activate().
+    last_imu_time_ = t;
+
     if (pending_init_) {
       fusioncore::State initial;
       initial.x = fusioncore::StateVector::Zero();
@@ -1217,8 +1219,9 @@ private:
   std::string gnss2_topic_;
   std::string azimuth_topic_;
 
-  bool pending_init_  = false;
-  bool gnss_ref_set_  = false;
+  bool   pending_init_   = false;
+  bool   gnss_ref_set_   = false;
+  double last_imu_time_  = 0.0;   // timestamp of most recent IMU message
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
 
