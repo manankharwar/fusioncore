@@ -192,6 +192,13 @@ ros2 service call /fusioncore/reset std_srvs/srv/Trigger
 ```
 Expected: `success: True, message: 'FusionCore filter reset. GPS reference cleared.'`
 
+Within 1 second of calling reset, the node log (Terminal 1) should print:
+```
+Filter reset via ~/reset service.
+GNSS reference set: lat=43.255700 lon=-79.871100
+```
+with **no** `GNSS fix rejected` warnings. GPS re-fuses immediately after reset.
+
 ---
 
 ## Sensor topics
