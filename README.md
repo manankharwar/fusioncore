@@ -107,19 +107,19 @@ FusionCore uses a ROS 2 lifecycle node. Configure first (load parameters, valida
 
 ## Verifying all features work
 
-You can test every FusionCore feature without a physical robot using fake sensor data. Open 4 terminals:
+You can test every FusionCore feature without a physical robot using fake sensor data. Replace `~/YOUR_WS` with your actual workspace path (e.g. `~/ros2_ws`, `~/fusioncore_ws`). Open 4 terminals:
 
 **Terminal 1: Launch FusionCore:**
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/YOUR_WS/install/setup.bash
 ros2 launch fusioncore_ros fusioncore.launch.py
 ```
 
 **Terminal 2: Configure and activate:**
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/YOUR_WS/install/setup.bash
 ros2 lifecycle set /fusioncore configure
 sleep 1
 ros2 lifecycle set /fusioncore activate
@@ -128,7 +128,7 @@ ros2 lifecycle set /fusioncore activate
 **Terminal 3: Feed fake sensors:**
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/YOUR_WS/install/setup.bash
 
 # Fake IMU at 100Hz (stationary, gravity pointing up)
 ros2 topic pub /imu/data sensor_msgs/msg/Imu "{
@@ -161,7 +161,7 @@ ros2 topic pub /gnss/fix sensor_msgs/msg/NavSatFix "{
 Check what topics and services are live:
 ```bash
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/YOUR_WS/install/setup.bash
 ros2 topic list | grep fusion
 ros2 service list | grep fusioncore
 ```
@@ -451,12 +451,12 @@ Drive the robot and watch the fused position:
 ```bash
 # Terminal 2: drive in a circle
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/YOUR_WS/install/setup.bash
 ros2 topic pub /cmd_vel geometry_msgs/msg/Twist "{linear: {x: 0.5}, angular: {z: 0.3}}" --rate 10
 
 # Terminal 3: watch position
 source /opt/ros/jazzy/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/YOUR_WS/install/setup.bash
 ros2 topic echo /fusion/odom --field pose.pose.position
 ```
 
