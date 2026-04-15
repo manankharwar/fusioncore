@@ -19,6 +19,7 @@ find_package(Eigen3 REQUIRED)
 find_package(fusioncore_core REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(PROJ REQUIRED)
 
 add_executable(fusioncore_node
   src/fusion_node.cpp
@@ -49,6 +50,7 @@ ament_target_dependencies(fusioncore_node
 
 target_link_libraries(fusioncore_node
   Eigen3::Eigen
+  PROJ::proj
 )
 
 # Explicitly link the static library

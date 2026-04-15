@@ -22,6 +22,7 @@
 #include <std_srvs/srv/trigger.hpp>
 #include <mutex>
 #include <optional>
+#include <proj.h>
 
 using namespace std::chrono_literals;
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -92,6 +93,22 @@ public:
     declare_parameter("gnss.lever_arm2_x", 0.0);
     declare_parameter("gnss.lever_arm2_y", 0.0);
     declare_parameter("gnss.lever_arm2_z", 0.0);
+
+    // PROJ coordinate reference system parameters
+    // input.gnss_crs: CRS of incoming NavSatFix messages (default: WGS84 lat/lon)
+    // output.crs: intermediate CRS for internal computations (default: ECEF)
+    // output.convert_to_enu_at_reference: when true, convert ECEF output to local
+    //   ENU frame centered at the GPS reference point (required for ECEF output).
+    //   Set false only when output.crs is already a projected local CRS (e.g. UTM).
+    // reference.use_first_fix: use first GPS fix as the local origin (default: true)
+    // reference.x/y/z: fixed reference in output.crs units (used when use_first_fix=false)
+    declare_parameter("input.gnss_crs",                    std::string("EPSG:4326"));
+    declare_parameter("output.crs",                        std::string("EPSG:4978"));
+    declare_parameter("output.convert_to_enu_at_reference", true);
+    declare_parameter("reference.use_first_fix",           true);
+    declare_parameter("reference.x",                       0.0);
+    declare_parameter("reference.y",                       0.0);
+    declare_parameter("reference.z",                       0.0);
 
     declare_parameter("outlier_rejection",      true);
     declare_parameter("outlier_threshold_gnss", 16.27);
@@ -170,6 +187,30 @@ public:
       RCLCPP_INFO(get_logger(),
         "GNSS lever arm (secondary) set: x=%.3f y=%.3f z=%.3f m",
         gnss_lever_arm2_.x, gnss_lever_arm2_.y, gnss_lever_arm2_.z);
+    }
+
+    // Wire PROJ parameters
+    input_gnss_crs_              = get_parameter("input.gnss_crs").as_string();
+    output_crs_                  = get_parameter("output.crs").as_string();
+    convert_to_enu_at_reference_ = get_parameter("output.convert_to_enu_at_reference").as_bool();
+    reference_use_first_fix_     = get_parameter("reference.use_first_fix").as_bool();
+
+    init_proj();
+
+    if (!reference_use_first_fix_) {
+      gnss_ref_ecef_.x = get_parameter("reference.x").as_double();
+      gnss_ref_ecef_.y = get_parameter("reference.y").as_double();
+      gnss_ref_ecef_.z = get_parameter("reference.z").as_double();
+      output_to_gnss(gnss_ref_ecef_, gnss_ref_lla_);
+      gnss_ref_set_ = true;
+      RCLCPP_INFO(get_logger(),
+        "PROJ: fixed reference origin (%.3f, %.3f, %.3f) → lat=%.6f lon=%.6f alt=%.2f",
+        gnss_ref_ecef_.x, gnss_ref_ecef_.y, gnss_ref_ecef_.z,
+        gnss_ref_lla_.lat_rad * 180.0 / M_PI,
+        gnss_ref_lla_.lon_rad * 180.0 / M_PI,
+        gnss_ref_lla_.alt_m);
+    } else {
+      RCLCPP_INFO(get_logger(), "PROJ: using first GPS fix as local reference origin");
     }
 
     config.outlier_rejection      = get_parameter("outlier_rejection").as_bool();
@@ -354,6 +395,7 @@ public:
     odom_pub_.reset();
     pose_pub_.reset();
     diag_pub_.reset();
+    deinit_proj();
     RCLCPP_INFO(get_logger(), "FusionCore deactivated.");
     return CallbackReturn::SUCCESS;
   }
@@ -625,34 +667,28 @@ private:
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
-    if (!gnss_ref_set_) {
-      gnss_ref_lla_.lat_rad = msg->latitude  * M_PI / 180.0;
-      gnss_ref_lla_.lon_rad = msg->longitude * M_PI / 180.0;
-      gnss_ref_lla_.alt_m   = msg->altitude;
-      lla_to_ecef(gnss_ref_lla_, gnss_ref_ecef_);
-      gnss_ref_set_ = true;
-      RCLCPP_INFO(get_logger(), "GNSS reference set: lat=%.6f lon=%.6f",
-        msg->latitude, msg->longitude);
-      // Fix 3: do NOT return — fall through and fuse ENU [0,0,0] as first fix.
-      // Returning here dropped the first GPS measurement, leaving the filter at
-      // [0,0,0] with no position correction until the second fix arrived.
-    }
-
     fusioncore::sensors::LLAPoint lla;
     lla.lat_rad = msg->latitude  * M_PI / 180.0;
     lla.lon_rad = msg->longitude * M_PI / 180.0;
     lla.alt_m   = msg->altitude;
 
+    // Convert from input CRS (e.g. EPSG:4326 WGS84) to output CRS (e.g. EPSG:4978 ECEF)
+    // using PROJ. Default behavior is identical to the hand-coded WGS84→ECEF math.
     fusioncore::sensors::ECEFPoint ecef;
-    lla_to_ecef(lla, ecef);
+    gnss_to_output(lla, ecef);
+
+    if (!gnss_ref_set_) {
+      gnss_ref_lla_ = lla;
+      gnss_ref_ecef_ = ecef;
+      gnss_ref_set_ = true;
+      RCLCPP_INFO(get_logger(), "GNSS reference set: lat=%.6f lon=%.6f",
+        msg->latitude, msg->longitude);
+      // Do NOT return — fall through and fuse ENU [0,0,0] as first fix.
+    }
 
     // Pre-filter: drop fixes more than 10km from the reference origin.
-    // This is the correct defense against the Gazebo NavSat bug (gz-sim #2163)
-    // where every other fix is published at world Cartesian origin (~100km away).
-    // On real hardware this also catches catastrophic GPS glitches before they
-    // reach the estimator. Mahalanobis handles normal outliers (1-100m jumps);
-    // this handles physically impossible jumps (>10km) that would corrupt the
-    // filter state before Mahalanobis can recover.
+    // Handles Gazebo NavSat bug (gz-sim #2163) and catastrophic hardware glitches.
+    // Mahalanobis handles normal outliers (1-100m); this handles physically impossible jumps.
     {
       double dx = ecef.x - gnss_ref_ecef_.x;
       double dy = ecef.y - gnss_ref_ecef_.y;
@@ -660,14 +696,21 @@ private:
       double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
       if (dist > 10000.0) {
         RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 2000,
-          "GPS fix dropped: %.0fm from reference (known Gazebo NavSat bug or "
-          "catastrophic hardware glitch — not a normal outlier)", dist);
+          "GPS fix dropped: %.0fm from reference (Gazebo NavSat bug or hardware glitch)", dist);
         return;
       }
     }
 
-    Eigen::Vector3d enu = fusioncore::sensors::ecef_to_enu(
-      ecef, gnss_ref_ecef_, gnss_ref_lla_);
+    // Bug 3 fix: only convert ECEF→ENU when output.convert_to_enu_at_reference is true.
+    // When output.crs is already a local projected CRS (e.g. UTM), use XY directly.
+    Eigen::Vector3d enu;
+    if (convert_to_enu_at_reference_) {
+      enu = fusioncore::sensors::ecef_to_enu(ecef, gnss_ref_ecef_, gnss_ref_lla_);
+    } else {
+      enu = Eigen::Vector3d(ecef.x - gnss_ref_ecef_.x,
+                            ecef.y - gnss_ref_ecef_.y,
+                            ecef.z - gnss_ref_ecef_.z);
+    }
 
     fusioncore::sensors::GnssFix fix;
     fix.x = enu[0];
@@ -1056,22 +1099,95 @@ private:
     diag_pub_->publish(diag_array);
   }
 
-  // ─── LLA to ECEF ──────────────────────────────────────────────────────────
+  // ─── PROJ coordinate transforms ───────────────────────────────────────────
+  // Replaces hand-coded WGS84→ECEF math with the PROJ library.
+  // Default config (EPSG:4326 → EPSG:4978) is numerically equivalent to the
+  // old lla_to_ecef() but supports any input/output CRS for agricultural RTK
+  // and other projected coordinate systems.
 
-  void lla_to_ecef(
-    const fusioncore::sensors::LLAPoint& lla,
-    fusioncore::sensors::ECEFPoint& ecef)
+  void init_proj()
   {
-    const double a  = 6378137.0;
-    const double e2 = 0.00669437999014;
-    double sin_lat = std::sin(lla.lat_rad);
-    double cos_lat = std::cos(lla.lat_rad);
-    double sin_lon = std::sin(lla.lon_rad);
-    double cos_lon = std::cos(lla.lon_rad);
-    double N = a / std::sqrt(1.0 - e2 * sin_lat * sin_lat);
-    ecef.x = (N + lla.alt_m) * cos_lat * cos_lon;
-    ecef.y = (N + lla.alt_m) * cos_lat * sin_lon;
-    ecef.z = (N * (1.0 - e2) + lla.alt_m) * sin_lat;
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    if (proj_initialized_) return;
+
+    proj_ctx_ = proj_context_create();
+
+    // proj_create_crs_to_crs automatically selects the best pipeline between CRS.
+    // proj_normalize_for_visualization ensures consistent axis order:
+    // input: (latitude°, longitude°, altitude_m) for geographic CRS
+    // output: (x, y, z) in the output CRS native units
+    PJ* raw = proj_create_crs_to_crs(proj_ctx_,
+      input_gnss_crs_.c_str(), output_crs_.c_str(), nullptr);
+
+    if (!raw) {
+      RCLCPP_ERROR(get_logger(), "PROJ: failed to create transform %s → %s. "
+        "Check that both CRS strings are valid PROJ identifiers.",
+        input_gnss_crs_.c_str(), output_crs_.c_str());
+      return;
+    }
+
+    proj_ = proj_normalize_for_visualization(proj_ctx_, raw);
+    proj_destroy(raw);
+
+    if (!proj_) {
+      RCLCPP_ERROR(get_logger(), "PROJ: failed to normalize transform axis order");
+      return;
+    }
+
+    proj_initialized_ = true;
+    RCLCPP_INFO(get_logger(), "PROJ: transform ready (%s → %s)",
+      input_gnss_crs_.c_str(), output_crs_.c_str());
+  }
+
+  void deinit_proj()
+  {
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    if (proj_)    { proj_destroy(proj_);          proj_    = nullptr; }
+    if (proj_ctx_){ proj_context_destroy(proj_ctx_); proj_ctx_ = nullptr; }
+    proj_initialized_ = false;
+  }
+
+  // gnss_to_output: LLA (radians) → output CRS (x, y, z).
+  // Bug 1 fix: proj_normalize_for_visualization makes EPSG:4326 expect degrees,
+  // so we convert from the internal radians to degrees before passing to PROJ.
+  void gnss_to_output(
+    const fusioncore::sensors::LLAPoint& lla,
+    fusioncore::sensors::ECEFPoint& out)
+  {
+    if (!proj_initialized_) {
+      RCLCPP_ERROR_ONCE(get_logger(), "PROJ transform not initialized");
+      return;
+    }
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    PJ_COORD c = {{
+      lla.lat_rad * 180.0 / M_PI,   // degrees (after normalize_for_visualization)
+      lla.lon_rad * 180.0 / M_PI,
+      lla.alt_m,
+      HUGE_VAL
+    }};
+    PJ_COORD r = proj_trans(proj_, PJ_FWD, c);
+    out.x = r.xyz.x;
+    out.y = r.xyz.y;
+    out.z = r.xyz.z;
+  }
+
+  // output_to_gnss: output CRS (x, y, z) → LLA (radians).
+  // Bug 2 fix: phi and lam come back in degrees after normalization,
+  // so we convert to radians before storing in LLAPoint.
+  void output_to_gnss(
+    const fusioncore::sensors::ECEFPoint& in,
+    fusioncore::sensors::LLAPoint& lla)
+  {
+    if (!proj_initialized_) {
+      RCLCPP_ERROR_ONCE(get_logger(), "PROJ transform not initialized");
+      return;
+    }
+    std::lock_guard<std::mutex> lock(proj_mutex_);
+    PJ_COORD c = {{ in.x, in.y, in.z, HUGE_VAL }};
+    PJ_COORD r = proj_trans(proj_, PJ_INV, c);
+    lla.lat_rad = r.lpzt.phi * M_PI / 180.0;   // degrees → radians
+    lla.lon_rad = r.lpzt.lam * M_PI / 180.0;
+    lla.alt_m   = r.lpzt.z;
   }
 
   // ─── Members ──────────────────────────────────────────────────────────────
@@ -1121,6 +1237,16 @@ private:
   rclcpp::CallbackGroup::SharedPtr sensor_cb_group_;
   rclcpp::CallbackGroup::SharedPtr publish_cb_group_;
   std::mutex fc_mutex_;
+
+  // PROJ coordinate transform members
+  std::string input_gnss_crs_;
+  std::string output_crs_;
+  bool convert_to_enu_at_reference_ = true;
+  bool reference_use_first_fix_     = true;
+  std::mutex proj_mutex_;
+  bool       proj_initialized_ = false;
+  PJ        *proj_     = nullptr;
+  PJ_CONTEXT*proj_ctx_ = nullptr;
 };
 
 int main(int argc, char ** argv)
