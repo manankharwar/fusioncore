@@ -120,14 +120,24 @@ class BenchmarkRunner(Node):
     # ── Callbacks ─────────────────────────────────────────────────────────────
 
     def _gt_cb(self, msg):
-        # ros_gz_bridge leaves child_frame_id empty for Pose_V→TFMessage.
-        # The robot body is the only entity at ~0.15 m (chassis height).
-        # All wheels / static scene links sit at z ≈ 0.
+        # ros_gz_bridge publishes all Gazebo link poses as a TFMessage.
+        # The robot has 4 links: base_link (z≈0.15), left_wheel (z≈0.15),
+        # right_wheel (z≈0.15), imu_link (z≈0.25). All pass a simple z-range
+        # filter. To get a stable chassis position we must identify base_link
+        # specifically. ros_gz_bridge sets child_frame_id to "fusioncore_robot::base_link"
+        # (model::link format). We match that name first; if not found we fall
+        # back to the first transform in the expected z-range.
+        best = None
         for tf in msg.transforms:
-            t = tf.transform.translation
-            if 0.08 < t.z < 0.30:
+            if "base_link" in tf.child_frame_id and "wheel" not in tf.child_frame_id:
+                t = tf.transform.translation
                 self._gt_pos = (t.x, t.y)
                 return
+            t = tf.transform.translation
+            if best is None and 0.08 < t.z < 0.20:
+                best = (t.x, t.y)
+        if best is not None:
+            self._gt_pos = best
 
     def _fc_cb(self, msg):
         p = msg.pose.pose.position
@@ -444,7 +454,12 @@ def main():
         rclpy.shutdown()
         return
 
-    print("\nAll sources live. Starting benchmark...\n")
+    print("\nAll sources live.")
+    print("GPS warm-up: 15 s stationary — anchoring GPS reference in both filters...")
+    print("(FC sets GPS reference on first fix; RL navsat anchors its datum.)")
+    print("Robot will not move until warm-up completes.\n")
+    node.spin_for(15.0)   # robot stationary, GPS published at ~5 Hz
+    print("Warm-up complete. Starting benchmark scenarios...\n")
 
     s1 = node.scenario_loop_accuracy()
     print("\nPausing 5 s...")
