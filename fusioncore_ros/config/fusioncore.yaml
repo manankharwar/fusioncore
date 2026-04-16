@@ -8,8 +8,11 @@ fusioncore:
     # Set true if IMU has magnetometer (9-axis). False for 6-axis gyro/accel only.
     imu.has_magnetometer: false
     imu.accel_noise: 0.1
-    # Set true if your IMU reports raw specific force (gravity included).
-    # Most IMUs do. Enable if the robot drifts in Z while stationary.
+    # Set true ONLY if your IMU driver already removed gravity and publishes
+    # "linear acceleration" (true body acceleration, not specific force).
+    # Most IMUs publish raw specific force — leave this false.
+    # The filter always expects specific force; enabling this adds gravity
+    # back in so the measurement is consistent with what the filter expects.
     imu.remove_gravitational_acceleration: false
     # Override the IMU TF frame. Leave empty to use msg->header.frame_id.
     # Set to your IMU frame if the driver publishes with an empty frame_id.

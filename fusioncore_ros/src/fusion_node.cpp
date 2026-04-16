@@ -61,10 +61,11 @@ public:
     // with an empty or wrong frame_id. Leave empty to use the message frame_id
     // (falls back to "imu_link" if the message frame_id is also empty).
     declare_parameter("imu.frame_id", std::string(""));
-    // Set to true if the IMU does NOT subtract gravity internally.
-    // Most IMUs report raw specific force (gravity included). Enable this
-    // to remove the gravity vector using the current filter orientation
-    // before fusing, preventing Z-axis drift on stationary robots.
+    // Set to true ONLY if your IMU driver has ALREADY removed gravity and
+    // publishes "linear acceleration" (true body acceleration, not specific force).
+    // Most IMUs publish raw specific force (gravity included) — leave this false.
+    // The filter measurement model always expects specific force. If your IMU
+    // already subtracted gravity, enable this to add gravity back before fusing.
     declare_parameter("imu.remove_gravitational_acceleration", false);
 
     declare_parameter("encoder.vel_noise", 0.05);
@@ -541,8 +542,10 @@ private:
       double ay = msg->linear_acceleration.y;
       double az = msg->linear_acceleration.z;
       if (imu_remove_gravity_ && fc_->is_initialized()) {
+        // IMU driver already removed gravity → add specific force back so the
+        // filter measurement model (which expects specific force) is consistent.
         tf2::Vector3 g_base = gravity_in_body_frame();
-        ax -= g_base.x(); ay -= g_base.y(); az -= g_base.z();
+        ax += g_base.x(); ay += g_base.y(); az += g_base.z();
       }
       fc_->update_imu(t,
         msg->angular_velocity.x,
@@ -570,7 +573,7 @@ private:
       double az = msg->linear_acceleration.z;
       if (imu_remove_gravity_ && fc_->is_initialized()) {
         tf2::Vector3 g_base = gravity_in_body_frame();
-        ax -= g_base.x(); ay -= g_base.y(); az -= g_base.z();
+        ax += g_base.x(); ay += g_base.y(); az += g_base.z();
       }
       fc_->update_imu(t,
         msg->angular_velocity.x,
@@ -599,7 +602,7 @@ private:
 
     if (imu_remove_gravity_ && fc_->is_initialized()) {
       tf2::Vector3 g_base = gravity_in_body_frame();
-      a_base -= g_base;
+      a_base += g_base;
     }
 
     fc_->update_imu(t,
