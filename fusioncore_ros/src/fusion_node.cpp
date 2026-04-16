@@ -612,9 +612,10 @@ private:
     fuse_imu_orientation_if_valid(t, msg, q);
   }
 
-  // Returns the gravity component present in raw IMU specific-force readings,
-  // expressed in body frame. For an upright ENU robot this is [0, 0, +9.81].
-  // Subtract from the raw accelerometer reading to get true body acceleration.
+  // Returns the specific-force gravity contribution in body frame.
+  // For an upright ENU robot this is [0, 0, +9.81].
+  // Use: add this to a "true acceleration" reading to recover specific force,
+  // which is what update_imu() expects.
   tf2::Vector3 gravity_in_body_frame()
   {
     const fusioncore::State& s = fc_->get_state();
