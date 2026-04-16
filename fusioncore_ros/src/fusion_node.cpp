@@ -56,10 +56,16 @@ public:
     // Set to false for 6-axis IMUs: yaw from gyro integration drifts
     declare_parameter("imu.has_magnetometer", false);
     declare_parameter("imu.accel_noise", 0.1);
-    // Set to true if the IMU does NOT subtract gravity internally.
-    // Most IMUs report raw specific force (gravity included). Enable this
-    // to remove the gravity vector using the current filter orientation
-    // before fusing, preventing Z-axis drift on stationary robots.
+    // Override frame_id for IMU messages. When non-empty, FusionCore uses this
+    // frame instead of msg->header.frame_id. Useful when the IMU driver publishes
+    // with an empty or wrong frame_id. Leave empty to use the message frame_id
+    // (falls back to "imu_link" if the message frame_id is also empty).
+    declare_parameter("imu.frame_id", std::string(""));
+    // Set to true ONLY if your IMU driver has ALREADY removed gravity and
+    // publishes "linear acceleration" (true body acceleration, not specific force).
+    // Most IMUs publish raw specific force (gravity included) — leave this false.
+    // The filter measurement model always expects specific force. If your IMU
+    // already subtracted gravity, enable this to add gravity back before fusing.
     declare_parameter("imu.remove_gravitational_acceleration", false);
 
     declare_parameter("encoder.vel_noise", 0.05);
@@ -160,6 +166,11 @@ public:
     config.imu.accel_noise_y = config.imu.accel_noise_x;
     config.imu.accel_noise_z = config.imu.accel_noise_x;
     imu_remove_gravity_ = get_parameter("imu.remove_gravitational_acceleration").as_bool();
+    imu_frame_override_ = get_parameter("imu.frame_id").as_string();
+    RCLCPP_INFO(get_logger(), "IMU gravity removal: %s",
+      imu_remove_gravity_ ? "ENABLED" : "disabled");
+    if (!imu_frame_override_.empty())
+      RCLCPP_INFO(get_logger(), "IMU frame override: %s", imu_frame_override_.c_str());
 
     config.encoder.vel_noise_x  = get_parameter("encoder.vel_noise").as_double();
     config.encoder.vel_noise_y  = config.encoder.vel_noise_x;
@@ -522,16 +533,19 @@ private:
 
     if (!fc_->is_initialized()) return;
 
-    std::string imu_frame = msg->header.frame_id;
-    if (imu_frame.empty()) imu_frame = "imu_link";
+    std::string imu_frame = imu_frame_override_.empty()
+      ? (msg->header.frame_id.empty() ? "imu_link" : msg->header.frame_id)
+      : imu_frame_override_;
 
     if (imu_frame == base_frame_) {
       double ax = msg->linear_acceleration.x;
       double ay = msg->linear_acceleration.y;
       double az = msg->linear_acceleration.z;
       if (imu_remove_gravity_ && fc_->is_initialized()) {
+        // IMU driver already removed gravity → add specific force back so the
+        // filter measurement model (which expects specific force) is consistent.
         tf2::Vector3 g_base = gravity_in_body_frame();
-        ax -= g_base.x(); ay -= g_base.y(); az -= g_base.z();
+        ax += g_base.x(); ay += g_base.y(); az += g_base.z();
       }
       fc_->update_imu(t,
         msg->angular_velocity.x,
@@ -559,7 +573,7 @@ private:
       double az = msg->linear_acceleration.z;
       if (imu_remove_gravity_ && fc_->is_initialized()) {
         tf2::Vector3 g_base = gravity_in_body_frame();
-        ax -= g_base.x(); ay -= g_base.y(); az -= g_base.z();
+        ax += g_base.x(); ay += g_base.y(); az += g_base.z();
       }
       fc_->update_imu(t,
         msg->angular_velocity.x,
@@ -588,7 +602,7 @@ private:
 
     if (imu_remove_gravity_ && fc_->is_initialized()) {
       tf2::Vector3 g_base = gravity_in_body_frame();
-      a_base -= g_base;
+      a_base += g_base;
     }
 
     fc_->update_imu(t,
@@ -598,9 +612,10 @@ private:
     fuse_imu_orientation_if_valid(t, msg, q);
   }
 
-  // Returns the gravity component present in raw IMU specific-force readings,
-  // expressed in body frame. For an upright ENU robot this is [0, 0, +9.81].
-  // Subtract from the raw accelerometer reading to get true body acceleration.
+  // Returns the specific-force gravity contribution in body frame.
+  // For an upright ENU robot this is [0, 0, +9.81].
+  // Use: add this to a "true acceleration" reading to recover specific force,
+  // which is what update_imu() expects.
   tf2::Vector3 gravity_in_body_frame()
   {
     const fusioncore::State& s = fc_->get_state();
@@ -1254,10 +1269,11 @@ private:
   std::string gnss2_topic_;
   std::string azimuth_topic_;
 
-  bool   pending_init_        = false;
-  bool   gnss_ref_set_        = false;
-  bool   imu_remove_gravity_  = false;
-  double last_imu_time_       = 0.0;   // timestamp of most recent IMU message
+  bool        pending_init_        = false;
+  bool        gnss_ref_set_        = false;
+  bool        imu_remove_gravity_  = false;
+  std::string imu_frame_override_;
+  double      last_imu_time_       = 0.0;   // timestamp of most recent IMU message
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
 

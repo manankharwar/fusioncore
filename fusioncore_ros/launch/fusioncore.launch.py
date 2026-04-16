@@ -9,11 +9,11 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg = get_package_share_directory("fusioncore_ros")
 
-    config = LaunchConfiguration("config")
+    config = LaunchConfiguration("fusioncore_config")
 
     return LaunchDescription([
         DeclareLaunchArgument(
-            "config",
+            "fusioncore_config",
             default_value=os.path.join(pkg, "config", "fusioncore.yaml"),
             description="Path to FusionCore config file"
         ),
