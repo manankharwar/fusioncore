@@ -7,6 +7,11 @@
 #   - imu0_remove_gravitational_acceleration: true because Gazebo's IMU plugin
 #     reports specific force (gravity included); RL removes it before fusing.
 #     FusionCore handles gravity through its UKF measurement model instead.
+#   - ax, ay, az are NOT fused in either EKF. Double-integrating accelerometer
+#     data in an EKF drifts severely on a wheeled robot: even with gravity
+#     removal, a small orientation error leaves ~9.81*sin(err) residual that
+#     integrates to metres in seconds. Velocity is tracked via wheel odom only.
+#     FusionCore handles this correctly via UKF sensor model + bias estimation.
 #   - mahalanobis_threshold is intentionally NOT set (left at default = no limit).
 #     This reflects a default RL deployment without manual outlier tuning.
 #     RL does support outlier rejection via this parameter if configured.
@@ -33,11 +38,16 @@ ekf_local_rl:
     odom0_queue_size: 10
 
     imu0: /imu/data
+    # [x, y, z, roll, pitch, yaw, vx, vy, vz, vroll, vpitch, vyaw, ax, ay, az]
+    # ax, ay, az are FALSE: for a wheeled robot, IMU double-integration drifts
+    # badly even after gravity removal (small orientation errors leave a residual
+    # ~9.81*sin(err) that accumulates into metres over seconds). Velocity is
+    # tracked via wheel odom; IMU contributes orientation only here.
     imu0_config: [false, false, false,
                   false, false, true,
                   false, false, false,
                   true,  true,  true,
-                  true,  true,  true]
+                  false, false, false]
     imu0_differential: false
     imu0_relative: false
     imu0_remove_gravitational_acceleration: true
@@ -105,11 +115,13 @@ ekf_global_rl:
     odom1_queue_size: 10
 
     imu0: /imu/data
+    # ax, ay, az are FALSE: same reasoning as ekf_local — double-integration
+    # of accelerations drifts; velocity tracking via wheel odom is more stable.
     imu0_config: [false, false, false,
                   false, false, true,
                   false, false, false,
                   true,  true,  true,
-                  true,  true,  true]
+                  false, false, false]
     imu0_differential: false
     imu0_relative: false
     imu0_remove_gravitational_acceleration: true
