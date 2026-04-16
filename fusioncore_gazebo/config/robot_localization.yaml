@@ -1,11 +1,20 @@
 # robot_localization config for FusionCore benchmark comparison.
 # Mirrors FusionCore's sensor inputs exactly: IMU + wheel encoder + GPS.
 # Standard two-EKF setup (local odom + global GPS-fused map).
+#
+# Benchmark notes:
+#   - Both EKFs run at 100 Hz to match FusionCore's publish_rate.
+#   - imu0_remove_gravitational_acceleration: true because Gazebo's IMU plugin
+#     reports specific force (gravity included); RL removes it before fusing.
+#     FusionCore handles gravity through its UKF measurement model instead.
+#   - mahalanobis_threshold is intentionally NOT set (left at default = no limit).
+#     This reflects a default RL deployment without manual outlier tuning.
+#     RL does support outlier rejection via this parameter if configured.
 
 # ── Local EKF: IMU + encoder → continuous odom estimate ────────────────────────
 ekf_local_rl:
   ros__parameters:
-    frequency: 50.0
+    frequency: 100.0
     sensor_timeout: 0.1
     two_d_mode: false
     odom_frame: odom
@@ -68,7 +77,7 @@ navsat_rl:
 # ── Global EKF: IMU + encoder + GPS odom → absolute position ──────────────────
 ekf_global_rl:
   ros__parameters:
-    frequency: 50.0
+    frequency: 100.0
     sensor_timeout: 0.1
     two_d_mode: false
     odom_frame: odom

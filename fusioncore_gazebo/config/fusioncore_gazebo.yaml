@@ -4,8 +4,11 @@ fusioncore:
     odom_frame: odom
     publish_rate: 100.0
 
-    imu.gyro_noise: 0.005
-    imu.accel_noise: 0.1
+    # Noise values match the Gazebo model (model.sdf):
+    #   gyro  stddev = 0.003 rad/s
+    #   accel stddev = 0.050 m/s²
+    imu.gyro_noise: 0.003
+    imu.accel_noise: 0.05
     imu.has_magnetometer: false
 
     encoder.vel_noise: 0.05
@@ -22,7 +25,12 @@ fusioncore:
     gnss.heading_topic: ""
 
     outlier_rejection: true
-    outlier_threshold_gnss: 16.27
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.999) — always on, no config required
+
+    zupt.enabled: true              # zero-velocity updates: suppresses IMU drift at standstill
+    zupt.velocity_threshold: 0.05
+    zupt.angular_threshold: 0.05
+    zupt.noise_sigma: 0.01
 
     adaptive.imu: true
     adaptive.encoder: true

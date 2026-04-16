@@ -203,12 +203,22 @@ class BenchmarkRunner(Node):
     # ── Wait for data ─────────────────────────────────────────────────────────
 
     def wait_for_data(self, timeout=60.0):
+        """Wait until ground truth, FusionCore, AND robot_localization are all live."""
         deadline = time.time() + timeout
         while rclpy.ok() and time.time() < deadline:
             self._maybe_publish_gps()
             rclpy.spin_once(self, timeout_sec=0.5)
-            if self._gt_pos is not None and self._fc_pos is not None:
+            have_gt = self._gt_pos is not None
+            have_fc = self._fc_pos is not None
+            have_rl = self._rl_pos is not None
+            if have_gt and have_fc and have_rl:
                 return True
+            missing = []
+            if not have_gt: missing.append("/world/fusioncore_test/pose/info")
+            if not have_fc: missing.append("/fusion/odom")
+            if not have_rl: missing.append("/rl/odom")
+            self.get_logger().info(
+                f"Waiting for: {', '.join(missing)}", throttle_duration_sec=5.0)
         return False
 
     # ── Scenario 1: 100 m loop ────────────────────────────────────────────────
@@ -266,8 +276,11 @@ class BenchmarkRunner(Node):
     def scenario_outlier_spike(self):
         _header("Scenario 2 — 500 m GPS Outlier Spike")
         print("  Robot stopped. Injecting 500 m northward GPS spike for 4 s.")
-        print("  FusionCore: Mahalanobis chi² gate rejects it.")
-        print("  robot_localization: no chi² gating → expected large jump.\n")
+        print("  FusionCore: Mahalanobis chi2 gate (chi2(3,0.999)=16.27) rejects it")
+        print("  automatically — no config required.")
+        print("  robot_localization: using default config (mahalanobis_threshold not set).")
+        print("  Note: RL does support outlier rejection via mahalanobis_threshold,")
+        print("  but it requires manual tuning. This tests out-of-the-box behaviour.\n")
 
         self.stop()
         self.spin_for(3.0)
@@ -308,7 +321,10 @@ class BenchmarkRunner(Node):
         _header("Scenario 3 — 45 s GPS Outage (dead reckoning)")
         print("  GPS active 20 s to initialise both filters.")
         print("  Then GPS cut for 45 s while driving circles.")
-        print("  FusionCore: ZUPT + UKF.  robot_localization: EKF only.\n")
+        print("  FusionCore: UKF + ZUPT (zero-velocity updates) + adaptive noise")
+        print("              + gyro/accel bias estimation. Both at 100 Hz.")
+        print("  robot_localization: EKF, fixed noise, no ZUPT equivalent.")
+        print("  This tests architectural dead-reckoning quality, not just algorithm.\n")
 
         print("  → Warm-up 20 s (GPS active)...")
         self.spin_for(20.0, linear=0.3, angular=0.2)
@@ -397,6 +413,13 @@ class BenchmarkRunner(Node):
             (s3["fc_err_after"],s3["rl_err_after"]),
         ] if not (math.isnan(fc) or math.isnan(rl)))
         print(f"\n  FusionCore won {wins}/{total} metrics.\n")
+        print("  Architecture notes:")
+        print("  FusionCore : 100 Hz UKF | built-in Mahalanobis outlier rejection")
+        print("               ZUPT | adaptive noise | gyro+accel bias estimation")
+        print("  robot_loc. : 100 Hz EKF | fixed noise | default config")
+        print("               (no outlier rejection, no ZUPT — both are available")
+        print("               in RL but require manual parameter tuning)")
+        print("  Sensors    : identical — same IMU, encoder, GPS feed to both")
         print("  " + _line("═") + "\n")
 
 
@@ -409,22 +432,19 @@ def main():
     print("\n" + "═" * 62)
     print("  FusionCore vs robot_localization — Benchmark")
     print("═" * 62)
-    print("\nWaiting for ground truth + FusionCore data (up to 60 s)...")
+    print("\nWaiting for ground truth, FusionCore, and robot_localization (up to 90 s)...")
+    print("(FusionCore takes ~15 s to configure+activate; RL starts immediately)\n")
 
-    if not node.wait_for_data(timeout=60.0):
-        print("\n[ERROR] No data after 60 s. Check:")
-        print("  ros2 topic echo /fusion/odom --once")
-        print("  ros2 topic echo /world/fusioncore_test/pose/info --once")
+    if not node.wait_for_data(timeout=90.0):
+        print("\n[ERROR] Not all data sources live after 90 s.")
+        print("  Check each topic individually:")
+        print("    ros2 topic echo /world/fusioncore_test/pose/info --once")
+        print("    ros2 topic echo /fusion/odom --once")
+        print("    ros2 topic echo /rl/odom --once")
         rclpy.shutdown()
         return
 
-    print("Data live. Waiting 15 s for robot_localization to initialise...")
-    node.spin_for(15.0)
-
-    if node._rl_pos is None:
-        print("[WARN] /rl/odom still silent — RL metrics will read 0.000")
-    else:
-        print("All sources live. Starting benchmark...\n")
+    print("\nAll sources live. Starting benchmark...\n")
 
     s1 = node.scenario_loop_accuracy()
     print("\nPausing 5 s...")
