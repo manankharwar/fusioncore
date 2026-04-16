@@ -11,6 +11,9 @@ fusioncore:
     # Set true if your IMU reports raw specific force (gravity included).
     # Most IMUs do. Enable if the robot drifts in Z while stationary.
     imu.remove_gravitational_acceleration: false
+    # Override the IMU TF frame. Leave empty to use msg->header.frame_id.
+    # Set to your IMU frame if the driver publishes with an empty frame_id.
+    imu.frame_id: ""
 
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
