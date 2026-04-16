@@ -19,4 +19,10 @@ install(PROGRAMS
   RENAME integration_test
 )
 
+install(PROGRAMS
+  launch/benchmark_runner.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME benchmark_runner
+)
+
 ament_package()
