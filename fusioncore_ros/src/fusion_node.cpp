@@ -50,6 +50,12 @@ public:
     declare_parameter("base_frame",   "base_link");
     declare_parameter("odom_frame",   "odom");
     declare_parameter("publish_rate", 100.0);
+    // Force 2D output: zero the Z position in the published odometry
+    // and the odom->base TF. For ground robots where altitude is
+    // irrelevant (mower, vacuum, AGV), this prevents any GPS-altitude
+    // or IMU-Z drift from moving the costmap rolling window out of the
+    // 2D navigation plane. Orientation (roll/pitch) is untouched.
+    declare_parameter("publish.force_2d", false);
 
     declare_parameter("imu.gyro_noise",  0.005);
     // Set to true if IMU has a magnetometer (9-axis: BNO08x, VectorNav, Xsens)
@@ -146,6 +152,7 @@ public:
     base_frame_   = get_parameter("base_frame").as_string();
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
+    force_2d_     = get_parameter("publish.force_2d").as_bool();
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
     gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
     azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
@@ -969,7 +976,7 @@ private:
 
     odom.pose.pose.position.x = s.x[fusioncore::X];
     odom.pose.pose.position.y = s.x[fusioncore::Y];
-    odom.pose.pose.position.z = s.x[fusioncore::Z];
+    odom.pose.pose.position.z = force_2d_ ? 0.0 : s.x[fusioncore::Z];
 
     tf2::Quaternion q;
     q.setRPY(s.x[fusioncore::ROLL],
@@ -1026,7 +1033,7 @@ private:
 
     tf.transform.translation.x = s.x[fusioncore::X];
     tf.transform.translation.y = s.x[fusioncore::Y];
-    tf.transform.translation.z = s.x[fusioncore::Z];
+    tf.transform.translation.z = force_2d_ ? 0.0 : s.x[fusioncore::Z];
     tf.transform.rotation.x = q.x();
     tf.transform.rotation.y = q.y();
     tf.transform.rotation.z = q.z();
@@ -1264,6 +1271,7 @@ private:
   std::string base_frame_;
   std::string odom_frame_;
   double      publish_rate_;
+  bool        force_2d_ = false;
   std::string heading_topic_;
   std::string gnss2_topic_;
   std::string azimuth_topic_;
