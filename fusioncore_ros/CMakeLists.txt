@@ -72,4 +72,11 @@ install(DIRECTORY config launch
   DESTINATION share/${PROJECT_NAME}
 )
 
+if(BUILD_TESTING)
+  find_package(ament_cmake_gtest REQUIRED)
+
+  ament_add_gtest(test_proj_axis_order tests/test_proj_axis_order.cpp)
+  target_link_libraries(test_proj_axis_order PROJ::proj)
+endif()
+
 ament_package()
