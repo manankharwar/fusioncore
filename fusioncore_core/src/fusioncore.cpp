@@ -474,21 +474,39 @@ void FusionCore::update_encoder(
 void FusionCore::update_ground_constraint(double timestamp_seconds) {
   if (!initialized_) return;
 
-  // Force a minimal predict step so Q is injected into P before this update.
-  // This prevents Cholesky failure when called back-to-back with update_encoder
-  // at the same timestamp (where predict_to would be a no-op and P gets two
-  // consecutive reductions with no covariance recovery between them).
-  // Do NOT update last_timestamp_ here: advancing it would cause every
-  // subsequent GNSS message to be misclassified as delayed (triggering the
-  // retrodiction path). The 1µs UKF time mismatch is negligible.
   ukf_.predict(config_.min_dt);
 
+  // ── VZ = 0: body-frame vertical velocity must be zero for ground robots ──
   sensors::GroundConstraintMeasurement z;
-  z[0] = 0.0;  // expected: body-frame VZ = 0
-
+  z[0] = 0.0;
   sensors::GroundConstraintNoiseMatrix R = sensors::ground_constraint_noise_matrix();
   ukf_.update<sensors::GROUND_CONSTRAINT_DIM>(
     z, sensors::ground_constraint_measurement_function, R);
+
+  // ── Body-frame acceleration constraint: [AX, AY, AZ] ≈ 0 ──────────────
+  // Ground robots don't sustain large body-frame accelerations for extended
+  // periods. Without this constraint, AX/AY random-walk during GPS outage
+  // (q_acceleration=1.0/step) and corrupt velocity through the process model
+  // (VX += dt*AX), causing quadratic position drift.
+  // Loose noise (1.0 m/s² for AX/AY) allows transient accelerations during
+  // speed changes and turns. Tight noise (0.5 m/s²) on AZ prevents gravity
+  // constant mismatch from leaking into Z.
+  Eigen::Matrix<double, 3, 1> z_acc;
+  z_acc[0] = 0.0;  // AX = 0
+  z_acc[1] = 0.0;  // AY = 0
+  z_acc[2] = 0.0;  // AZ = 0
+  Eigen::Matrix<double, 3, 3> R_acc = Eigen::Matrix<double, 3, 3>::Zero();
+  R_acc(0,0) = 0.01;   // AX: 1.0 m/s² sigma — loose for acceleration/braking
+  R_acc(1,1) = 0.01;   // AY: 1.0 m/s² sigma — loose for centripetal during turns
+  R_acc(2,2) = 0.01;  // AZ: 0.5 m/s² sigma — tight for ground robots
+  auto h_acc = [](const StateVector& x) -> Eigen::Matrix<double, 3, 1> {
+    Eigen::Matrix<double, 3, 1> m;
+    m[0] = x[AX];
+    m[1] = x[AY];
+    m[2] = x[AZ];
+    return m;
+  };
+  ukf_.update<3>(z_acc, h_acc, R_acc);
 }
 
 void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {

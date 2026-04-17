@@ -32,6 +32,19 @@ fusioncore:
     zupt.angular_threshold: 0.05
     zupt.noise_sigma: 0.01
 
-    adaptive.imu: true
+    adaptive.imu: false
     adaptive.encoder: true
     adaptive.gnss: true
+
+    # Q tuned for 100 Hz IMU (Gazebo: gyro 0.003 rad/s, accel 0.05 m/s²).
+    # Default values (q_angular_vel=0.1, q_acceleration=1.0) are per-step,
+    # giving effective 10 rad²/s and 100 m²/s³ — far too large for this rate.
+    # Tighter Q keeps UKF sigma-point spread physically realistic so dead
+    # reckoning (Scenario 3 GPS outage) integrates correctly.
+    ukf.q_position: 0.01
+    ukf.q_orientation: 0.01
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 0.001
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5

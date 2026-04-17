@@ -101,9 +101,14 @@ StateVector UKF::process_model(const StateVector& x, double dt) const {
   x_new[YAW]   += dt * (sr/cp_safe*wy + cr/cp_safe*wz);
   // AX/AY/AZ are true body-frame accelerations (gravity already handled in
   // the measurement model). Velocity integrates true acceleration directly.
-  x_new[VX] += dt * x[AX];
-  x_new[VY] += dt * x[AY];
-  x_new[VZ] += dt * x[AZ];
+  // Body-frame velocity dynamics: dV/dt = a_true − ω × V
+  // The cross terms (Coriolis) account for the rotating reference frame.
+  // Without them, centripetal acceleration from turning is erroneously
+  // integrated into body-frame velocity, causing drift during sustained
+  // rotational maneuvers (circles, S-curves, spin-in-place).
+  x_new[VX] += dt * (x[AX] - x[WY]*x[VZ] + x[WZ]*x[VY]);
+  x_new[VY] += dt * (x[AY] - x[WZ]*x[VX] + x[WX]*x[VZ]);
+  x_new[VZ] += dt * (x[AZ] - x[WX]*x[VY] + x[WY]*x[VX]);
   x_new = normalize_state(x_new);
   return x_new;
 }

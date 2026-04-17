@@ -18,6 +18,7 @@ import time
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
+from diagnostic_msgs.msg import DiagnosticArray
 from geometry_msgs.msg import Twist
 from nav_msgs.msg import Odometry
 from sensor_msgs.msg import NavSatFix, NavSatStatus
@@ -105,12 +106,20 @@ class BenchmarkRunner(Node):
         self._gps_ref_sent   = False
         self._last_gps_t     = 0.0   # manual 5 Hz gate
 
+        # GPS acceptance tracking via /diagnostics
+        self._gnss_outliers_count = 0   # cumulative rejected GPS fixes from FC
+        self._gnss_outliers_prev  = 0   # snapshot at last DIAG print
+        self._gps_fixes_published = 0   # total GPS fixes we published
+
         self.create_subscription(TFMessage, "/world/fusioncore_test/pose/info",
                                  self._gt_cb,  be)
         self.create_subscription(Odometry,  "/fusion/odom",
                                  self._fc_cb, be)
         self.create_subscription(Odometry,  "/rl/odom",
                                  self._rl_cb, be)
+        # FusionCore diagnostics: track gnss_outliers to see GPS rejection rate
+        self.create_subscription(DiagnosticArray, "/diagnostics",
+                                 self._diag_cb, 10)
 
         self._cmd_pub = self.create_publisher(Twist,     "/cmd_vel",   10)
         self._gps_pub = self.create_publisher(NavSatFix, "/gnss/fix",  10)
@@ -120,24 +129,14 @@ class BenchmarkRunner(Node):
     # ── Callbacks ─────────────────────────────────────────────────────────────
 
     def _gt_cb(self, msg):
-        # ros_gz_bridge publishes all Gazebo link poses as a TFMessage.
-        # The robot has 4 links: base_link (z≈0.15), left_wheel (z≈0.15),
-        # right_wheel (z≈0.15), imu_link (z≈0.25). All pass a simple z-range
-        # filter. To get a stable chassis position we must identify base_link
-        # specifically. ros_gz_bridge sets child_frame_id to "fusioncore_robot::base_link"
-        # (model::link format). We match that name first; if not found we fall
-        # back to the first transform in the expected z-range.
-        best = None
+        # Gazebo Harmonic Pose_V bridge leaves all frame_ids empty.
+        # Identify the robot chassis by z-height: base_link sits at z≈0.15m.
+        # Tighter range (0.13-0.18) excludes IMU link (z=0.1) and wheels (z≈0).
         for tf in msg.transforms:
-            if "base_link" in tf.child_frame_id and "wheel" not in tf.child_frame_id:
-                t = tf.transform.translation
+            t = tf.transform.translation
+            if 0.13 < t.z < 0.18:
                 self._gt_pos = (t.x, t.y)
                 return
-            t = tf.transform.translation
-            if best is None and 0.08 < t.z < 0.20:
-                best = (t.x, t.y)
-        if best is not None:
-            self._gt_pos = best
 
     def _fc_cb(self, msg):
         p = msg.pose.pose.position
@@ -146,6 +145,16 @@ class BenchmarkRunner(Node):
     def _rl_cb(self, msg):
         p = msg.pose.pose.position
         self._rl_pos = (p.x, p.y)
+
+    def _diag_cb(self, msg):
+        for status in msg.status:
+            if status.name == "fusioncore: GNSS":
+                for kv in status.values:
+                    if kv.key == "outlier_count":
+                        try:
+                            self._gnss_outliers_count = int(kv.value)
+                        except ValueError:
+                            pass
 
     # ── GPS publication (called manually inside spin loops at ~5 Hz) ──────────
 
@@ -157,6 +166,37 @@ class BenchmarkRunner(Node):
 
         if not self._publish_gps or self._gt_pos is None:
             return
+
+        self._gps_fixes_published += 1
+
+        # Diagnostic: log positions + GPS acceptance every ~5 s
+        if not hasattr(self, '_last_diag_t'):
+            self._last_diag_t = 0.0
+        if now - self._last_diag_t >= 5.0:
+            dt_diag = now - self._last_diag_t if self._last_diag_t > 0.0 else 5.0
+            self._last_diag_t = now
+            gt  = self._gt_pos
+            fc  = self._fc_pos
+            rl  = self._rl_pos
+            err_fc = dist2d(gt, fc) if fc else float('nan')
+            err_rl = dist2d(gt, rl) if rl else float('nan')
+            # GPS rejection rate since last print
+            new_rejects = self._gnss_outliers_count - self._gnss_outliers_prev
+            self._gnss_outliers_prev = self._gnss_outliers_count
+            fixes_in_window = max(1, round(dt_diag / 0.2))
+            reject_pct = 100.0 * new_rejects / fixes_in_window
+            gps_status = (f"GPS_REJECTED={new_rejects}/{fixes_in_window} "
+                          f"({reject_pct:.0f}%  total_rej={self._gnss_outliers_count})")
+            if fc is not None:
+                fc_str = f"FC=({fc[0]:.2f},{fc[1]:.2f}) err={err_fc:.2f}m"
+            else:
+                fc_str = "FC=None"
+            if rl is not None:
+                rl_str = f"RL=({rl[0]:.2f},{rl[1]:.2f}) err={err_rl:.2f}m"
+            else:
+                rl_str = "RL=None"
+            print(f"[DIAG] GT=({gt[0]:.2f},{gt[1]:.2f})  "
+                  f"{fc_str}  {rl_str}  {gps_status}")
 
         if self._outlier_active:
             lat_off = 500.0 / 111111.0
@@ -459,7 +499,20 @@ def main():
     print("(FC sets GPS reference on first fix; RL navsat anchors its datum.)")
     print("Robot will not move until warm-up completes.\n")
     node.spin_for(15.0)   # robot stationary, GPS published at ~5 Hz
-    print("Warm-up complete. Starting benchmark scenarios...\n")
+
+    gt  = node._gt_pos
+    fc  = node._fc_pos
+    rl  = node._rl_pos
+    err_fc = dist2d(gt, fc) if (gt and fc) else float('nan')
+    err_rl = dist2d(gt, rl) if (gt and rl) else float('nan')
+    print(f"Warm-up complete. Post-warm-up positions:")
+    print(f"  GT =({gt[0]:.3f}, {gt[1]:.3f})" if gt else "  GT=None")
+    print(f"  FC =({fc[0]:.3f}, {fc[1]:.3f})  err={err_fc:.3f}m  "
+          f"(GPS rejected so far: {node._gnss_outliers_count})" if fc else
+          f"  FC=None")
+    print(f"  RL =({rl[0]:.3f}, {rl[1]:.3f})  err={err_rl:.3f}m" if rl else
+          f"  RL=None")
+    print("Starting benchmark scenarios...\n")
 
     s1 = node.scenario_loop_accuracy()
     print("\nPausing 5 s...")
