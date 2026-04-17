@@ -438,14 +438,17 @@ private:
   // Prints [OK] or [MISSING] + exact fix command for each.
   // Returns true only if all critical transforms are found.
 
-  bool validate_transforms()
+    bool validate_transforms()
   {
     bool all_ok = true;
     RCLCPP_INFO(get_logger(), "--- TF Validation ---");
 
+    // Use configured IMU frame instead of hardcoded "imu_link"
+    std::string imu_tf_frame = imu_frame_override_.empty() ? "imu_link" : imu_frame_override_;
+
     // Check common sensor transforms
     std::vector<std::pair<std::string,std::string>> to_check = {
-      {"imu_link", base_frame_},
+      {imu_tf_frame, base_frame_},
       {base_frame_, odom_frame_},
     };
 
@@ -455,7 +458,7 @@ private:
       } else {
         RCLCPP_WARN(get_logger(), "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher --frame-id %s --child-frame-id %s",
           from.c_str(), to.c_str(), to.c_str(), from.c_str());
-        all_ok = false;  // Fix 1: was never set: function always returned true
+        all_ok = false;
       }
     }
 

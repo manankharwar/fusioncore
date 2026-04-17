@@ -483,12 +483,32 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
   // retrodiction path). The 1µs UKF time mismatch is negligible.
   ukf_.predict(config_.min_dt);
 
+  // ── VZ = 0: body-frame vertical velocity must be zero for ground robots ──
   sensors::GroundConstraintMeasurement z;
-  z[0] = 0.0;  // expected: body-frame VZ = 0
+  z[0] = 0.0;
 
   sensors::GroundConstraintNoiseMatrix R = sensors::ground_constraint_noise_matrix();
   ukf_.update<sensors::GROUND_CONSTRAINT_DIM>(
     z, sensors::ground_constraint_measurement_function, R);
+
+  // ── AZ = 0: body-frame vertical acceleration must be zero for ground robots.
+  // Without this, a mismatch between the IMU's local gravity and the WGS84
+  // constant (9.80665) leaks into the AZ state. Because q_acceleration is
+  // large (1.0), AZ absorbs the residual instead of B_AZ. AZ then integrates
+  // into VZ via the motion model (VZ += AZ*dt), and the VZ=0 constraint above
+  // cannot fully compensate because it only fires at encoder rate (~50Hz)
+  // while IMU predict runs at ~100Hz. The net effect is continuous Z drift.
+  // Constraining AZ directly eliminates the source of the leak.
+  Eigen::Matrix<double, 1, 1> z_az;
+  z_az[0] = 0.0;
+  Eigen::Matrix<double, 1, 1> R_az;
+  R_az(0,0) = 0.25;  // 0.5 m/s² sigma: loose enough for bumps and ramps
+  auto h_az = [](const StateVector& x) -> Eigen::Matrix<double, 1, 1> {
+    Eigen::Matrix<double, 1, 1> m;
+    m[0] = x[AZ];
+    return m;
+  };
+  ukf_.update<1>(z_az, h_az, R_az);
 }
 
 void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
