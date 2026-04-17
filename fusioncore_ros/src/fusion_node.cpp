@@ -547,6 +547,22 @@ private:
       ? (msg->header.frame_id.empty() ? "imu_link" : msg->header.frame_id)
       : imu_frame_override_;
 
+    // On the first IMU message, confirm the resolved frame matches what
+    // validate_transforms assumed. If they differ, the TF lookup will fail
+    // silently and orientation corrections will be skipped.
+    if (imu_frame_resolved_.empty()) {
+      imu_frame_resolved_ = imu_frame;
+      std::string validated_frame = imu_frame_override_.empty() ? "imu_link" : imu_frame_override_;
+      if (imu_frame_resolved_ != validated_frame) {
+        RCLCPP_WARN(get_logger(),
+          "IMU frame mismatch: TF validation checked '%s' but first message has frame_id '%s'. "
+          "Set imu.frame_id: \"%s\" in your config to fix the startup validation warning.",
+          validated_frame.c_str(), imu_frame_resolved_.c_str(), imu_frame_resolved_.c_str());
+      } else {
+        RCLCPP_DEBUG(get_logger(), "IMU TF frame confirmed: %s", imu_frame_resolved_.c_str());
+      }
+    }
+
     if (imu_frame == base_frame_) {
       double ax = msg->linear_acceleration.x;
       double ay = msg->linear_acceleration.y;
@@ -1298,6 +1314,7 @@ private:
   bool        gnss_ref_set_        = false;
   bool        imu_remove_gravity_  = false;
   std::string imu_frame_override_;
+  std::string imu_frame_resolved_;
   double      last_imu_time_       = 0.0;   // timestamp of most recent IMU message
   fusioncore::sensors::LLAPoint  gnss_ref_lla_;
   fusioncore::sensors::ECEFPoint gnss_ref_ecef_;
