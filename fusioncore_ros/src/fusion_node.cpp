@@ -1185,8 +1185,22 @@ private:
   }
 
   // gnss_to_output: LLA (radians) → output CRS (x, y, z).
-  // Bug 1 fix: proj_normalize_for_visualization makes EPSG:4326 expect degrees,
-  // so we convert from the internal radians to degrees before passing to PROJ.
+  //
+  // proj_normalize_for_visualization forces the map-plotting axis order for
+  // EPSG:4326: the first axis is LONGITUDE, the second is LATITUDE (because
+  // map renderers expect x=east, y=north). Values must be in degrees.
+  //
+  // Previous code passed (lat, lon) in slots 0/1, which caused PROJ to
+  // interpret the latitude value as longitude (and vice versa) — giving an
+  // ECEF roughly 6500 km off for mid-latitude sites. With
+  // reference.use_first_fix=true both sides of the round-trip were wrong in
+  // the same way so the bug was masked; with an external fixed ECEF
+  // reference (reference.use_first_fix=false), every live fix was rejected
+  // as thousands of km from the reference.
+  //
+  // Note: output_to_gnss uses `r.lpzt.phi` / `r.lpzt.lam` which are semantic
+  // (phi=latitude, lam=longitude) regardless of axis order, so no change is
+  // needed there.
   void gnss_to_output(
     const fusioncore::sensors::LLAPoint& lla,
     fusioncore::sensors::ECEFPoint& out)
@@ -1197,8 +1211,8 @@ private:
     }
     std::lock_guard<std::mutex> lock(proj_mutex_);
     PJ_COORD c = {{
-      lla.lat_rad * 180.0 / M_PI,   // degrees (after normalize_for_visualization)
-      lla.lon_rad * 180.0 / M_PI,
+      lla.lon_rad * 180.0 / M_PI,   // slot 0 = longitude (visualization order)
+      lla.lat_rad * 180.0 / M_PI,   // slot 1 = latitude
       lla.alt_m,
       HUGE_VAL
     }};
