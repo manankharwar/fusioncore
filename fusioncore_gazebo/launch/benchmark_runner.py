@@ -296,24 +296,23 @@ class BenchmarkRunner(Node):
 
         print("  → Straight 25 m...")
         _run(50.0, 0.5, 0.0)
-        self.stop(); self.spin_for(1.0)
 
         print("  → Left circle (r=4 m)...")
         _run(50.0, 0.5, 0.125)
-        self.stop(); self.spin_for(1.0)
 
         print("  → Straight 25 m...")
         _run(50.0, 0.5, 0.0)
-        self.stop(); self.spin_for(1.0)
 
         print("  → Right circle (r=4 m)...")
         _run(50.0, 0.5, -0.125)
-        self.stop(); self.spin_for(1.0)
 
+        # Compute final error immediately when motion ends — before stopping —
+        # so neither filter gets a ZUPT benefit before the snapshot is taken.
         fc_rmse  = math.sqrt(sum(e*e for e in fc_errors) / max(len(fc_errors), 1))
         rl_rmse  = math.sqrt(sum(e*e for e in rl_errors)  / max(len(rl_errors), 1))
         fc_final = dist2d(self._gt_pos, self._fc_pos) if self._gt_pos and self._fc_pos else float("nan")
         rl_final = dist2d(self._gt_pos, self._rl_pos) if self._gt_pos and self._rl_pos else float("nan")
+        self.stop()
 
         print()
         _row("RMSE vs ground truth",  f"{fc_rmse:.3f}",  f"{rl_rmse:.3f}",  " m")
@@ -326,11 +325,13 @@ class BenchmarkRunner(Node):
     def scenario_outlier_spike(self):
         _header("Scenario 2 — 500 m GPS Outlier Spike")
         print("  Robot stopped. Injecting 500 m northward GPS spike for 4 s.")
-        print("  FusionCore: Mahalanobis chi2 gate (chi2(3,0.999)=16.27) rejects it")
-        print("  automatically — no config required.")
-        print("  robot_localization: using default config (mahalanobis_threshold not set).")
-        print("  Note: RL does support outlier rejection via mahalanobis_threshold,")
-        print("  but it requires manual tuning. This tests out-of-the-box behaviour.\n")
+        print("  FusionCore: Mahalanobis chi2 gate (chi2(3,0.999)=16.27) hard-rejects")
+        print("  the spike — fix is dropped, filter state unchanged.")
+        print("  robot_localization: navsat_transform continuously re-anchors its datum,")
+        print("  which absorbs the spike at the coordinate-transform level rather than")
+        print("  rejecting it. This also prevents large jumps but is NOT outlier rejection —")
+        print("  the datum is silently shifted, corrupting future GPS accuracy until it")
+        print("  re-converges. mahalanobis_threshold is not set (RL default).\n")
 
         self.stop()
         self.spin_for(3.0)

@@ -52,17 +52,31 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
 
   Eigen::LLT<StateMatrix> llt(P_reg);
   if (llt.info() != Eigen::Success) {
-    // P has developed negative eigenvalues (common under sustained high-rate IMU
-    // updates where the K*S*K^T subtraction overshoots in the bias dimensions).
-    // Fix: identity shift: add eps*I to raise all eigenvalues by |min_eigenvalue|.
-    // Unlike the V*max(λ,ε)*V^T clamp, a shift preserves the eigenvectors and keeps
-    // large position/velocity eigenvalues intact.  The clamp approach destroys them
-    // because P's eigenvectors mix position and bias components after cross-coupling,
-    // so clamping bias eigenvalues to 1e-9 also collapses position uncertainty when
-    // P is reconstructed, making the Mahalanobis gate far too tight and rejecting GPS.
-    Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
-    double min_eigen = es.eigenvalues().minCoeff();
-    state_.P += StateMatrix::Identity() * (-min_eigen + 1e-9);
+    // P has developed negative eigenvalues. Most common source is the 6×6 bias
+    // subblock (B_GX–B_AZ, indices 15–20) where high-rate IMU updates cause
+    // K*S*K^T to overshoot. Repair it first to minimise inflation of healthy
+    // position/velocity uncertainty.
+    constexpr int BIAS_DIM = 6;
+    using BiasMat = Eigen::Matrix<double, BIAS_DIM, BIAS_DIM>;
+    {
+      Eigen::SelfAdjointEigenSolver<BiasMat> es(
+          state_.P.block<BIAS_DIM, BIAS_DIM>(B_GX, B_GX), Eigen::EigenvaluesOnly);
+      double min_bias = es.eigenvalues().minCoeff();
+      if (min_bias < 0)
+        state_.P.block<BIAS_DIM, BIAS_DIM>(B_GX, B_GX) +=
+            BiasMat::Identity() * (-min_bias + 1e-9);
+    }
+
+    // Full-matrix repair: find the actual minimum eigenvalue of P and add the
+    // minimal correction needed. Using the exact min_ev keeps the inflation
+    // proportional to the defect rather than applying an arbitrary constant.
+    {
+      Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
+      double min_ev = es.eigenvalues().minCoeff();
+      if (min_ev < 0)
+        state_.P += StateMatrix::Identity() * (-min_ev + 1e-9);
+    }
+
     P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
     llt.compute(P_reg);
     if (llt.info() != Eigen::Success)

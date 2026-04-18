@@ -474,6 +474,11 @@ void FusionCore::update_encoder(
 void FusionCore::update_ground_constraint(double timestamp_seconds) {
   if (!initialized_) return;
 
+  // predict(min_dt) intentionally adds one full Q step to P before applying
+  // the ground constraint. Since Q is per-step (not scaled by dt), this raises
+  // P(AX,AX) and P(AY,AY), giving the constraint a higher Kalman gain and
+  // pulling AX/AY back toward zero more aggressively during GPS outage.
+  // The state propagation for dt=1e-6 is negligible; the covariance effect is not.
   ukf_.predict(config_.min_dt);
 
   // ── VZ = 0: body-frame vertical velocity must be zero for ground robots ──
@@ -496,9 +501,9 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
   z_acc[1] = 0.0;  // AY = 0
   z_acc[2] = 0.0;  // AZ = 0
   Eigen::Matrix<double, 3, 3> R_acc = Eigen::Matrix<double, 3, 3>::Zero();
-  R_acc(0,0) = 0.01;   // AX: 1.0 m/s² sigma — loose for acceleration/braking
-  R_acc(1,1) = 0.01;   // AY: 1.0 m/s² sigma — loose for centripetal during turns
-  R_acc(2,2) = 0.01;  // AZ: 0.5 m/s² sigma — tight for ground robots
+  R_acc(0,0) = 0.01;   // AX: σ=0.1 m/s² — tight to prevent AX random-walk during GPS outage
+  R_acc(1,1) = 0.01;   // AY: σ=0.1 m/s² — same; keeps dead-reckoning velocity stable
+  R_acc(2,2) = 0.01;   // AZ: σ=0.1 m/s² — ground robots don't accelerate vertically
   auto h_acc = [](const StateVector& x) -> Eigen::Matrix<double, 3, 1> {
     Eigen::Matrix<double, 3, 1> m;
     m[0] = x[AX];

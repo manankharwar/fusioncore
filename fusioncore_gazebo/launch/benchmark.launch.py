@@ -105,6 +105,19 @@ def generate_launch_description():
                    "--frame-id", "map", "--child-frame-id", "odom"]
     )
 
+    # gnss_link → base_link: the benchmark publishes GPS with frame_id="gnss_link".
+    # navsat_transform looks up this transform to apply the GPS antenna offset.
+    # Without it, navsat may drop fixes or emit TF errors, unfairly hurting RL.
+    # The simulated robot has no physical antenna offset, so this is identity.
+    gnss_tf = Node(
+        package="tf2_ros",
+        executable="static_transform_publisher",
+        name="gnss_tf",
+        arguments=["--x", "0", "--y", "0", "--z", "0",
+                   "--roll", "0", "--pitch", "0", "--yaw", "0",
+                   "--frame-id", "base_link", "--child-frame-id", "gnss_link"]
+    )
+
     # ── 4. FusionCore lifecycle node ──────────────────────────────────────────
     fusioncore_node = LifecycleNode(
         package="fusioncore_ros",
@@ -186,6 +199,7 @@ def generate_launch_description():
         imu_tf_gz,
         odom_tf,
         map_tf,
+        gnss_tf,
         fusioncore_node,
         configure_fc,
         activate_fc,
