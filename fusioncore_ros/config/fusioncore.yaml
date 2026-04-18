@@ -80,13 +80,13 @@ fusioncore:
     adaptive.window: 50       # number of updates to track (50 = ~0.5s at 100Hz)
     adaptive.alpha: 0.01      # learning rate (0.01 = slow, stable)
 
-    ukf.q_position: 0.01
-    ukf.q_orientation: 0.01
-    ukf.q_velocity: 0.1
-    ukf.q_angular_vel: 0.1
-    ukf.q_acceleration: 1.0
-    ukf.q_gyro_bias: 1.0e-5
-    ukf.q_accel_bias: 1.0e-5
+    ukf.q_position: 1.0
+    ukf.q_orientation: 1.0
+    ukf.q_velocity: 10.0
+    ukf.q_angular_vel: 10.0
+    ukf.q_acceleration: 100.0
+    ukf.q_gyro_bias: 1.0e-3
+    ukf.q_accel_bias: 1.0e-3
 
     # PROJ coordinate reference system
     # input.gnss_crs: CRS of incoming NavSatFix messages

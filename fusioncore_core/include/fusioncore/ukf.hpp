@@ -13,14 +13,16 @@ struct UKFParams {
   double beta  = 2.0;    // prior knowledge of distribution (2.0 = Gaussian)
   double kappa = 0.0;    // secondary scaling (0.0 is standard)
 
-  // Process noise: how much we trust the motion model
-  double q_position     = 0.01;   // m²/s
-  double q_orientation  = 0.01;   // rad²/s
-  double q_velocity     = 0.1;    // (m/s)²/s
-  double q_angular_vel  = 0.1;    // (rad/s)²/s
-  double q_acceleration = 1.0;    // (m/s²)²/s
-  double q_gyro_bias    = 1e-5;   // (rad/s)²/s  -- biases change slowly
-  double q_accel_bias   = 1e-5;   // (m/s²)²/s
+  // Process noise power spectral densities (continuous-time).
+  // Multiplied by dt in predict() to give discrete per-step noise.
+  // Values are rate-independent: same config works at any IMU frequency.
+  double q_position     = 1.0;    // m²/s
+  double q_orientation  = 1.0;    // rad²/s
+  double q_velocity     = 10.0;   // (m/s)²/s
+  double q_angular_vel  = 10.0;   // (rad/s)²/s
+  double q_acceleration = 0.1;    // (m/s²)²/s
+  double q_gyro_bias    = 1e-3;   // (rad/s)²/s  -- biases change slowly
+  double q_accel_bias   = 1e-3;   // (m/s²)²/s
 };
 
 class UKF {

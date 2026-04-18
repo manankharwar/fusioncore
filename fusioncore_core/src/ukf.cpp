@@ -52,31 +52,17 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
 
   Eigen::LLT<StateMatrix> llt(P_reg);
   if (llt.info() != Eigen::Success) {
-    // P has developed negative eigenvalues. Most common source is the 6×6 bias
-    // subblock (B_GX–B_AZ, indices 15–20) where high-rate IMU updates cause
-    // K*S*K^T to overshoot. Repair it first to minimise inflation of healthy
-    // position/velocity uncertainty.
-    constexpr int BIAS_DIM = 6;
-    using BiasMat = Eigen::Matrix<double, BIAS_DIM, BIAS_DIM>;
-    {
-      Eigen::SelfAdjointEigenSolver<BiasMat> es(
-          state_.P.block<BIAS_DIM, BIAS_DIM>(B_GX, B_GX), Eigen::EigenvaluesOnly);
-      double min_bias = es.eigenvalues().minCoeff();
-      if (min_bias < 0)
-        state_.P.block<BIAS_DIM, BIAS_DIM>(B_GX, B_GX) +=
-            BiasMat::Identity() * (-min_bias + 1e-9);
-    }
-
-    // Full-matrix repair: find the actual minimum eigenvalue of P and add the
-    // minimal correction needed. Using the exact min_ev keeps the inflation
-    // proportional to the defect rather than applying an arbitrary constant.
-    {
-      Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
-      double min_ev = es.eigenvalues().minCoeff();
-      if (min_ev < 0)
-        state_.P += StateMatrix::Identity() * (-min_ev + 1e-9);
-    }
-
+    // P has developed negative eigenvalues (common under sustained high-rate IMU
+    // updates where the K*S*K^T subtraction overshoots in the bias dimensions).
+    // Fix: identity shift: add eps*I to raise all eigenvalues by |min_eigenvalue|.
+    // Unlike the V*max(λ,ε)*V^T clamp, a shift preserves the eigenvectors and keeps
+    // large position/velocity eigenvalues intact.  The clamp approach destroys them
+    // because P's eigenvectors mix position and bias components after cross-coupling,
+    // so clamping bias eigenvalues to 1e-9 also collapses position uncertainty when
+    // P is reconstructed, making the Mahalanobis gate far too tight and rejecting GPS.
+    Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
+    double min_eigen = es.eigenvalues().minCoeff();
+    state_.P += StateMatrix::Identity() * (-min_eigen + 1e-9);
     P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
     llt.compute(P_reg);
     if (llt.info() != Eigen::Success)
@@ -148,12 +134,10 @@ void UKF::predict(double dt) {
     x_pred += Wm_[i] * sigma_pred.col(i);
   x_pred = normalize_state(x_pred);
 
-  // Q is added per predict step (not scaled by dt).
-  // The q_* params in UKFParams are calibrated as per-step noise, not spectral densities.
-  // Scaling by dt here would require re-tuning all Q values by the IMU rate (~100x),
-  // which would break all existing configurations and cause GPS Mahalanobis rejections
-  // as P grows too slowly to track real motion.
-  StateMatrix P_pred = Q_;
+  // Q is the continuous-time power spectral density matrix; scale by dt to get
+  // discrete per-step noise. This makes Q rate-independent: the same YAML values
+  // work at 10 Hz, 100 Hz, or any IMU rate without re-tuning.
+  StateMatrix P_pred = Q_ * dt;
   for (int i = 0; i < n_sigma; ++i) {
     StateVector diff = normalize_state(sigma_pred.col(i) - x_pred);
     P_pred += Wc_[i] * diff * diff.transpose();
@@ -213,9 +197,12 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   auto S_ldlt = S.ldlt();
   PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
   state_.x = normalize_state(state_.x + K * innovation);
-  state_.P -= K * S * K.transpose();
-  // Symmetrize after each update to prevent floating-point asymmetry from
-  // accumulating across the ~100 Hz IMU + 1 Hz GPS update stream.
+  // Joseph stabilized form: P = P - K*Pxz^T - Pxz*K^T + K*S*K^T
+  // Algebraically identical to P -= K*S*K^T when K is exact, but numerically
+  // more stable: the antisymmetric parts of a floating-point K cancel across
+  // the two middle terms, preventing asymmetric error from accumulating across
+  // the 100 Hz IMU update stream and driving P non-PSD.
+  state_.P = state_.P - K * Pxz.transpose() - Pxz * K.transpose() + K * S * K.transpose();
   state_.P = (state_.P + state_.P.transpose()) * 0.5;
   return innovation;
 }
