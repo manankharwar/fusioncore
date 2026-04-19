@@ -145,47 +145,26 @@ inline auto gnss_pos_measurement_function_with_lever_arm(
   const GnssLeverArm& lever_arm)
 {
   return [lever_arm](const StateVector& x) -> GnssPosMeasurement {
-    double roll  = x[ROLL];
-    double pitch = x[PITCH];
-    double yaw   = x[YAW];
+    double qw = x[QW], qx = x[QX], qy = x[QY], qz = x[QZ];
 
-    // Build rotation matrix body -> world (ZYX Euler)
-    double cr = std::cos(roll),  sr = std::sin(roll);
-    double cp = std::cos(pitch), sp = std::sin(pitch);
-    double cy = std::cos(yaw),   sy = std::sin(yaw);
+    // Rotation matrix body-to-world from quaternion
+    double R[3][3];
+    quat_to_rotation_matrix(qw, qx, qy, qz, R);
 
-    // R = Rz(yaw) * Ry(pitch) * Rx(roll)
-    double R00 = cy*cp;
-    double R01 = cy*sp*sr - sy*cr;
-    double R02 = cy*sp*cr + sy*sr;
-    double R10 = sy*cp;
-    double R11 = sy*sp*sr + cy*cr;
-    double R12 = sy*sp*cr - cy*sr;
-    double R20 = -sp;
-    double R21 = cp*sr;
-    double R22 = cp*cr;
-
-    // Rotate lever arm from body frame to world frame
-    double lx = lever_arm.x;
-    double ly = lever_arm.y;
-    double lz = lever_arm.z;
-
-    double offset_x = R00*lx + R01*ly + R02*lz;
-    double offset_y = R10*lx + R11*ly + R12*lz;
-    double offset_z = R20*lx + R21*ly + R22*lz;
-
+    double lx = lever_arm.x, ly = lever_arm.y, lz = lever_arm.z;
     GnssPosMeasurement z;
-    z[0] = x[X] + offset_x;
-    z[1] = x[Y] + offset_y;
-    z[2] = x[Z] + offset_z;
+    z[0] = x[X] + R[0][0]*lx + R[0][1]*ly + R[0][2]*lz;
+    z[1] = x[Y] + R[1][0]*lx + R[1][1]*ly + R[1][2]*lz;
+    z[2] = x[Z] + R[2][0]*lx + R[2][1]*ly + R[2][2]*lz;
     return z;
   };
 }
 
-// h(x): state -> expected GNSS heading
+// h(x): state -> expected GNSS heading (yaw extracted from quaternion)
 inline GnssHdgMeasurement gnss_hdg_measurement_function(const StateVector& x) {
   GnssHdgMeasurement z;
-  z[0] = x[YAW];
+  double qw = x[QW], qx = x[QX], qy = x[QY], qz = x[QZ];
+  z[0] = std::atan2(2*(qw*qz + qx*qy), 1 - 2*(qy*qy + qz*qz));
   return z;
 }
 

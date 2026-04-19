@@ -530,8 +530,7 @@ private:
     last_imu_time_ = t;
 
     if (pending_init_) {
-      fusioncore::State initial;
-      initial.x = fusioncore::StateVector::Zero();
+      fusioncore::State initial;  // State() default-constructs with QW=1 (identity quaternion)
       initial.P = fusioncore::StateMatrix::Identity() * 0.1;
       initial.P(0,0) = 1000.0;  // large position uncertainty: accept first GPS
       initial.P(1,1) = 1000.0;
@@ -645,8 +644,9 @@ private:
   tf2::Vector3 gravity_in_body_frame()
   {
     const fusioncore::State& s = fc_->get_state();
-    tf2::Quaternion q_body;
-    q_body.setRPY(s.x[fusioncore::ROLL], s.x[fusioncore::PITCH], s.x[fusioncore::YAW]);
+    // tf2::Quaternion(x,y,z,w) — note: NOT (w,x,y,z)
+    tf2::Quaternion q_body(s.x[fusioncore::QX], s.x[fusioncore::QY],
+                           s.x[fusioncore::QZ], s.x[fusioncore::QW]);
     // In ENU world frame the apparent gravity in a stationary IMU = [0, 0, +9.80665].
     // Rotate from world to body using the inverse quaternion (q maps body→world).
     tf2::Vector3 g_world(0.0, 0.0, 9.80665);
@@ -1012,14 +1012,10 @@ private:
     odom.pose.pose.position.y = s.x[fusioncore::Y];
     odom.pose.pose.position.z = force_2d_ ? 0.0 : s.x[fusioncore::Z];
 
-    tf2::Quaternion q;
-    q.setRPY(s.x[fusioncore::ROLL],
-             s.x[fusioncore::PITCH],
-             s.x[fusioncore::YAW]);
-    odom.pose.pose.orientation.x = q.x();
-    odom.pose.pose.orientation.y = q.y();
-    odom.pose.pose.orientation.z = q.z();
-    odom.pose.pose.orientation.w = q.w();
+    odom.pose.pose.orientation.x = s.x[fusioncore::QX];
+    odom.pose.pose.orientation.y = s.x[fusioncore::QY];
+    odom.pose.pose.orientation.z = s.x[fusioncore::QZ];
+    odom.pose.pose.orientation.w = s.x[fusioncore::QW];
 
     odom.twist.twist.linear.x  = s.x[fusioncore::VX];
     odom.twist.twist.linear.y  = s.x[fusioncore::VY];
@@ -1033,10 +1029,12 @@ private:
     // twist.covariance is 6x6 row-major for [vx, vy, vz, wx, wy, wz].
     // Extract the relevant 6x6 sub-blocks from the 21x21 P matrix.
     const fusioncore::StateMatrix& P = s.P;
-    // Pose state indices: X=0,Y=1,Z=2,ROLL=3,PITCH=4,YAW=5
+    // Pose covariance: [x, y, z, roll, pitch, yaw] (ROS convention).
+    // Map orientation slots to QX, QY, QZ (3 of 4 quaternion components).
+    // QW is omitted — it's constrained by unit norm and has near-zero variance.
     static constexpr int pose_idx[6] = {
       fusioncore::X, fusioncore::Y, fusioncore::Z,
-      fusioncore::ROLL, fusioncore::PITCH, fusioncore::YAW
+      fusioncore::QX, fusioncore::QY, fusioncore::QZ
     };
     for (int i = 0; i < 6; ++i)
       for (int j = 0; j < 6; ++j)
@@ -1068,10 +1066,10 @@ private:
     tf.transform.translation.x = s.x[fusioncore::X];
     tf.transform.translation.y = s.x[fusioncore::Y];
     tf.transform.translation.z = force_2d_ ? 0.0 : s.x[fusioncore::Z];
-    tf.transform.rotation.x = q.x();
-    tf.transform.rotation.y = q.y();
-    tf.transform.rotation.z = q.z();
-    tf.transform.rotation.w = q.w();
+    tf.transform.rotation.x = s.x[fusioncore::QX];
+    tf.transform.rotation.y = s.x[fusioncore::QY];
+    tf.transform.rotation.z = s.x[fusioncore::QZ];
+    tf.transform.rotation.w = s.x[fusioncore::QW];
 
     tf_broadcaster_->sendTransform(tf);
   }

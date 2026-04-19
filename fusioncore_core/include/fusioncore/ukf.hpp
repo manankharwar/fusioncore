@@ -14,13 +14,17 @@ struct UKFParams {
   double kappa = 0.0;    // secondary scaling (0.0 is standard)
 
   // Process noise: how much we trust the motion model
-  double q_position     = 0.01;   // m²/s
-  double q_orientation  = 0.01;   // rad²/s
-  double q_velocity     = 0.1;    // (m/s)²/s
-  double q_angular_vel  = 0.1;    // (rad/s)²/s
-  double q_acceleration = 1.0;    // (m/s²)²/s
-  double q_gyro_bias    = 1e-5;   // (rad/s)²/s  -- biases change slowly
-  double q_accel_bias   = 1e-5;   // (m/s²)²/s
+  double q_position     = 0.01;   // m²/step
+  // Quaternion regularization: keeps Q positive-definite.
+  // NOT the primary orientation noise source — orientation uncertainty
+  // propagates from q_angular_vel through the quaternion kinematics.
+  // Set to a very small value; large values corrupt the quaternion norm.
+  double q_orientation  = 1e-9;   // quaternion regularization (dimensionless)
+  double q_velocity     = 0.1;    // (m/s)²/step
+  double q_angular_vel  = 0.1;    // (rad/s)²/step
+  double q_acceleration = 1.0;    // (m/s²)²/step
+  double q_gyro_bias    = 1e-5;   // (rad/s)²/step -- biases change slowly
+  double q_accel_bias   = 1e-5;   // (m/s²)²/step
 };
 
 class UKF {

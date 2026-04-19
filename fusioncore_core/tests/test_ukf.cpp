@@ -13,14 +13,18 @@ TEST(UKFTest, InitializesCorrectly) {
   initial.x[X]   = 1.0;
   initial.x[Y]   = 2.0;
   initial.x[Z]   = 0.0;
-  initial.x[YAW] = 0.5;
+  // yaw = 0.5 rad → quaternion [cos(0.25), 0, 0, sin(0.25)]
+  initial.x[QW]  = std::cos(0.25);
+  initial.x[QX]  = 0.0;
+  initial.x[QY]  = 0.0;
+  initial.x[QZ]  = std::sin(0.25);
 
   ukf.init(initial);
 
   EXPECT_TRUE(ukf.is_initialized());
-  EXPECT_DOUBLE_EQ(ukf.state().x[X],   1.0);
-  EXPECT_DOUBLE_EQ(ukf.state().x[Y],   2.0);
-  EXPECT_DOUBLE_EQ(ukf.state().x[YAW], 0.5);
+  EXPECT_DOUBLE_EQ(ukf.state().x[X], 1.0);
+  EXPECT_DOUBLE_EQ(ukf.state().x[Y], 2.0);
+  EXPECT_NEAR(ukf.state().yaw(), 0.5, 1e-9);
 }
 
 // ─── Test 2: Predict doesn't explode ────────────────────────────────────────
@@ -76,9 +80,8 @@ TEST(UKFTest, ForwardMotionIntegratesPosition) {
   UKF ukf(params);
 
   State initial;
-  initial.x      = StateVector::Zero();
   initial.x[VX]  = 1.0;   // 1 m/s forward
-  initial.x[YAW] = 0.0;   // facing east
+  // State() default-constructs with QW=1 (identity quaternion) = yaw 0, facing east
   initial.P      = StateMatrix::Identity() * 1e-4;
 
   ukf.init(initial);
@@ -139,16 +142,19 @@ TEST(UKFTest, PositionUpdateCorrectState) {
   EXPECT_NEAR(ukf.state().x[X], 0.0, 0.5);
 }
 
-// ─── Test 7: Angle normalization wraps correctly ─────────────────────────────
+// ─── Test 7: Quaternion stays normalized after many predicts ─────────────────
 
-TEST(UKFTest, AngleNormalizationAfterPredict) {
+TEST(UKFTest, QuaternionRemainsNormalizedAfterPredict) {
   UKF ukf;
 
   State initial;
-  initial.x      = StateVector::Zero();
-  initial.x[YAW] = 3.0;
-  initial.x[WZ]  = 1.0;
-  initial.P      = StateMatrix::Identity() * 0.01;
+  // yaw = 3.0 rad → quaternion [cos(1.5), 0, 0, sin(1.5)]
+  initial.x[QW] = std::cos(1.5);
+  initial.x[QX] = 0.0;
+  initial.x[QY] = 0.0;
+  initial.x[QZ] = std::sin(1.5);
+  initial.x[WZ] = 1.0;  // spinning
+  initial.P = StateMatrix::Identity() * 0.01;
 
   ukf.init(initial);
 
@@ -156,8 +162,15 @@ TEST(UKFTest, AngleNormalizationAfterPredict) {
     ukf.predict(0.01);
   }
 
-  EXPECT_LE(ukf.state().x[YAW],  M_PI);
-  EXPECT_GE(ukf.state().x[YAW], -M_PI);
+  // Quaternion must remain unit norm after 50 predict steps
+  double qnorm = std::sqrt(
+    std::pow(ukf.state().x[QW], 2) + std::pow(ukf.state().x[QX], 2) +
+    std::pow(ukf.state().x[QY], 2) + std::pow(ukf.state().x[QZ], 2));
+  EXPECT_NEAR(qnorm, 1.0, 1e-9);
+
+  // Derived yaw must be in [-π, π]
+  EXPECT_LE(ukf.state().yaw(),  M_PI);
+  EXPECT_GE(ukf.state().yaw(), -M_PI);
 }
 
 int main(int argc, char** argv) {

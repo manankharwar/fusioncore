@@ -22,6 +22,11 @@ bool FusionCore::is_outlier(
 }
 
 // Explicit instantiations
+template bool FusionCore::is_outlier<2>(
+  const Eigen::Matrix<double, 2, 1>&,
+  const Eigen::Matrix<double, 2, 2>&,
+  double) const;
+
 template bool FusionCore::is_outlier<1>(
   const Eigen::Matrix<double, 1, 1>&,
   const Eigen::Matrix<double, 1, 1>&,
@@ -371,42 +376,66 @@ void FusionCore::update_imu_orientation(
   z[2] = yaw;
 
   sensors::ImuOrientationParams fallback;
-  sensors::ImuOrientationNoiseMatrix R;
 
-  if (orientation_cov != nullptr) {
-    R = sensors::imu_orientation_noise_from_covariance(orientation_cov, fallback);
-  } else {
-    R = adaptive_initialized_ ? R_imu_orient_ : sensors::imu_orientation_noise_matrix(fallback);
-  }
-
-  // Without a magnetometer, the IMU yaw is just integrated gyro drift:
-  // not a real heading reference.  Set yaw noise to effectively infinite
-  // so the UKF update has near-zero gain on yaw, preserving roll/pitch.
   if (!config_.imu_has_magnetometer) {
-    R(2, 2) = 1e6;
-  }
-
-  // Mahalanobis outlier rejection for IMU orientation
-  if (config_.outlier_rejection) {
-    sensors::ImuOrientationMeasurement innovation_pre;
-    sensors::ImuOrientationNoiseMatrix S;
-    ukf_.predict_measurement<sensors::IMU_ORIENTATION_DIM>(
-      z, sensors::imu_orientation_measurement_function, R, innovation_pre, S);
-    if (is_outlier<sensors::IMU_ORIENTATION_DIM>(innovation_pre, S, config_.outlier_threshold_imu)) {
-      ++imu_outliers_;
-      last_imu_time_ = timestamp_seconds;
-      return;
+    // 6-axis IMU: fuse roll and pitch only. Yaw is omitted (not estimated from gyro integral).
+    // A 3D update with R(yaw)=1e6 would still couple roll/pitch corrections into QZ
+    // via the Kalman cross-covariance; a 2D update eliminates the channel entirely.
+    sensors::ImuRPNoiseMatrix R_rp;
+    if (orientation_cov != nullptr) {
+      R_rp(0,0) = (orientation_cov[0] > 0.0) ? orientation_cov[0] : fallback.roll_noise  * fallback.roll_noise;
+      R_rp(1,1) = (orientation_cov[4] > 0.0) ? orientation_cov[4] : fallback.pitch_noise * fallback.pitch_noise;
+      R_rp(0,1) = R_rp(1,0) = 0.0;
+    } else {
+      R_rp = sensors::imu_rp_noise_matrix(fallback);
     }
+
+    sensors::ImuRPMeasurement z_rp;
+    z_rp[0] = roll;
+    z_rp[1] = pitch;
+
+    if (config_.outlier_rejection) {
+      sensors::ImuRPMeasurement innovation_pre;
+      sensors::ImuRPNoiseMatrix  S;
+      ukf_.predict_measurement<sensors::IMU_RP_DIM>(
+        z_rp, sensors::imu_rp_measurement_function, R_rp, innovation_pre, S);
+      if (is_outlier<sensors::IMU_RP_DIM>(innovation_pre, S, config_.outlier_threshold_imu)) {
+        ++imu_outliers_;
+        last_imu_time_ = timestamp_seconds;
+        return;
+      }
+    }
+
+    ukf_.update<sensors::IMU_RP_DIM>(z_rp, sensors::imu_rp_measurement_function, R_rp);
+
+  } else {
+    // 9-axis IMU with magnetometer: fuse roll, pitch, and yaw.
+    sensors::ImuOrientationNoiseMatrix R;
+    if (orientation_cov != nullptr) {
+      R = sensors::imu_orientation_noise_from_covariance(orientation_cov, fallback);
+    } else {
+      R = adaptive_initialized_ ? R_imu_orient_ : sensors::imu_orientation_noise_matrix(fallback);
+    }
+
+    if (config_.outlier_rejection) {
+      sensors::ImuOrientationMeasurement innovation_pre;
+      sensors::ImuOrientationNoiseMatrix S;
+      ukf_.predict_measurement<sensors::IMU_ORIENTATION_DIM>(
+        z, sensors::imu_orientation_measurement_function, R, innovation_pre, S);
+      if (is_outlier<sensors::IMU_ORIENTATION_DIM>(innovation_pre, S, config_.outlier_threshold_imu)) {
+        ++imu_outliers_;
+        last_imu_time_ = timestamp_seconds;
+        return;
+      }
+    }
+
+    constexpr unsigned int IMU_ORIENT_ANGLE_DIMS = 0b100;  // bit 2 = yaw
+    auto imu_orient_innovation = ukf_.update<sensors::IMU_ORIENTATION_DIM>(
+      z, sensors::imu_orientation_measurement_function, R, IMU_ORIENT_ANGLE_DIMS);
+
+    adapt_R<sensors::IMU_ORIENTATION_DIM>(
+      R_imu_orient_, imu_orient_innovations_, imu_orient_innovation, config_.adaptive_imu);
   }
-
-  // Dimension 2 (yaw) is an angle: wrap z_diff across ±π boundary
-  constexpr unsigned int IMU_ORIENT_ANGLE_DIMS = 0b100;  // bit 2 = yaw
-  auto imu_orient_innovation = ukf_.update<sensors::IMU_ORIENTATION_DIM>(
-    z, sensors::imu_orientation_measurement_function, R, IMU_ORIENT_ANGLE_DIMS);
-
-  // Track innovation for adaptive noise estimation
-  adapt_R<sensors::IMU_ORIENTATION_DIM>(
-    R_imu_orient_, imu_orient_innovations_, imu_orient_innovation, config_.adaptive_imu);
 
   // IMU orientation validates heading ONLY if the IMU has a magnetometer.
   // 6-axis IMUs integrate gyro for yaw: this drifts and is not a valid

@@ -93,7 +93,7 @@ fusioncore:
     adaptive.alpha: 0.01      # learning rate (0.01 = slow, stable)
 
     ukf.q_position: 0.01
-    ukf.q_orientation: 0.01
+    ukf.q_orientation: 1.0e-9  # quaternion regularization only — see ukf.hpp
     ukf.q_velocity: 0.1
     ukf.q_angular_vel: 0.1
     ukf.q_acceleration: 1.0

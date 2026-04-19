@@ -85,8 +85,7 @@ TEST(GNSSManagerTest, DualAntennaHeadingUpdate) {
   FusionCore fc;
 
   State initial;
-  initial.x       = StateVector::Zero();
-  initial.x[YAW]  = 0.0;   // facing east
+  // State() default-constructs with QW=1 (identity) = yaw 0, facing east
   initial.P       = StateMatrix::Identity() * 1.0;
   fc.init(initial, 0.0);
 
@@ -100,8 +99,8 @@ TEST(GNSSManagerTest, DualAntennaHeadingUpdate) {
   EXPECT_TRUE(accepted);
 
   // Yaw should have moved toward 45 degrees
-  EXPECT_GT(fc.get_state().x[YAW], 0.0);
-  EXPECT_NEAR(fc.get_state().x[YAW], M_PI/4.0, 0.3);
+  EXPECT_GT(fc.get_state().yaw(), 0.0);
+  EXPECT_NEAR(fc.get_state().yaw(), M_PI/4.0, 0.3);
 }
 
 // ─── Test 5: Invalid heading is rejected ─────────────────────────────────────

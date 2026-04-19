@@ -26,10 +26,14 @@ TEST(GNSSTest, PosMeasurementFunctionMapsState) {
 
 TEST(GNSSTest, HdgMeasurementFunctionMapsYaw) {
   StateVector x = StateVector::Zero();
-  x[YAW] = 1.57;
+  // yaw = π/2 → quaternion [cos(π/4), 0, 0, sin(π/4)]
+  x[QW] = std::cos(M_PI / 4.0);
+  x[QX] = 0.0;
+  x[QY] = 0.0;
+  x[QZ] = std::sin(M_PI / 4.0);
 
   GnssHdgMeasurement z = gnss_hdg_measurement_function(x);
-  EXPECT_DOUBLE_EQ(z[0], 1.57);
+  EXPECT_NEAR(z[0], M_PI / 2.0, 1e-9);
 }
 
 // ─── Test 3: Quality-aware noise scales with HDOP ────────────────────────────

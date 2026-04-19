@@ -14,7 +14,20 @@ UKF::UKF(const UKFParams& params)
 }
 
 void UKF::init(const State& initial_state) {
-  state_       = initial_state;
+  state_ = initial_state;
+  // Repair zero or near-zero quaternion — tests that assign x = Zero() invalidate QW.
+  // A zero-norm quaternion causes division-by-zero in process_model.
+  double qnorm = std::sqrt(state_.x[QW]*state_.x[QW] + state_.x[QX]*state_.x[QX] +
+                            state_.x[QY]*state_.x[QY] + state_.x[QZ]*state_.x[QZ]);
+  if (qnorm < 1e-10) {
+    state_.x[QW] = 1.0;
+    state_.x[QX] = state_.x[QY] = state_.x[QZ] = 0.0;
+  } else {
+    state_.x[QW] /= qnorm;
+    state_.x[QX] /= qnorm;
+    state_.x[QY] /= qnorm;
+    state_.x[QZ] /= qnorm;
+  }
   initialized_ = true;
 }
 
@@ -33,8 +46,10 @@ void UKF::compute_weights() {
 
 void UKF::build_process_noise() {
   Q_ = StateMatrix::Zero();
+  // Quaternion has 4 components; q_orientation is a small regularization term.
+  // Primary orientation noise enters through q_angular_vel via kinematics.
   Q_.diagonal() << params_.q_position, params_.q_position, params_.q_position,
-                   params_.q_orientation, params_.q_orientation, params_.q_orientation,
+                   params_.q_orientation, params_.q_orientation, params_.q_orientation, params_.q_orientation,
                    params_.q_velocity, params_.q_velocity, params_.q_velocity,
                    params_.q_angular_vel, params_.q_angular_vel, params_.q_angular_vel,
                    params_.q_acceleration, params_.q_acceleration, params_.q_acceleration,
@@ -47,6 +62,16 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
   Eigen::MatrixXd sigma(STATE_DIM, n_sigma);
   // Symmetrize P before factoring to eliminate floating-point asymmetry.
   state_.P = (state_.P + state_.P.transpose()) * 0.5;
+
+  // Without gyro measurements, P(WX/WY/WZ) grows unboundedly via q_angular_vel
+  // each predict step. The kinematic WZ→QZ coupling then makes P near-singular,
+  // triggering the identity-shift Cholesky repair which introduces asymmetry that
+  // Wm[0]≈-99 amplifies into QZ drift. Cap at a physically large but finite bound.
+  constexpr double kMaxAngVelVar = 1.0;
+  state_.P(WX,WX) = std::min(state_.P(WX,WX), kMaxAngVelVar);
+  state_.P(WY,WY) = std::min(state_.P(WY,WY), kMaxAngVelVar);
+  state_.P(WZ,WZ) = std::min(state_.P(WZ,WZ), kMaxAngVelVar);
+
   StateMatrix P_reg = (n_aug_ + lambda_) * state_.P;
   P_reg += StateMatrix::Identity() * 1e-6;
 
@@ -79,32 +104,61 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
 
 StateVector UKF::process_model(const StateVector& x, double dt) const {
   StateVector x_new = x;
-  double roll  = x[ROLL], pitch = x[PITCH], yaw = x[YAW];
-  double cr = std::cos(roll),  sr = std::sin(roll);
-  double cp = std::cos(pitch), sp = std::sin(pitch);
-  double cy = std::cos(yaw),   sy = std::sin(yaw);
+
+  // ── Position: p += R(q) * v * dt ─────────────────────────────────────────
+  // Normalize the quaternion before use: sigma points generated from P may not
+  // be exactly unit quaternions, and an unnormalized q gives a non-orthogonal R.
+  double qnorm = std::sqrt(x[QW]*x[QW] + x[QX]*x[QX] + x[QY]*x[QY] + x[QZ]*x[QZ]);
+  double qw = x[QW]/qnorm, qx = x[QX]/qnorm, qy = x[QY]/qnorm, qz = x[QZ]/qnorm;
   double vx = x[VX], vy = x[VY], vz = x[VZ];
-  x_new[X] += dt * (cy*cp*vx + (cy*sp*sr - sy*cr)*vy + (cy*sp*cr + sy*sr)*vz);
-  x_new[Y] += dt * (sy*cp*vx + (sy*sp*sr + cy*cr)*vy + (sy*sp*cr - cy*sr)*vz);
-  x_new[Z] += dt * (-sp*vx   + cp*sr*vy             + cp*cr*vz);
-  // WX/WY/WZ are the true angular rates; B_GX/B_GY/B_GZ are gyro biases.
-  // The measurement model predicts z = true_rate + bias, so propagation uses
-  // the true rate directly: do NOT subtract bias here.
-  double wx = x[WX];
-  double wy = x[WY];
-  double wz = x[WZ];
-  // Guard against Euler singularity (gimbal lock) at pitch = ±90° where
-  // tan(pitch) and 1/cos(pitch) diverge. Clamp cos(pitch) away from zero.
-  double cp_safe = (std::abs(cp) < 1e-4) ? std::copysign(1e-4, cp) : cp;
-  x_new[ROLL]  += dt * (wx + sr*(sp/cp_safe)*wy + cr*(sp/cp_safe)*wz);
-  x_new[PITCH] += dt * (cr*wy - sr*wz);
-  x_new[YAW]   += dt * (sr/cp_safe*wy + cr/cp_safe*wz);
-  // AX/AY/AZ are true body-frame accelerations (gravity already handled in
-  // the measurement model). Velocity integrates true acceleration directly.
+
+  double R00 = 1 - 2*(qy*qy + qz*qz);
+  double R01 =     2*(qx*qy - qw*qz);
+  double R02 =     2*(qx*qz + qw*qy);
+  double R10 =     2*(qx*qy + qw*qz);
+  double R11 = 1 - 2*(qx*qx + qz*qz);
+  double R12 =     2*(qy*qz - qw*qx);
+  double R20 =     2*(qx*qz - qw*qy);
+  double R21 =     2*(qy*qz + qw*qx);
+  double R22 = 1 - 2*(qx*qx + qy*qy);
+
+  x_new[X] += dt * (R00*vx + R01*vy + R02*vz);
+  x_new[Y] += dt * (R10*vx + R11*vy + R12*vz);
+  x_new[Z] += dt * (R20*vx + R21*vy + R22*vz);
+
+  // ── Orientation: exact quaternion kinematics ──────────────────────────────
+  // q_new = q ⊗ exp(ω * dt / 2). Exact for constant ω over dt; no singularity.
+  // WX/WY/WZ are true angular rates — do NOT subtract gyro bias here.
+  // Bias enters only in the IMU measurement model (z = true_rate + bias).
+  double wx = x[WX], wy = x[WY], wz = x[WZ];
+  double omega_mag = std::sqrt(wx*wx + wy*wy + wz*wz);
+  double dqw, dqx, dqy, dqz;
+  if (omega_mag > 1e-10) {
+    double half = 0.5 * omega_mag * dt;
+    double s = std::sin(half) / omega_mag;
+    dqw = std::cos(half);
+    dqx = s * wx; dqy = s * wy; dqz = s * wz;
+  } else {
+    dqw = 1.0;
+    dqx = 0.5*wx*dt; dqy = 0.5*wy*dt; dqz = 0.5*wz*dt;
+  }
+  // Scale result back by qnorm so the sigma point retains its original magnitude.
+  // Without this, normalizing (q+ε) before kinematics then returning a unit
+  // quaternion creates an asymmetry: the Wm[0]≈-99 term amplifies the error and
+  // the weighted mean drifts away from the true mean on S³. Multiplying back by
+  // qnorm makes process_model act as a linear map for the quaternion components
+  // when ω≈0, so x_pred = weighted_mean = initial quaternion (exact). The final
+  // normalize_state() in predict() restores unit norm after the mean is computed.
+  x_new[QW] = (qw*dqw - qx*dqx - qy*dqy - qz*dqz) * qnorm;
+  x_new[QX] = (qw*dqx + qx*dqw + qy*dqz - qz*dqy) * qnorm;
+  x_new[QY] = (qw*dqy - qx*dqz + qy*dqw + qz*dqx) * qnorm;
+  x_new[QZ] = (qw*dqz + qx*dqy - qy*dqx + qz*dqw) * qnorm;
+
+  // ── Velocity: integrate body-frame acceleration ───────────────────────────
   x_new[VX] += dt * x[AX];
   x_new[VY] += dt * x[AY];
   x_new[VZ] += dt * x[AZ];
-  x_new = normalize_state(x_new);
+
   return x_new;
 }
 
@@ -116,14 +170,18 @@ void UKF::predict(double dt) {
   Eigen::MatrixXd sigma_pred(STATE_DIM, n_sigma);
   for (int i = 0; i < n_sigma; ++i)
     sigma_pred.col(i) = process_model(sigma.col(i), dt);
-  // Weighted mean: normalize_state handles angle wrapping.
-  // Note: circular mean (atan2) is NOT used here because when P is large (e.g.
-  // during initialization with P=50*I), angle sigma points spread beyond ±π and
-  // wrap around. atan2 then returns the wrong quadrant (±π instead of 0), making
-  // diff_0 = ±π for every sigma point, and the large negative Wc[0] weight drives
-  // P_pred[angle, angle] to be large and negative → Cholesky failure.
-  // Circular mean is correct only in update()/predict_measurement() where the
-  // measurement function returns a bounded heading value with small spread.
+  // Quaternion sign consistency: q and -q represent the same rotation, but
+  // their weighted sum does not. Flip any sigma point whose quaternion is in
+  // the opposite hemisphere from sigma_pred[0] before averaging.
+  for (int i = 1; i < n_sigma; ++i) {
+    double dot = sigma_pred.col(0).segment<4>(QW).dot(sigma_pred.col(i).segment<4>(QW));
+    if (dot < 0.0) sigma_pred.col(i).segment<4>(QW) *= -1.0;
+  }
+
+  // Weighted mean: normalize_state renormalizes the quaternion after summing.
+  // Simple weighted sum + normalize is accurate when sigma-point spread is small
+  // (guaranteed at 100 Hz where dt is tiny). No circular mean needed — the
+  // quaternion representation has no angle-wrapping discontinuity.
   StateVector x_pred = StateVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
     x_pred += Wm_[i] * sigma_pred.col(i);
@@ -136,7 +194,11 @@ void UKF::predict(double dt) {
   // as P grows too slowly to track real motion.
   StateMatrix P_pred = Q_;
   for (int i = 0; i < n_sigma; ++i) {
-    StateVector diff = normalize_state(sigma_pred.col(i) - x_pred);
+    // Plain Euclidean difference — no normalize_state here.
+    // With quaternion state there is no angle wrapping; normalizing a diff
+    // vector would treat it as a quaternion and scale it to unit length,
+    // completely corrupting the covariance.
+    StateVector diff = sigma_pred.col(i) - x_pred;
     P_pred += Wc_[i] * diff * diff.transpose();
   }
   state_.x = x_pred;
@@ -180,7 +242,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
     ZVector z_diff = sigma_z.col(i) - z_pred;
     for (int d = 0; d < z_dim; ++d)
       if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
-    StateVector x_diff = normalize_state(sigma.col(i) - state_.x);
+    StateVector x_diff = sigma.col(i) - state_.x;  // plain diff, no angle wrapping needed
     S   += Wc_[i] * z_diff * z_diff.transpose();
     Pxz += Wc_[i] * x_diff * z_diff.transpose();
   }
@@ -241,6 +303,14 @@ void UKF::predict_measurement(
 }
 
 // Explicit instantiations for predict_measurement
+template void UKF::predict_measurement<2>(
+  const Eigen::Matrix<double, 2, 1>&,
+  const std::function<Eigen::Matrix<double, 2, 1>(const StateVector&)>&,
+  const Eigen::Matrix<double, 2, 2>&,
+  Eigen::Matrix<double, 2, 1>&,
+  Eigen::Matrix<double, 2, 2>&,
+  unsigned int);
+
 template void UKF::predict_measurement<1>(
   const Eigen::Matrix<double, 1, 1>&,
   const std::function<Eigen::Matrix<double, 1, 1>(const StateVector&)>&,
@@ -274,13 +344,26 @@ double UKF::normalize_angle(double angle) {
 
 StateVector UKF::normalize_state(const StateVector& x) {
   StateVector x_norm = x;
-  x_norm[ROLL]  = normalize_angle(x[ROLL]);
-  x_norm[PITCH] = normalize_angle(x[PITCH]);
-  x_norm[YAW]   = normalize_angle(x[YAW]);
+  double qnorm = std::sqrt(x[QW]*x[QW] + x[QX]*x[QX] + x[QY]*x[QY] + x[QZ]*x[QZ]);
+  if (qnorm > 1e-10) {
+    x_norm[QW] /= qnorm;
+    x_norm[QX] /= qnorm;
+    x_norm[QY] /= qnorm;
+    x_norm[QZ] /= qnorm;
+  } else {
+    x_norm[QW] = 1.0;
+    x_norm[QX] = x_norm[QY] = x_norm[QZ] = 0.0;
+  }
   return x_norm;
 }
 
 // Explicit template instantiations
+template Eigen::Matrix<double, 2, 1> UKF::update<2>(
+  const Eigen::Matrix<double, 2, 1>&,
+  const std::function<Eigen::Matrix<double, 2, 1>(const StateVector&)>&,
+  const Eigen::Matrix<double, 2, 2>&,
+  unsigned int
+);
 template Eigen::Matrix<double, 1, 1> UKF::update<1>(
   const Eigen::Matrix<double, 1, 1>&,
   const std::function<Eigen::Matrix<double, 1, 1>(const StateVector&)>&,

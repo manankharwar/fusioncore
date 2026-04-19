@@ -22,7 +22,7 @@ FusionCore is that replacement.
 
 | Capability | robot_localization | Fuse | FusionCore |
 |---|---|---|---|
-| Core filter | EKF or UKF | Factor graph | UKF (21D state + bias) |
+| Core filter | EKF or UKF | Factor graph | UKF (22D quaternion state) |
 | 3D support | Yes | Yes | Full 3D, native |
 | IMU bias estimation | No built-in states | Plugin-dependent | Gyro + accel bias states |
 | GPS fusion | navsat_transform node | Plugin, no ECEF/RTK | ECEF-native, single node |
@@ -80,7 +80,7 @@ colcon test --packages-select fusioncore_core
 colcon test-result --verbose
 ```
 
-Expected output: `45 tests, 0 errors, 0 failures, 0 skipped`
+Expected output: `39 tests, 0 errors, 0 failures, 0 skipped`
 
 ---
 
@@ -503,8 +503,8 @@ To add your robot's config, open a GitHub issue or submit a PR.
 fusioncore/
 ├── fusioncore_core/              # Pure C++17 math library. Zero ROS dependency.
 │   ├── include/fusioncore/
-│   │   ├── ukf.hpp               # Unscented Kalman Filter: 43 sigma points
-│   │   ├── state.hpp             # 21-dimensional state vector
+│   │   ├── ukf.hpp               # Unscented Kalman Filter: 45 sigma points
+│   │   ├── state.hpp             # 22-dimensional state vector (quaternion orientation)
 │   │   ├── fusioncore.hpp        # Public API: FusionCore, FusionCoreConfig
 │   │   └── sensors/
 │   │       ├── imu.hpp           # Raw IMU + orientation measurement models
@@ -532,8 +532,8 @@ fusioncore/
 
 ## Technical details
 
-- **Filter:** Unscented Kalman Filter, 43 sigma points
-- **State vector:** 21-dimensional: position (x,y,z), orientation (roll,pitch,yaw), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z)
+- **Filter:** Unscented Kalman Filter, 45 sigma points
+- **State vector:** 22-dimensional: position (x,y,z), orientation (quaternion qw,qx,qy,qz), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z)
 - **GPS coordinate system:** Configurable via PROJ: default ECEF (EPSG:4978, globally valid); supports any PROJ-compatible input CRS including UTM zones
 - **Bias estimation:** Continuous online estimation, no calibration required
 - **GPS quality scaling:** Noise covariance scaled by HDOP/VDOP, or full 3x3 message covariance when available
@@ -551,8 +551,8 @@ fusioncore/
 
 **Working and tested:**
 - Hardware testing in progress: industrial mecanum manipulator (Duatic), agricultural RTK robot (Southern Ontario)
-- UKF core: 45 unit tests passing via colcon test
-- UKF numerical stability: P symmetrization + identity-shift Cholesky repair
+- UKF core: 39 unit tests passing via colcon test
+- UKF numerical stability: P symmetrization + identity-shift Cholesky repair + angular velocity variance cap
 - IMU + encoder + GPS fusion
 - Automatic IMU bias estimation
 - ECEF GPS conversion with quality-aware noise scaling

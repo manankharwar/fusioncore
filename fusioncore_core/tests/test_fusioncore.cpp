@@ -89,15 +89,15 @@ TEST(FusionCoreTest, RobotDrivesForwardOneMeter) {
 
   // Large uncertainty on position/velocity: we don't know where we are.
   // Small uncertainty on orientation: robot starts at a known heading (yaw=0).
-  // High yaw uncertainty (P[YAW]=1.0) would spread sigma points ±57° and
-  // cause the UKF's cos(yaw) average to collapse toward zero, making the
-  // filter predict near-zero forward motion regardless of encoder velocity.
+  // High quaternion uncertainty would spread sigma points broadly and
+  // collapse the cos(yaw) average toward zero during position integration.
+  // Keep orientation uncertainty tight; large uncertainty is on position/velocity.
   State initial;
-  initial.x = StateVector::Zero();
   initial.P = StateMatrix::Identity() * 1.0;
-  initial.P(ROLL,ROLL)   = 0.01;
-  initial.P(PITCH,PITCH) = 0.01;
-  initial.P(YAW,YAW)     = 0.01;
+  initial.P(QW,QW) = 0.01;
+  initial.P(QX,QX) = 0.01;
+  initial.P(QY,QY) = 0.01;
+  initial.P(QZ,QZ) = 0.01;
   fc.init(initial, 0.0);
 
   // Robot drives forward at 1 m/s for 1 second
@@ -152,9 +152,11 @@ TEST(FusionCoreTest, SixAxisIMUYawBlockedRollPitchFused) {
   FusionCore fc(config);
 
   State initial;
-  initial.x         = StateVector::Zero();
-  initial.x[ROLL]   = 0.3;   // deliberately wrong: should converge toward 0
-  initial.x[YAW]    = 0.0;   // starts at 0
+  // roll = 0.3 rad → quaternion [cos(0.15), sin(0.15), 0, 0]; yaw stays 0
+  initial.x[QW] = std::cos(0.15);
+  initial.x[QX] = std::sin(0.15);
+  initial.x[QY] = 0.0;
+  initial.x[QZ] = 0.0;
   initial.P         = StateMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
@@ -166,10 +168,10 @@ TEST(FusionCoreTest, SixAxisIMUYawBlockedRollPitchFused) {
   }
 
   // Yaw must not have moved: the fix blocks it
-  EXPECT_NEAR(fc.get_state().x[YAW], 0.0, 0.01);
+  EXPECT_NEAR(fc.get_state().yaw(), 0.0, 0.01);
 
   // Roll must have converged: R(0,0) is normal so gain is high
-  EXPECT_NEAR(fc.get_state().x[ROLL], 0.0, 0.05);
+  EXPECT_NEAR(fc.get_state().roll(), 0.0, 0.05);
 }
 
 // ─── Test 8: 9-axis IMU: yaw IS fused normally ──────────────────────────────
@@ -184,8 +186,7 @@ TEST(FusionCoreTest, NineAxisIMUYawFusedNormally) {
   FusionCore fc(config);
 
   State initial;
-  initial.x       = StateVector::Zero();
-  initial.x[YAW]  = 0.0;
+  // State() default-constructs with QW=1 (identity quaternion) = yaw 0
   initial.P       = StateMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
@@ -197,7 +198,7 @@ TEST(FusionCoreTest, NineAxisIMUYawFusedNormally) {
   }
 
   // Yaw must have converged toward 0.5
-  EXPECT_GT(fc.get_state().x[YAW], 0.3);
+  EXPECT_GT(fc.get_state().yaw(), 0.3);
 }
 
 int main(int argc, char** argv) {
