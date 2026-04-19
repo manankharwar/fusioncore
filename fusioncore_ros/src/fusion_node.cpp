@@ -666,15 +666,9 @@ private:
     // orientation_covariance[0] == -1 means "no orientation data"
     if (msg->orientation_covariance[0] < 0.0) return;
 
-    // All zeros also means unknown: skip
-    bool has_orientation = false;
-    for (int i = 0; i < 9; ++i) {
-      if (msg->orientation_covariance[i] != 0.0) {
-        has_orientation = true;
-        break;
-      }
-    }
-    if (!has_orientation) return;
+    // All zeros means "unknown covariance" — Gazebo's default IMU plugin.
+    // Don't skip: fuse using fallback covariance so Gazebo robots work without extra config.
+    // update_imu_orientation() already falls back to config defaults when cov is zero.
 
     tf2::Quaternion q_imu(
       msg->orientation.x,

@@ -48,6 +48,12 @@ void FusionCore::init_adaptive_R() {
   R_gnss_        = sensors::GnssPosNoiseMatrix::Identity();  // will be set per-fix
   R_imu_orient_  = sensors::imu_orientation_noise_matrix(sensors::ImuOrientationParams{});
 
+  // Save floors: adaptive R must never drop below the initially configured sensor noise.
+  R_imu_floor_        = R_imu_;
+  R_encoder_floor_    = R_encoder_;
+  R_gnss_floor_       = R_gnss_;
+  R_imu_orient_floor_ = R_imu_orient_;
+
   imu_innovations_.max_size         = config_.adaptive_window;
   encoder_innovations_.max_size     = config_.adaptive_window;
   gnss_innovations_.max_size        = config_.adaptive_window;
@@ -59,6 +65,7 @@ void FusionCore::init_adaptive_R() {
 template <int z_dim>
 void FusionCore::adapt_R(
   Eigen::Matrix<double, z_dim, z_dim>& R,
+  const Eigen::Matrix<double, z_dim, z_dim>& R_floor,
   InnovationWindow<z_dim>& window,
   const Eigen::Matrix<double, z_dim, 1>& innovation,
   bool enabled)
@@ -74,9 +81,12 @@ void FusionCore::adapt_R(
   // R_(k+1) = (1 - alpha) * R_k + alpha * C_hat
   R = (1.0 - config_.adaptive_alpha) * R + config_.adaptive_alpha * C_hat;
 
-  // Guard: diagonal must stay positive: clip to small minimum
+  // Guard: R must never drop below the initially configured sensor noise.
+  // A constant innovation bias (e.g. sim gravity ≠ WGS84 gravity) has zero
+  // variance after mean-subtraction and would otherwise drive R toward 1e-9,
+  // causing K[position, accel] to explode and Z to drift at m/s rates.
   for (int i = 0; i < z_dim; ++i) {
-    if (R(i,i) < 1e-9) R(i,i) = 1e-9;
+    if (R(i,i) < R_floor(i,i)) R(i,i) = R_floor(i,i);
   }
 }
 
@@ -341,7 +351,7 @@ void FusionCore::update_imu(
   auto innovation = ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R);
 
   // Track innovation for adaptive noise estimation
-  adapt_R<sensors::IMU_DIM>(R_imu_, imu_innovations_, innovation, config_.adaptive_imu);
+  adapt_R<sensors::IMU_DIM>(R_imu_, R_imu_floor_, imu_innovations_, innovation, config_.adaptive_imu);
 
   // Save snapshot for delay compensation
   save_snapshot();
@@ -434,7 +444,7 @@ void FusionCore::update_imu_orientation(
       z, sensors::imu_orientation_measurement_function, R, IMU_ORIENT_ANGLE_DIMS);
 
     adapt_R<sensors::IMU_ORIENTATION_DIM>(
-      R_imu_orient_, imu_orient_innovations_, imu_orient_innovation, config_.adaptive_imu);
+      R_imu_orient_, R_imu_orient_floor_, imu_orient_innovations_, imu_orient_innovation, config_.adaptive_imu);
   }
 
   // IMU orientation validates heading ONLY if the IMU has a magnetometer.
@@ -493,7 +503,7 @@ void FusionCore::update_encoder(
   // Track innovation for adaptive noise estimation
   // Only adapt axes where message covariance was not provided
   if (var_vx <= 0.0 && var_vy <= 0.0 && var_wz <= 0.0) {
-    adapt_R<sensors::ENCODER_DIM>(R_encoder_, encoder_innovations_, innovation, config_.adaptive_encoder);
+    adapt_R<sensors::ENCODER_DIM>(R_encoder_, R_encoder_floor_, encoder_innovations_, innovation, config_.adaptive_encoder);
   }
 
   last_encoder_time_ = timestamp_seconds;
@@ -649,7 +659,7 @@ bool FusionCore::apply_gnss_update(
     ukf_.update<sensors::GNSS_POS_DIM>(z, h_gnss, R);
 
   // Track innovation for adaptive GNSS noise estimation
-  adapt_R<sensors::GNSS_POS_DIM>(R_gnss_, gnss_innovations_, innovation, config_.adaptive_gnss);
+  adapt_R<sensors::GNSS_POS_DIM>(R_gnss_, R_gnss_floor_, gnss_innovations_, innovation, config_.adaptive_gnss);
   return true;
 }
 

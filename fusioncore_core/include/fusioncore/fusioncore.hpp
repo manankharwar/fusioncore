@@ -239,6 +239,15 @@ private:
   sensors::GnssPosNoiseMatrix         R_gnss_;
   sensors::ImuOrientationNoiseMatrix  R_imu_orient_;
 
+  // Minimum R floors: adaptive R must never drop below the initially configured value.
+  // A constant innovation bias (e.g. sim gravity ≠ WGS84 gravity) has zero variance
+  // after mean-subtraction and would otherwise drive R toward 1e-9, causing
+  // K[position, accel] to explode and Z to drift at m/s rates.
+  sensors::ImuNoiseMatrix             R_imu_floor_;
+  sensors::EncoderNoiseMatrix         R_encoder_floor_;
+  sensors::GnssPosNoiseMatrix         R_gnss_floor_;
+  sensors::ImuOrientationNoiseMatrix  R_imu_orient_floor_;
+
   bool adaptive_initialized_ = false;
 
   // Outlier rejection counters: for status reporting
@@ -260,6 +269,7 @@ private:
   template <int z_dim>
   void adapt_R(
     Eigen::Matrix<double, z_dim, z_dim>& R,
+    const Eigen::Matrix<double, z_dim, z_dim>& R_floor,
     InnovationWindow<z_dim>& window,
     const Eigen::Matrix<double, z_dim, 1>& innovation,
     bool enabled
