@@ -5,7 +5,7 @@ rl_ekf:
   ros__parameters:
     frequency: 50.0
     sensor_timeout: 0.5
-    two_d_mode: false
+    two_d_mode: true
     transform_time_offset: 0.0
     transform_timeout: 0.1
     print_diagnostics: false
