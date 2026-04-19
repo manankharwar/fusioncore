@@ -809,6 +809,13 @@ private:
     //   1 = approximated (diagonal only)
     //   2 = diagonal known
     //   3 = full matrix known: use off-diagonal elements too
+    // Covariance floor protects against Mahalanobis self-rejection on RTK
+    // Fixed: ublox_dgnss reports σxy ~3 mm when carr_soln = FIXED, and any
+    // wheel/IMU drift >~1 cm between fixes then fails the chi² outlier gate
+    // (16.27 at 3 DoF). Floor σxy = 2 cm, σz = 5 cm so small integration
+    // drift stays inside the gate while still benefitting from RTK precision.
+    constexpr double kMinVarXY = 4e-4;    // σ = 0.02 m
+    constexpr double kMinVarZ  = 2.5e-3;  // σ = 0.05 m
     if (msg->position_covariance_type == 3) {
       // Full 3x3 covariance available: use it directly including off-diagonals
       Eigen::Matrix3d cov;
@@ -818,6 +825,9 @@ private:
 
       // Validate diagonal is positive
       if (cov(0,0) > 0.0 && cov(1,1) > 0.0 && cov(2,2) > 0.0) {
+        if (cov(0,0) < kMinVarXY) cov(0,0) = kMinVarXY;
+        if (cov(1,1) < kMinVarXY) cov(1,1) = kMinVarXY;
+        if (cov(2,2) < kMinVarZ)  cov(2,2) = kMinVarZ;
         fix.has_full_covariance = true;
         fix.full_covariance = cov;
         fix.hdop = std::sqrt(cov(0,0));  // for validity check
@@ -831,7 +841,9 @@ private:
     } else if (msg->position_covariance_type >= 1) {
       // Diagonal covariance available
       double var_xy = (msg->position_covariance[0] + msg->position_covariance[4]) / 2.0;
+      if (var_xy < kMinVarXY) var_xy = kMinVarXY;
       double var_z  = msg->position_covariance[8];
+      if (var_z < kMinVarZ) var_z = kMinVarZ;
       if (var_xy > 0.0 && var_z > 0.0) {
         fix.hdop = std::sqrt(var_xy);
         fix.vdop = std::sqrt(var_z);
