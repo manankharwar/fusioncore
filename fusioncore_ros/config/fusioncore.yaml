@@ -33,6 +33,16 @@ fusioncore:
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
 
+    # Optional second encoder-twist source (e.g. KISS-ICP LiDAR odometry).
+    # When non-empty, FusionCore subscribes to this topic as nav_msgs/Odometry
+    # and fuses twist.linear.x/y + twist.angular.z via the same update_encoder
+    # path as the primary wheel encoder. Per-axis covariance is taken from the
+    # message twist.covariance when positive; otherwise adaptive/config noise
+    # is used. Does not drive ZUPT or ground-constraint updates (those remain
+    # anchored to the primary wheel encoder). Leave empty to disable.
+    # encoder2.topic: "/kiss/odometry"
+    encoder2.topic: ""
+
     gnss.base_noise_xy: 1.0
     gnss.base_noise_z: 2.0
     gnss.heading_noise: 0.02

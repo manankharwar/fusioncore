@@ -77,6 +77,14 @@ public:
     declare_parameter("encoder.vel_noise", 0.05);
     declare_parameter("encoder.yaw_noise", 0.02);
 
+    // Optional second encoder-twist source (e.g. KISS-ICP LiDAR odometry).
+    // When non-empty, FusionCore subscribes to this topic as nav_msgs/Odometry
+    // and fuses twist.linear.x/y + twist.angular.z using the same update_encoder
+    // path as the primary wheel encoder. Per-axis covariance is taken from the
+    // message twist.covariance when positive; otherwise adaptive/config noise
+    // is used. Leave empty to disable.
+    declare_parameter("encoder2.topic", std::string(""));
+
     declare_parameter("gnss.base_noise_xy",  1.0);
     declare_parameter("gnss.base_noise_z",   2.0);
     declare_parameter("gnss.heading_noise",  0.02);
@@ -182,6 +190,8 @@ public:
     config.encoder.vel_noise_x  = get_parameter("encoder.vel_noise").as_double();
     config.encoder.vel_noise_y  = config.encoder.vel_noise_x;
     config.encoder.vel_noise_wz = get_parameter("encoder.yaw_noise").as_double();
+
+    encoder2_topic_ = get_parameter("encoder2.topic").as_string();
 
     config.gnss.base_noise_xy  = get_parameter("gnss.base_noise_xy").as_double();
     config.gnss.base_noise_z   = get_parameter("gnss.base_noise_z").as_double();
@@ -316,6 +326,20 @@ public:
         encoder_callback(msg);
       }, sensor_opts);
 
+    // Second encoder-twist source (e.g. KISS-ICP LiDAR odometry). Created
+    // lazily only when encoder2.topic is non-empty to keep the default
+    // behavior identical to a single-encoder setup.
+    if (!encoder2_topic_.empty()) {
+      encoder2_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+        encoder2_topic_, 50,
+        [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+          std::lock_guard<std::mutex> lock(fc_mutex_);
+          encoder2_callback(msg);
+        }, sensor_opts);
+      RCLCPP_INFO(get_logger(),
+        "Second encoder-twist source enabled on topic: %s", encoder2_topic_.c_str());
+    }
+
     gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
       "/gnss/fix", 10,
       [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
@@ -409,6 +433,7 @@ public:
   {
     imu_sub_.reset();
     encoder_sub_.reset();
+    encoder2_sub_.reset();
     gnss_sub_.reset();
     gnss2_sub_.reset();
     gnss_heading_sub_.reset();
@@ -729,6 +754,35 @@ private:
         fc_->update_zupt(t, zupt_noise_sigma_);
       }
     }
+  }
+
+  // ─── Second encoder-twist callback ────────────────────────────────────────
+  // Handles a supplementary twist source (e.g. KISS-ICP LiDAR odometry).
+  // Uses the same update_encoder path as the primary wheel encoder.
+  // Does NOT drive ground-constraint or ZUPT updates: those remain anchored
+  // to the primary wheel encoder so their detection thresholds and rates
+  // stay unchanged when encoder2 is enabled.
+
+  void encoder2_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
+  {
+    if (!fc_->is_initialized()) return;
+
+    double t = rclcpp::Time(msg->header.stamp).seconds();
+
+    // Extract per-axis variances from the Odometry twist covariance (6x6, row-major).
+    // Indices: vx=0, vy=7, wz=35 (diagonal elements for linear.x, linear.y, angular.z).
+    // Pass -1.0 for any axis where the message reports zero or negative variance,
+    // so update_encoder falls back to adaptive/config noise for that axis.
+    const auto& cov = msg->twist.covariance;
+    double var_vx = (cov[0]  > 0.0) ? cov[0]  : -1.0;
+    double var_vy = (cov[7]  > 0.0) ? cov[7]  : -1.0;
+    double var_wz = (cov[35] > 0.0) ? cov[35] : -1.0;
+
+    const double vx = msg->twist.twist.linear.x;
+    const double vy = msg->twist.twist.linear.y;
+    const double wz = msg->twist.twist.angular.z;
+
+    fc_->update_encoder(t, vx, vy, wz, var_vx, var_vy, var_wz);
   }
 
   // ─── GNSS position callback ────────────────────────────────────────────────
@@ -1287,6 +1341,7 @@ private:
   rclcpp::Subscription<compass_msgs::msg::Azimuth>::SharedPtr     azimuth_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder2_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr                gnss2_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                       odom_pub_;
@@ -1303,6 +1358,7 @@ private:
   std::string heading_topic_;
   std::string gnss2_topic_;
   std::string azimuth_topic_;
+  std::string encoder2_topic_;
 
   bool        pending_init_        = false;
   bool        gnss_ref_set_        = false;
