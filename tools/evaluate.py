@@ -141,7 +141,7 @@ def main():
     parser.add_argument('--fusioncore',  required=True, help='FusionCore TUM file')
     parser.add_argument('--rl',          required=True, help='robot_localization TUM file')
     parser.add_argument('--sequence',    default='unknown', help='NCLT sequence name')
-    parser.add_argument('--out_dir',     default='./benchmark_results',
+    parser.add_argument('--out_dir',     default='./benchmarks/nclt/2012-01-08/results',
                         help='Output directory for plots and report')
     parser.add_argument('--rpe_delta',   type=float, default=10.0,
                         help='RPE segment length in meters (default: 10)')

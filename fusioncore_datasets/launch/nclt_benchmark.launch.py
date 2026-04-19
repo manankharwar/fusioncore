@@ -37,7 +37,7 @@ def generate_launch_description():
     # ── args ──────────────────────────────────────────────────────────────────
     args = [
         DeclareLaunchArgument('data_dir',      description='Path to NCLT sequence directory'),
-        DeclareLaunchArgument('output_bag',     default_value='./nclt_results',
+        DeclareLaunchArgument('output_bag',     default_value='./benchmarks/nclt/2012-01-08/bag',
                               description='Output bag path for results'),
         DeclareLaunchArgument('playback_rate',  default_value='1.0',
                               description='Playback speed multiplier'),
