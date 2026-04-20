@@ -321,6 +321,7 @@ fusioncore:
     ukf.q_gyro_bias: 1.0e-5
     ukf.q_accel_bias: 1.0e-5
 ```
+For anyone upgrading from an older config file: if you have ukf.q_orientation: 0.01 in your YAML, change it to 1e-9 (or remove it to use the new default). The old value corrupts quaternion math at typical IMU rates.
 
 ### GPS Coordinate Reference System (CRS)
 
