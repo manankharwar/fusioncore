@@ -1,11 +1,27 @@
 """
-NCLT benchmark launch: plays NCLT CSV data through FusionCore and
-robot_localization EKF simultaneously, then records both outputs.
+NCLT benchmark launch: plays NCLT CSV data through FusionCore, robot_localization EKF,
+and robot_localization UKF simultaneously, then records all outputs.
 
 Usage:
+  # Normal benchmark
   ros2 launch fusioncore_datasets nclt_benchmark.launch.py \
     data_dir:=/path/to/nclt/2012-01-08 \
-    output_bag:=./results/nclt_2012_01_08
+    output_bag:=./benchmarks/nclt/2012-01-08/bag \
+    playback_rate:=3.0 duration_s:=600.0
+
+  # GPS spike test (500m spike at t=120s)
+  ros2 launch fusioncore_datasets nclt_benchmark.launch.py \
+    data_dir:=/path/to/nclt/2012-01-08 \
+    output_bag:=./benchmarks/nclt/2012-01-08/bag_spike \
+    playback_rate:=3.0 duration_s:=300.0 \
+    gps_spike_time_s:=120.0 gps_spike_magnitude_m:=500.0
+
+  # GPS outage test (45s outage starting at t=120s)
+  ros2 launch fusioncore_datasets nclt_benchmark.launch.py \
+    data_dir:=/path/to/nclt/2012-01-08 \
+    output_bag:=./benchmarks/nclt/2012-01-08/bag_outage \
+    playback_rate:=3.0 duration_s:=300.0 \
+    gps_outage_start_s:=120.0 gps_outage_duration_s:=45.0
 
 All nodes use simulated time from /clock (published by nclt_player).
 """
@@ -15,7 +31,7 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
                              TimerAction, LogInfo)
-from launch.substitutions import LaunchConfiguration, PythonExpression
+from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, LifecycleNode
 from launch_ros.event_handlers import OnStateTransition
 from launch.actions import RegisterEventHandler, EmitEvent
@@ -27,22 +43,35 @@ def generate_launch_description():
     pkg = get_package_share_directory('fusioncore_datasets')
     fc_config  = os.path.join(pkg, 'config', 'nclt_fusioncore.yaml')
     rl_config  = os.path.join(pkg, 'config', 'rl_ekf.yaml')
+    rl_ukf_cfg = os.path.join(pkg, 'config', 'rl_ukf.yaml')
     nav_config = os.path.join(pkg, 'config', 'navsat_transform.yaml')
 
-    data_dir   = LaunchConfiguration('data_dir')
-    output_bag = LaunchConfiguration('output_bag')
-    rate       = LaunchConfiguration('playback_rate')
-    duration   = LaunchConfiguration('duration_s')
+    data_dir     = LaunchConfiguration('data_dir')
+    output_bag   = LaunchConfiguration('output_bag')
+    rate         = LaunchConfiguration('playback_rate')
+    duration     = LaunchConfiguration('duration_s')
+    spike_time   = LaunchConfiguration('gps_spike_time_s')
+    spike_mag    = LaunchConfiguration('gps_spike_magnitude_m')
+    outage_start = LaunchConfiguration('gps_outage_start_s')
+    outage_dur   = LaunchConfiguration('gps_outage_duration_s')
 
     # ── args ──────────────────────────────────────────────────────────────────
     args = [
         DeclareLaunchArgument('data_dir',      description='Path to NCLT sequence directory'),
         DeclareLaunchArgument('output_bag',     default_value='./benchmarks/nclt/2012-01-08/bag',
-                              description='Output bag path for results'),
+                              description='Output bag path'),
         DeclareLaunchArgument('playback_rate',  default_value='1.0',
                               description='Playback speed multiplier'),
         DeclareLaunchArgument('duration_s',     default_value='0.0',
                               description='Seconds of data to play (0 = all)'),
+        DeclareLaunchArgument('gps_spike_time_s',      default_value='-1.0',
+                              description='Sim-time seconds to inject GPS spike (-1 = off)'),
+        DeclareLaunchArgument('gps_spike_magnitude_m', default_value='500.0',
+                              description='GPS spike magnitude in meters'),
+        DeclareLaunchArgument('gps_outage_start_s',    default_value='-1.0',
+                              description='Sim-time seconds to begin GPS outage (-1 = off)'),
+        DeclareLaunchArgument('gps_outage_duration_s', default_value='45.0',
+                              description='GPS outage duration in seconds'),
     ]
 
     # ── NCLT data player ──────────────────────────────────────────────────────
@@ -52,15 +81,18 @@ def generate_launch_description():
         name='nclt_player',
         output='screen',
         parameters=[{
-            'data_dir':      data_dir,
-            'playback_rate': rate,
-            'duration_s':    duration,
-            'use_sim_time':  True,
+            'data_dir':               data_dir,
+            'playback_rate':          rate,
+            'duration_s':             duration,
+            'use_sim_time':           True,
+            'gps_spike_time_s':       spike_time,
+            'gps_spike_magnitude_m':  spike_mag,
+            'gps_outage_start_s':     outage_start,
+            'gps_outage_duration_s':  outage_dur,
         }],
     )
 
     # ── static TFs ────────────────────────────────────────────────────────────
-    # NCLT: IMU co-located with base_link (Segway RMP center)
     imu_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -69,7 +101,6 @@ def generate_launch_description():
         parameters=[{'use_sim_time': True}],
     )
 
-    # GPS antenna approximately 30cm above base_link
     gps_tf = Node(
         package='tf2_ros',
         executable='static_transform_publisher',
@@ -119,10 +150,18 @@ def generate_launch_description():
         executable='ekf_node',
         name='rl_ekf',
         output='screen',
-        remappings=[
-            ('odometry/filtered', '/rl/odometry'),   # avoid clashing with FC
-        ],
+        remappings=[('odometry/filtered', '/rl/odometry')],
         parameters=[rl_config, {'use_sim_time': True}],
+    )
+
+    # ── robot_localization UKF ────────────────────────────────────────────────
+    rl_ukf = Node(
+        package='robot_localization',
+        executable='ukf_node',
+        name='rl_ukf',
+        output='screen',
+        remappings=[('odometry/filtered', '/rl_ukf/odometry')],
+        parameters=[rl_ukf_cfg, {'use_sim_time': True}],
     )
 
     navsat = Node(
@@ -131,27 +170,27 @@ def generate_launch_description():
         name='navsat_transform',
         output='screen',
         remappings=[
-            ('imu/data',            '/imu/data'),
-            ('gps/fix',             '/gnss/fix'),
-            ('odometry/filtered',   '/rl/odometry'),
-            ('gps/filtered',        '/rl/gps/filtered'),
-            ('odometry/gps',        '/gps/odometry'),
+            ('imu/data',          '/imu/data'),
+            ('gps/fix',           '/gnss/fix'),
+            ('odometry/filtered', '/rl/odometry'),
+            ('gps/filtered',      '/rl/gps/filtered'),
+            ('odometry/gps',      '/gps/odometry'),
         ],
         parameters=[nav_config, {'use_sim_time': True}],
     )
 
     # ── bag recorder ─────────────────────────────────────────────────────────
-    # Records both filter outputs for offline evaluation with tools/evaluate.py
     recorder = TimerAction(
-        period=6.0,   # wait for FC configure(4s) + activate before recording
+        period=6.0,
         actions=[
             ExecuteProcess(
                 cmd=[
                     'ros2', 'bag', 'record',
                     '-o', output_bag,
-                    '/fusion/odom',       # FusionCore output
-                    '/rl/odometry',       # robot_localization EKF output
-                    '/gnss/fix',          # raw GPS (needed to establish ENU origin)
+                    '/fusion/odom',
+                    '/rl/odometry',
+                    '/rl_ukf/odometry',
+                    '/gnss/fix',
                     '/clock',
                 ],
                 output='screen',
@@ -160,7 +199,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription(args + [
-        LogInfo(msg='Starting NCLT benchmark. Waiting 2s for player to initialize...'),
+        LogInfo(msg='Starting NCLT benchmark...'),
         nclt_player,
         imu_tf,
         gps_tf,
@@ -168,6 +207,7 @@ def generate_launch_description():
         configure_fc,
         activate_fc,
         rl_ekf,
+        rl_ukf,
         navsat,
         recorder,
     ])

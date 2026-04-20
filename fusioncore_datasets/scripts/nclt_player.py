@@ -18,6 +18,15 @@ Frame convention:
   Conversion: ay_enu = -ay_ned, az_enu = -az_ned, wy_enu = -wy_ned, wz_enu = -wz_ned.
   After conversion: az ≈ +9.81 m/s² when flat and stationary (correct for FusionCore).
 
+Optional test modes (set via ROS parameters):
+  GPS spike injection:
+    gps_spike_time_s     — sim-time seconds after start to inject spike (default -1 = off)
+    gps_spike_magnitude_m — spike size in meters (default 500.0)
+
+  GPS outage simulation:
+    gps_outage_start_s   — sim-time seconds after start to begin outage (default -1 = off)
+    gps_outage_duration_s — how long GPS is cut (default 45.0)
+
 Usage:
   ros2 run fusioncore_datasets nclt_player.py \
     --ros-args -p data_dir:=/path/to/nclt/2012-01-08 \
@@ -69,6 +78,16 @@ def utime_to_ros(utime_us: int) -> Time:
     return t
 
 
+def meters_to_lat_deg(meters: float) -> float:
+    """Convert north offset in meters to degrees of latitude."""
+    return meters / 111_000.0
+
+
+def meters_to_lon_deg(meters: float, lat_deg: float) -> float:
+    """Convert east offset in meters to degrees of longitude at given latitude."""
+    return meters / (111_000.0 * math.cos(math.radians(lat_deg)))
+
+
 # ─── node ─────────────────────────────────────────────────────────────────────
 
 class NCLTPlayer(Node):
@@ -80,6 +99,14 @@ class NCLTPlayer(Node):
         self.declare_parameter('playback_rate', 1.0)
         self.declare_parameter('duration_s', 0.0)
 
+        # GPS spike injection
+        self.declare_parameter('gps_spike_time_s', -1.0)
+        self.declare_parameter('gps_spike_magnitude_m', 500.0)
+
+        # GPS outage simulation
+        self.declare_parameter('gps_outage_start_s', -1.0)
+        self.declare_parameter('gps_outage_duration_s', 45.0)
+
         data_dir = self.get_parameter('data_dir').value
         if not data_dir:
             raise RuntimeError('nclt_player: data_dir parameter is required')
@@ -87,12 +114,23 @@ class NCLTPlayer(Node):
         self._rate     = self.get_parameter('playback_rate').value
         self._duration = self.get_parameter('duration_s').value
 
+        self._spike_time_s  = self.get_parameter('gps_spike_time_s').value
+        self._spike_mag_m   = self.get_parameter('gps_spike_magnitude_m').value
+        self._outage_start  = self.get_parameter('gps_outage_start_s').value
+        self._outage_dur    = self.get_parameter('gps_outage_duration_s').value
+
         self._clock_pub = self.create_publisher(Clock,     '/clock',       10)
         self._imu_pub   = self.create_publisher(Imu,       '/imu/data',    50)
         self._gps_pub   = self.create_publisher(NavSatFix, '/gnss/fix',    10)
         self._odom_pub  = self.create_publisher(Odometry,  '/odom/wheels', 50)
 
         self.get_logger().info(f'Loading NCLT data from: {data_dir}')
+        if self._spike_time_s >= 0:
+            self.get_logger().info(
+                f'GPS spike: {self._spike_mag_m:.0f}m at t={self._spike_time_s:.1f}s')
+        if self._outage_start >= 0:
+            self.get_logger().info(
+                f'GPS outage: {self._outage_dur:.0f}s starting at t={self._outage_start:.1f}s')
 
         # Load Euler angles separately (for orientation embed in IMU message)
         euler_table = self._load_euler(os.path.join(data_dir, 'ms25_euler.csv'))
@@ -144,7 +182,6 @@ class NCLTPlayer(Node):
                 lo = mid + 1
             else:
                 hi = mid
-        # lo is the first entry >= utime; compare with lo-1 as well
         if lo > 0 and abs(euler_table[lo-1][0] - utime) < abs(euler_table[lo][0] - utime):
             lo -= 1
         return euler_table[lo]
@@ -202,7 +239,6 @@ class NCLTPlayer(Node):
 
                     lat_deg = math.degrees(lat_r)
                     lon_deg = math.degrees(lon_r)
-                    # Altitude is nan for 2D fixes — fall back to 0
                     alt_m   = float(alt_s) if alt_s.lower() != 'nan' else 0.0
 
                     self._events.append((utime, 'gps', [lat_deg, lon_deg, alt_m, mode]))
@@ -266,12 +302,15 @@ class NCLTPlayer(Node):
 
         sim_start_us = self._events[0][0]
         wall_start   = time.monotonic()
+        spike_fired  = False
 
         for utime, kind, data in self._events:
-            if self._duration > 0 and (utime - sim_start_us) / 1e6 > self._duration:
+            sim_elapsed_s = (utime - sim_start_us) / 1e6
+
+            if self._duration > 0 and sim_elapsed_s > self._duration:
                 break
 
-            sleep_s = wall_start + (utime - sim_start_us) / 1e6 / self._rate - time.monotonic()
+            sleep_s = wall_start + sim_elapsed_s / self._rate - time.monotonic()
             if sleep_s > 0:
                 time.sleep(sleep_s)
 
@@ -281,9 +320,31 @@ class NCLTPlayer(Node):
             clk.clock = ros_time
             self._clock_pub.publish(clk)
 
-            if   kind == 'imu':  self._pub_imu(ros_time, data)
-            elif kind == 'gps':  self._pub_gps(ros_time, data)
-            elif kind == 'odom': self._pub_odom(ros_time, data)
+            if kind == 'imu':
+                self._pub_imu(ros_time, data)
+            elif kind == 'odom':
+                self._pub_odom(ros_time, data)
+            elif kind == 'gps':
+                # GPS outage: suppress all GPS during window
+                if self._outage_start >= 0:
+                    outage_end = self._outage_start + self._outage_dur
+                    if self._outage_start <= sim_elapsed_s <= outage_end:
+                        continue  # drop this GPS message
+
+                # GPS spike: inject one corrupted fix at spike_time
+                if self._spike_time_s >= 0 and not spike_fired:
+                    if sim_elapsed_s >= self._spike_time_s:
+                        lat, lon, alt, mode = data
+                        spike_lat = lat + meters_to_lat_deg(self._spike_mag_m)
+                        spike_lon = lon + meters_to_lon_deg(self._spike_mag_m, lat)
+                        self._pub_gps(ros_time, [spike_lat, spike_lon, alt, mode])
+                        self.get_logger().warn(
+                            f'GPS spike injected at t={sim_elapsed_s:.1f}s '
+                            f'({self._spike_mag_m:.0f}m NE offset)')
+                        spike_fired = True
+                        continue
+
+                self._pub_gps(ros_time, data)
 
         self.get_logger().info('Playback complete.')
 
@@ -295,8 +356,6 @@ class NCLTPlayer(Node):
         msg.header.stamp    = ros_time
         msg.header.frame_id = 'imu_link'
 
-        # Orientation from AHRS (roll/pitch accurate, yaw unreliable without mag)
-        # FusionCore will use only roll/pitch when imu_has_magnetometer: false
         msg.orientation = euler_to_quat(roll, pitch, yaw)
         msg.orientation_covariance = [
             1e-4, 0.0,  0.0,
@@ -330,7 +389,7 @@ class NCLTPlayer(Node):
         msg.header.stamp    = ros_time
         msg.header.frame_id = 'gnss_link'
         msg.status.service  = NavSatStatus.SERVICE_GPS
-        msg.status.status   = NavSatStatus.STATUS_FIX   # mode >= 2 already filtered
+        msg.status.status   = NavSatStatus.STATUS_FIX
         msg.latitude  = lat
         msg.longitude = lon
         msg.altitude  = alt

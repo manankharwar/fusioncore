@@ -4,15 +4,15 @@
 
 | Filter | RMSE (m) | Max error (m) |
 |--------|----------|---------------|
-| FusionCore | 7.096 | 34.895 |
-| RL-EKF | 23.429 | 44.265 |
+| FusionCore | 5.517 | 22.385 |
+| RL-EKF | 23.434 | 44.227 |
 
 ## Relative Pose Error (RPE, per 10m segment)
 
 | Filter | RMSE (m) |
 |--------|----------|
-| FusionCore | 16.438 |
-| RL-EKF | 18.829 |
+| FusionCore | 16.105 |
+| RL-EKF | 18.832 |
 
 ## Methodology
 
