@@ -107,6 +107,7 @@ class NCLTPlayer(Node):
         self.declare_parameter('gps_outage_start_s', -1.0)
         self.declare_parameter('gps_outage_duration_s', 45.0)
 
+
         data_dir = self.get_parameter('data_dir').value
         if not data_dir:
             raise RuntimeError('nclt_player: data_dir parameter is required')
