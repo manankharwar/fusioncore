@@ -50,11 +50,24 @@ def load_tum(path):
     return a[:, 0], a[:, 1], a[:, 2], a[:, 3]
 
 
-def align_se2(src_xy, ref_xy):
-    step = max(1, len(src_xy) // 2000)
-    s, r = src_xy[::step], ref_xy[::step]
-    n = min(len(s), len(r))
-    s, r = s[:n], r[:n]
+def align_se2_temporal(src_ts, src_xy, ref_ts, ref_xy):
+    """SE(2) alignment using timestamp-matched pairs (correct for partial trajectories)."""
+    step = max(1, len(src_ts) // 2000)
+    s_pts, r_pts = [], []
+    for i in range(0, len(src_ts), step):
+        t = src_ts[i]
+        idx = np.searchsorted(ref_ts, t)
+        if idx == 0 or idx >= len(ref_ts):
+            continue
+        t0, t1 = ref_ts[idx - 1], ref_ts[idx]
+        if t1 == t0:
+            continue
+        a = (t - t0) / (t1 - t0)
+        gx = ref_xy[idx-1, 0] + a * (ref_xy[idx, 0] - ref_xy[idx-1, 0])
+        gy = ref_xy[idx-1, 1] + a * (ref_xy[idx, 1] - ref_xy[idx-1, 1])
+        s_pts.append(src_xy[i])
+        r_pts.append([gx, gy])
+    s, r = np.array(s_pts), np.array(r_pts)
     mu_s, mu_r = s.mean(0), r.mean(0)
     H = (s - mu_s).T @ (r - mu_r)
     U, _, Vt = np.linalg.svd(H)
@@ -123,18 +136,19 @@ def plot_trajectory(seq, out_dir):
                'NCLT 2012-01-08  •  RTK GPS ground truth  •  SE(2) aligned')
 
     gt_xy = np.stack([gt_x, gt_y], 1)
-    fc_al = align_se2(np.stack([fc_x, fc_y], 1), gt_xy)
-    ek_al = align_se2(np.stack([ek_x, ek_y], 1), gt_xy)
+    fc_al = align_se2_temporal(fc_ts, np.stack([fc_x, fc_y], 1), gt_ts, gt_xy)
+    ek_al = align_se2_temporal(ek_ts, np.stack([ek_x, ek_y], 1), gt_ts, gt_xy)
 
-    # Crop view to the region the filters actually cover, with padding
-    pad = 80
-    all_x = np.concatenate([fc_al[:, 0], ek_al[:, 0]])
-    all_y = np.concatenate([fc_al[:, 1], ek_al[:, 1]])
+    # Clip GT to the same 600s time window the filters covered
+    t_end = max(fc_ts[-1], ek_ts[-1])
+    gt_mask = gt_ts <= t_end
+
+    # Crop view to filter extent + padding
+    pad = 60
+    all_x = np.concatenate([fc_al[:, 0], ek_al[:, 0], gt_x[gt_mask]])
+    all_y = np.concatenate([fc_al[:, 1], ek_al[:, 1], gt_y[gt_mask]])
     xlo, xhi = all_x.min() - pad, all_x.max() + pad
     ylo, yhi = all_y.min() - pad, all_y.max() + pad
-
-    # Clip GT to the same view window for context
-    gt_mask = (gt_x >= xlo) & (gt_x <= xhi) & (gt_y >= ylo) & (gt_y <= yhi)
 
     ax.plot(ek_al[:, 0], ek_al[:, 1],
             color=C_EKF, lw=2.0, alpha=0.8, label='RL-EKF  (ATE 23.4 m)', zorder=2)
