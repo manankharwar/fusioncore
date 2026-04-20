@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 FusionCore NCLT benchmark visualizer.
-Outputs one PNG per result — each is self-contained and presentation-ready.
+Outputs one PNG per result: each is self-contained and presentation-ready.
 
 Usage:
   python3 tools/plot_benchmark.py --seq_dir benchmarks/nclt/2012-01-08
@@ -145,7 +145,7 @@ def plot_trajectory(seq, out_dir):
     fig, (ax_top, ax_bot) = plt.subplots(1, 2, figsize=(18, 10), facecolor=BG)
     fig.subplots_adjust(left=0.06, right=0.97, top=0.93, bottom=0.07, wspace=0.08)
 
-    fig.text(0.5, 0.97, 'Route Accuracy — 600 s Campus Drive',
+    fig.text(0.5, 0.97, 'Route Accuracy: 600 s Campus Drive',
              ha='center', fontsize=17, fontweight='bold', color=TEXT)
     fig.text(0.5, 0.955, 'NCLT 2012-01-08  •  RTK GPS ground truth  •  SE(2) aligned',
              ha='center', fontsize=10.5, color=MUTED)
@@ -165,7 +165,7 @@ def plot_trajectory(seq, out_dir):
                 color='#111827', lw=1.8, ls='--', alpha=0.85,
                 label='Ground Truth (RTK GPS)', zorder=3)
 
-    # Top panel — RL-EKF
+    # Top panel: RL-EKF
     style_ax(ax_top)
     ax_top.plot(ek_al[:, 0], ek_al[:, 1],
                 color=C_EKF, lw=2.0, alpha=0.85,
@@ -178,7 +178,7 @@ def plot_trajectory(seq, out_dir):
                         facecolor='white', edgecolor=BORDER, framealpha=1)
     for t in leg.get_texts(): t.set_color(TEXT)
 
-    # Bottom panel — FusionCore
+    # Bottom panel: FusionCore
     style_ax(ax_bot)
     ax_bot.plot(fc_al[:, 0], fc_al[:, 1],
                 color=C_FC, lw=2.0, alpha=0.85,
@@ -256,15 +256,15 @@ def plot_spike(seq, out_dir):
     fig, ax = base_fig(12, 7)
     fig.subplots_adjust(left=0.1, right=0.96, top=0.86, bottom=0.13)
     set_titles(fig,
-               'FusionCore Rejects Corrupted GPS — RL-EKF Jumps 93 m',
+               'FusionCore Rejects Corrupted GPS: RL-EKF Jumps 93 m',
                'A single GPS fix was corrupted to +707 m NE  •  injected at t = 120 s')
 
     fc_t, fc_e = rel_errs(fc_ts, fc_x, fc_y)
     ek_t, ek_e = rel_errs(ek_ts, ek_x, ek_y)
 
     ax.fill_between(ek_t, ek_e, alpha=0.12, color=C_EKF)
-    ax.plot(ek_t, ek_e, color=C_EKF, lw=2.2, label='RL-EKF — accepted fake fix, jumped 93 m')
-    ax.plot(fc_t, fc_e, color=C_FC,  lw=2.5, label='FusionCore — Mahalanobis gate blocked spike')
+    ax.plot(ek_t, ek_e, color=C_EKF, lw=2.2, label='RL-EKF: accepted fake fix, jumped 93 m')
+    ax.plot(fc_t, fc_e, color=C_FC,  lw=2.5, label='FusionCore: Mahalanobis gate blocked spike')
 
     # spike line
     ax.axvline(0, color='#EF4444', lw=1.8, ls='--', alpha=0.85, zorder=5)
@@ -308,7 +308,7 @@ def plot_ukf(seq, out_dir):
     fc_err = interp_error_2d(fc_ts, fc_x, fc_y, gt_ts, gt_x, gt_y)
     mask90 = fc_rel <= 90
     ax.plot(fc_rel[mask90], fc_err[mask90], color=C_FC, lw=2.2,
-            label='FusionCore — stays on route', zorder=3)
+            label='FusionCore: stays on route', zorder=3)
 
     # UKF: only plot pre-divergence poses (magnitude < 1000 m is sane)
     uk_rel = uk_ts - t0
@@ -317,7 +317,7 @@ def plot_ukf(seq, out_dir):
     die_t = float(uk_rel[valid][-1]) if valid.any() else 31.0
 
     ax.plot(uk_rel[valid], uk_err, color=C_UKF, lw=2.2,
-            label='RL-UKF — valid output before divergence', zorder=2)
+            label='RL-UKF: valid output before divergence', zorder=2)
 
     # "Dead zone" shading after divergence
     ax.axvspan(die_t, 90, color='#FEE2E2', alpha=0.35, zorder=0)
@@ -342,7 +342,7 @@ def plot_ukf(seq, out_dir):
     for t in leg.get_texts():
         t.set_color(TEXT)
 
-    badge(ax, 0.01, 0.97, '✗  RL-UKF: dead in 31 s — NaN explosion', good=False, size=10)
+    badge(ax, 0.01, 0.97, '✗  RL-UKF: dead in 31 s: NaN explosion', good=False, size=10)
     badge(ax, 0.01, 0.84, '✓  FusionCore: stable for 600 s', good=True, size=10)
 
     save(fig, out_dir / '04_ukf_divergence.png')

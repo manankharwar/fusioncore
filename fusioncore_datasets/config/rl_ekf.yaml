@@ -17,7 +17,7 @@ rl_ekf:
     world_frame: odom
     use_sim_time: true
 
-    # Wheel odometry: fuse Vx, Vy, Vyaw (twist only — no pose from wheels)
+    # Wheel odometry: fuse Vx, Vy, Vyaw (twist only: no pose from wheels)
     odom0: /odom/wheels
     odom0_config: [false, false, false,
                    false, false, false,
@@ -39,7 +39,7 @@ rl_ekf:
     odom1_relative: false
     odom1_queue_size: 10
 
-    # IMU: fuse orientation (roll/pitch only — yaw from GPS track), angular velocity, acceleration
+    # IMU: fuse orientation (roll/pitch only: yaw from GPS track), angular velocity, acceleration
     imu0: /imu/data
     imu0_config: [false, false, false,
                   true,  true,  false,   # roll, pitch yes; yaw no (no magnetometer)

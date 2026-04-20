@@ -27,7 +27,7 @@ fusioncore:
     gnss.heading_topic: ""     # no dual-antenna in NCLT
     gnss.azimuth_topic: ""
 
-    # Lever arm: zero — disables heading-validation gate so GNSS is fused immediately.
+    # Lever arm: zero: disables heading-validation gate so GNSS is fused immediately.
     # The 30cm vertical offset has negligible horizontal effect on a flat-terrain vehicle.
     gnss.lever_arm_x: 0.0
     gnss.lever_arm_y: 0.0
@@ -44,7 +44,7 @@ fusioncore:
     adaptive.window: 50
     adaptive.alpha: 0.01
 
-    # UKF process noise — tuned for Segway RMP driving on campus
+    # UKF process noise: tuned for Segway RMP driving on campus
     ukf.q_position:    0.01
     ukf.q_orientation: 0.01
     ukf.q_velocity:    0.1

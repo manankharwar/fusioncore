@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-NCLT benchmark evaluator — FusionCore vs robot_localization.
+NCLT benchmark evaluator: FusionCore vs robot_localization.
 
 Converts bags to TUM format, runs evo_ape + evo_rpe, and prints a
 comparison table. Generates trajectory plots saved as PNG files.
@@ -95,7 +95,7 @@ def write_markdown(results: dict, sequence: str, out_dir: str):
     """Write BENCHMARK.md with the results table."""
     md_path = os.path.join(out_dir, 'BENCHMARK.md')
     with open(md_path, 'w') as f:
-        f.write(f'# Benchmark Results — NCLT Sequence {sequence}\n\n')
+        f.write(f'# Benchmark Results: NCLT Sequence {sequence}\n\n')
         f.write('## Absolute Trajectory Error (ATE)\n\n')
         f.write('| Filter | RMSE (m) | Max error (m) |\n')
         f.write('|--------|----------|---------------|\n')

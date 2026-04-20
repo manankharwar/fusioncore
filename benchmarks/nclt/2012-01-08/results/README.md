@@ -1,4 +1,4 @@
-# NCLT Benchmark — 2012-01-08
+# NCLT Benchmark: 2012-01-08
 
 Results from comparing FusionCore against robot_localization EKF on the
 [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan).

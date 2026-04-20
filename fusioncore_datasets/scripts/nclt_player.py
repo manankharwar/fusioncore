@@ -20,12 +20,12 @@ Frame convention:
 
 Optional test modes (set via ROS parameters):
   GPS spike injection:
-    gps_spike_time_s     — sim-time seconds after start to inject spike (default -1 = off)
-    gps_spike_magnitude_m — spike size in meters (default 500.0)
+    gps_spike_time_s    : sim-time seconds after start to inject spike (default -1 = off)
+    gps_spike_magnitude_m: spike size in meters (default 500.0)
 
   GPS outage simulation:
-    gps_outage_start_s   — sim-time seconds after start to begin outage (default -1 = off)
-    gps_outage_duration_s — how long GPS is cut (default 45.0)
+    gps_outage_start_s  : sim-time seconds after start to begin outage (default -1 = off)
+    gps_outage_duration_s: how long GPS is cut (default 45.0)
 
 Usage:
   ros2 run fusioncore_datasets nclt_player.py \
@@ -219,7 +219,7 @@ class NCLTPlayer(Node):
         """
         Load gps.csv → GPS events.
         Format: utime, mode, ?, lat_rad, lon_rad, alt_m, ?, ?
-        lat/lon are in RADIANS — must convert to degrees.
+        lat/lon are in RADIANS: must convert to degrees.
         mode: 2=2D fix (no altitude), 3=3D fix.
         """
         count, skipped = 0, 0

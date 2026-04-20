@@ -4,8 +4,8 @@ Convert NCLT ground truth CSV to TUM trajectory format.
 
 NCLT ground truth format (verified against groundtruth_2012-01-08.csv):
   utime, x, y, z, roll, pitch, yaw
-  Local Cartesian frame — x, y, z in meters, angles in radians.
-  First row often contains NaN (initialization artifact) — skipped.
+  Local Cartesian frame: x, y, z in meters, angles in radians.
+  First row often contains NaN (initialization artifact): skipped.
 
 Output: TUM format  timestamp tx ty tz qx qy qz qw
 

@@ -69,7 +69,7 @@ public:
     declare_parameter("imu.frame_id", std::string(""));
     // Set to true ONLY if your IMU driver has ALREADY removed gravity and
     // publishes "linear acceleration" (true body acceleration, not specific force).
-    // Most IMUs publish raw specific force (gravity included) — leave this false.
+    // Most IMUs publish raw specific force (gravity included): leave this false.
     // The filter measurement model always expects specific force. If your IMU
     // already subtracted gravity, enable this to add gravity back before fusing.
     declare_parameter("imu.remove_gravitational_acceleration", false);
@@ -644,7 +644,7 @@ private:
   tf2::Vector3 gravity_in_body_frame()
   {
     const fusioncore::State& s = fc_->get_state();
-    // tf2::Quaternion(x,y,z,w) — note: NOT (w,x,y,z)
+    // tf2::Quaternion(x,y,z,w): note: NOT (w,x,y,z)
     tf2::Quaternion q_body(s.x[fusioncore::QX], s.x[fusioncore::QY],
                            s.x[fusioncore::QZ], s.x[fusioncore::QW]);
     // In ENU world frame the apparent gravity in a stationary IMU = [0, 0, +9.80665].
@@ -666,7 +666,7 @@ private:
     // orientation_covariance[0] == -1 means "no orientation data"
     if (msg->orientation_covariance[0] < 0.0) return;
 
-    // All zeros means "unknown covariance" — Gazebo's default IMU plugin.
+    // All zeros means "unknown covariance": Gazebo's default IMU plugin.
     // Don't skip: fuse using fallback covariance so Gazebo robots work without extra config.
     // update_imu_orientation() already falls back to config defaults when cov is zero.
 
@@ -1025,7 +1025,7 @@ private:
     const fusioncore::StateMatrix& P = s.P;
     // Pose covariance: [x, y, z, roll, pitch, yaw] (ROS convention).
     // Map orientation slots to QX, QY, QZ (3 of 4 quaternion components).
-    // QW is omitted — it's constrained by unit norm and has near-zero variance.
+    // QW is omitted: it's constrained by unit norm and has near-zero variance.
     static constexpr int pose_idx[6] = {
       fusioncore::X, fusioncore::Y, fusioncore::Z,
       fusioncore::QX, fusioncore::QY, fusioncore::QZ
@@ -1224,7 +1224,7 @@ private:
   // map renderers expect x=east, y=north). Values must be in degrees.
   //
   // Previous code passed (lat, lon) in slots 0/1, which caused PROJ to
-  // interpret the latitude value as longitude (and vice versa) — giving an
+  // interpret the latitude value as longitude (and vice versa): giving an
   // ECEF roughly 6500 km off for mid-latitude sites. With
   // reference.use_first_fix=true both sides of the round-trip were wrong in
   // the same way so the bug was masked; with an external fixed ECEF

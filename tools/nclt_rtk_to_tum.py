@@ -80,7 +80,7 @@ def main():
             px, py, pz = lla_to_ecef(lat_r, lon_r, alt_m)
             e, n, u = ecef_to_enu(px, py, pz, ref_lat, ref_lon, ref_x, ref_y, ref_z)
             ts = utime / 1e6
-            # Identity quaternion — RTK has no orientation
+            # Identity quaternion: RTK has no orientation
             f.write(f'{ts:.6f} {e:.6f} {n:.6f} {u:.6f} 0.000000 0.000000 0.000000 1.000000\n')
             count += 1
 

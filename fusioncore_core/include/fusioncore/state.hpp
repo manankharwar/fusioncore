@@ -70,7 +70,7 @@ struct State {
   StateMatrix P = StateMatrix::Identity(); // state covariance
 
   State() {
-    x[QW] = 1.0;  // identity quaternion — must NOT be zero
+    x[QW] = 1.0;  // identity quaternion: must NOT be zero
     // Quaternion components live on S³; P for them must stay tiny.
     // Orientation uncertainty propagates via q_angular_vel in Q, not via
     // large quaternion P. See generate_sigma_points() for the clamp rationale.

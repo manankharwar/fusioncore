@@ -16,7 +16,7 @@ struct UKFParams {
   // Process noise: how much we trust the motion model
   double q_position     = 0.01;   // m²/step
   // Quaternion regularization: keeps Q positive-definite.
-  // NOT the primary orientation noise source — orientation uncertainty
+  // NOT the primary orientation noise source: orientation uncertainty
   // propagates from q_angular_vel through the quaternion kinematics.
   // Set to a very small value; large values corrupt the quaternion norm.
   double q_orientation  = 1e-9;   // quaternion regularization (dimensionless)

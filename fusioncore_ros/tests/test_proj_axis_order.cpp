@@ -70,7 +70,7 @@ TEST(ProjAxisOrder, SwappedSlotsProduceWrongECEF)
     double dz   = correct.xyz.z - buggy.xyz.z;
     double dist = std::sqrt(dx*dx + dy*dy + dz*dz);
 
-    EXPECT_GT(dist, 1e6);  // > 1000 km apart — the old bug was ~6500 km
+    EXPECT_GT(dist, 1e6);  // > 1000 km apart: the old bug was ~6500 km
 
     proj_destroy(pj);
     proj_context_destroy(ctx);

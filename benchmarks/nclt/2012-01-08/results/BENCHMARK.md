@@ -1,4 +1,4 @@
-# Benchmark Results — NCLT Sequence 2012-01-08
+# Benchmark Results: NCLT Sequence 2012-01-08
 
 ## Absolute Trajectory Error (ATE)
 

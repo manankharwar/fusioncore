@@ -13,7 +13,7 @@ fusioncore:
     #   false (default): IMU publishes raw specific force (~9.81 m/s² upward at rest).
     #            This is the standard ROS convention (sensor_msgs/Imu spec).
     #            Most drivers (Gazebo NavSat, ZED, Realsense) do NOT remove gravity.
-    #            Leave false — the filter handles gravity internally.
+    #            Leave false: the filter handles gravity internally.
     #
     #   true: Your driver already subtracted gravity and publishes true linear
     #         acceleration (~0 m/s² at rest). Enable this so FusionCore adds
@@ -93,7 +93,7 @@ fusioncore:
     adaptive.alpha: 0.01      # learning rate (0.01 = slow, stable)
 
     ukf.q_position: 0.01
-    ukf.q_orientation: 1.0e-9  # quaternion regularization only — see ukf.hpp
+    ukf.q_orientation: 1.0e-9  # quaternion regularization only: see ukf.hpp
     ukf.q_velocity: 0.1
     ukf.q_angular_vel: 0.1
     ukf.q_acceleration: 1.0

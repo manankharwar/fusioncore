@@ -110,7 +110,7 @@ def write_markdown(results: dict, spike_time: float, magnitude: float,
         f.write('| Filter | Baseline error (m) | Max deviation after spike (m) | Rejected? |\n')
         f.write('|--------|--------------------|-------------------------------|-----------|\n')
         for name, r in results.items():
-            rejected = 'YES' if r['max_dev'] < r['baseline'] * 3 else 'NO — jumped'
+            rejected = 'YES' if r['max_dev'] < r['baseline'] * 3 else 'NO: jumped'
             f.write(f'| {name} | {r["baseline"]:.2f} | {r["max_dev"]:.2f} | {rejected} |\n')
         f.write('\n## Methodology\n\n')
         f.write('- One GPS fix is corrupted to lat+500m/lon+500m (~707m NE).\n')

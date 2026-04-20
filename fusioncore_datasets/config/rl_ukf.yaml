@@ -1,5 +1,5 @@
 # robot_localization UKF config for NCLT benchmark
-# Identical sensor config to rl_ekf.yaml — only the filter type differs (ukf_node vs ekf_node).
+# Identical sensor config to rl_ekf.yaml: only the filter type differs (ukf_node vs ekf_node).
 # Used to verify FusionCore wins vs RL-UKF, not just RL-EKF.
 rl_ukf:
   ros__parameters:

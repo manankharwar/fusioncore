@@ -18,6 +18,20 @@ FusionCore is that replacement.
 
 ---
 
+## Benchmark results
+
+FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan) — same IMU + wheel odometry + GPS, no tuning advantage:
+
+| Filter | ATE RMSE | GPS spike response | Stability |
+|--------|----------|--------------------|-----------|
+| **FusionCore** | **5.5 m** | **+1 m (rejected)** | Stable for 600 s |
+| robot_localization EKF | 23.4 m | +93 m jump | Stable for 600 s |
+| robot_localization UKF | — | — | NaN divergence at t=31 s |
+
+4.2× better accuracy out of the box. Full methodology, charts, and reproduce instructions in [`benchmarks/`](benchmarks/).
+
+---
+
 ## Why FusionCore
 
 | Capability | robot_localization | Fuse | FusionCore |

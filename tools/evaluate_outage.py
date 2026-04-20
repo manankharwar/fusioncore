@@ -4,7 +4,7 @@ GPS outage / dead reckoning drift evaluator.
 
 Slices each trajectory to the outage window [outage_start, outage_end],
 then runs evo_ape with SE(3) alignment on that segment. This is the only
-correct approach — the GT and filter frames differ in both origin AND
+correct approach: the GT and filter frames differ in both origin AND
 rotation, so raw coordinate comparison or simple displacement subtraction
 both fail. SE(3) alignment handles both.
 
@@ -89,7 +89,7 @@ def write_markdown(results: dict, outage_start: float, outage_dur: float, out_di
         f.write('dead-reckons (IMU + wheels only) vs RTK GPS ground truth.\n\n')
         f.write('FusionCore\'s 21-state vector continuously estimates IMU bias,\n')
         f.write('reducing gyro drift that would otherwise compound into heading error.\n')
-        f.write('RL-EKF has no bias estimation — uncorrected gyro bias accumulates.\n\n')
+        f.write('RL-EKF has no bias estimation: uncorrected gyro bias accumulates.\n\n')
         f.write('## Methodology\n\n')
         f.write('- Both TUM trajectories sliced to the outage window\n')
         f.write('- evo_ape run with SE(3) alignment on the sliced segment\n')
@@ -170,7 +170,7 @@ def main():
             pct = (fc_rmse - ekf_rmse) / fc_rmse * 100
             print(f'  RL-EKF dead-reckoning {ekf_rmse:.2f}m vs FusionCore {fc_rmse:.2f}m '
                   f'({pct:.1f}% less drift from RL-EKF)')
-    print(f'  RL-UKF: diverged at t≈31s — completely unusable')
+    print(f'  RL-UKF: diverged at t≈31s: completely unusable')
 
     write_markdown(results, args.outage_start, args.outage_duration, args.out_dir)
     print(f'\nResults in {args.out_dir}/OUTAGE_TEST.md')

@@ -15,7 +15,7 @@ UKF::UKF(const UKFParams& params)
 
 void UKF::init(const State& initial_state) {
   state_ = initial_state;
-  // Repair zero or near-zero quaternion — tests that assign x = Zero() invalidate QW.
+  // Repair zero or near-zero quaternion: tests that assign x = Zero() invalidate QW.
   // A zero-norm quaternion causes division-by-zero in process_model.
   double qnorm = std::sqrt(state_.x[QW]*state_.x[QW] + state_.x[QX]*state_.x[QX] +
                             state_.x[QY]*state_.x[QY] + state_.x[QZ]*state_.x[QZ]);
@@ -128,7 +128,7 @@ StateVector UKF::process_model(const StateVector& x, double dt) const {
 
   // ── Orientation: exact quaternion kinematics ──────────────────────────────
   // q_new = q ⊗ exp(ω * dt / 2). Exact for constant ω over dt; no singularity.
-  // WX/WY/WZ are true angular rates — do NOT subtract gyro bias here.
+  // WX/WY/WZ are true angular rates: do NOT subtract gyro bias here.
   // Bias enters only in the IMU measurement model (z = true_rate + bias).
   double wx = x[WX], wy = x[WY], wz = x[WZ];
   double omega_mag = std::sqrt(wx*wx + wy*wy + wz*wz);
@@ -180,7 +180,7 @@ void UKF::predict(double dt) {
 
   // Weighted mean: normalize_state renormalizes the quaternion after summing.
   // Simple weighted sum + normalize is accurate when sigma-point spread is small
-  // (guaranteed at 100 Hz where dt is tiny). No circular mean needed — the
+  // (guaranteed at 100 Hz where dt is tiny). No circular mean needed: the
   // quaternion representation has no angle-wrapping discontinuity.
   StateVector x_pred = StateVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
@@ -194,7 +194,7 @@ void UKF::predict(double dt) {
   // as P grows too slowly to track real motion.
   StateMatrix P_pred = Q_;
   for (int i = 0; i < n_sigma; ++i) {
-    // Plain Euclidean difference — no normalize_state here.
+    // Plain Euclidean difference: no normalize_state here.
     // With quaternion state there is no angle wrapping; normalizing a diff
     // vector would treat it as a quaternion and scale it to unit length,
     // completely corrupting the covariance.
