@@ -1,0 +1,16 @@
+# navsat_transform_node: converts /gnss/fix (lat/lon) → /gps/odometry (local ENU)
+# This feeds into rl_ekf's odom1 input.
+# navsat_transform needs the EKF's /odometry/filtered output to get the current
+# heading — this creates the standard RL feedback loop.
+navsat_transform:
+  ros__parameters:
+    frequency: 30.0
+    delay: 0.0
+    magnetic_declination_radians: 0.0   # not using magnetometer
+    yaw_offset: 0.0
+    zero_altitude: true               # ground robot: z from GPS is unreliable, keep z=0
+    broadcast_utm_transform: false
+    publish_filtered_gps: false
+    use_odometry_yaw: false             # use GPS track heading — breaks circular EKF↔navsat dependency
+    wait_for_datum: false               # auto-initialize from first GPS fix
+    use_sim_time: true

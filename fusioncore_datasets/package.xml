@@ -1,0 +1,22 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fusioncore_datasets</name>
+  <version>0.1.0</version>
+  <description>NCLT dataset adapter and benchmark pipeline for FusionCore vs robot_localization</description>
+  <maintainer email="manankharwar2001@gmail.com">Manan Kharwar</maintainer>
+  <license>Apache-2.0</license>
+
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>nav_msgs</exec_depend>
+  <exec_depend>rosgraph_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>fusioncore_ros</exec_depend>
+  <exec_depend>robot_localization</exec_depend>
+
+  <buildtool_depend>ament_cmake</buildtool_depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

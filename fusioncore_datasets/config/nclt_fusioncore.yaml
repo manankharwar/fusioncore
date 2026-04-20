@@ -1,0 +1,60 @@
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+
+    # Microstrain 3DM-GX3-45 (the NCLT IMU)
+    # Angular random walk: 0.07°/√hr → noise density ≈ 0.003 rad/s
+    # Velocity random walk: 0.03 m/s/√hr → noise density ≈ 0.001 m/s²
+    imu.gyro_noise: 0.003
+    imu.accel_noise: 0.1
+    imu.has_magnetometer: false         # 6-axis mode: yaw from GPS track only
+    imu.remove_gravitational_acceleration: false  # NCLT IMU includes gravity (raw specific force)
+
+    # Segway RMP wheel encoders via odometry_mu_100hz.csv (differentiated)
+    encoder.vel_noise: 0.05
+    encoder.yaw_noise: 0.02
+
+    # Novatel SPAN-CPT standard GPS: ~3m CEP in urban Michigan campus
+    # position_covariance published by nclt_player: var_xy=9, var_z=25
+    # base_noise_xy=1.0: FC reads cov from message and uses sqrt(var_xy) * base_noise_xy
+    gnss.base_noise_xy: 1.0
+    gnss.base_noise_z: 1.0
+    gnss.max_hdop: 10.0        # lenient: NCLT doesn't publish HDOP, FC defaults to 1.0
+    gnss.min_satellites: 0     # NCLT doesn't publish satellite count
+    gnss.min_fix_type: 1       # accept any valid fix (mode >= 2 already filtered in player)
+    gnss.heading_topic: ""     # no dual-antenna in NCLT
+    gnss.azimuth_topic: ""
+
+    # Lever arm: zero — disables heading-validation gate so GNSS is fused immediately.
+    # The 30cm vertical offset has negligible horizontal effect on a flat-terrain vehicle.
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.999)
+    outlier_threshold_enc: 11.34    # chi2(3, 0.999)
+    outlier_threshold_imu: 15.09    # chi2(6, 0.999)
+
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # UKF process noise — tuned for Segway RMP driving on campus
+    ukf.q_position:    0.01
+    ukf.q_orientation: 0.01
+    ukf.q_velocity:    0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias:   1.0e-5
+    ukf.q_accel_bias:  1.0e-5
+
+    # PROJ: WGS84 lat/lon in, ECEF out (globally valid)
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true
