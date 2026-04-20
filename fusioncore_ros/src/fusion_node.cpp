@@ -148,7 +148,7 @@ public:
     declare_parameter("zupt.noise_sigma",        0.01);  // m/s: tight
 
     declare_parameter("ukf.q_position",     0.01);
-    declare_parameter("ukf.q_orientation",  0.01);
+    declare_parameter("ukf.q_orientation",  1e-9);
     declare_parameter("ukf.q_velocity",     0.1);
     declare_parameter("ukf.q_angular_vel",  0.1);
     declare_parameter("ukf.q_acceleration", 1.0);
