@@ -136,12 +136,14 @@ def plot_trajectory(seq, out_dir):
     # Clip GT to the same view window for context
     gt_mask = (gt_x >= xlo) & (gt_x <= xhi) & (gt_y >= ylo) & (gt_y <= yhi)
 
-    ax.plot(gt_x[gt_mask], gt_y[gt_mask],
-            color=C_GT, lw=2.0, alpha=0.6, label='Ground Truth (RTK GPS)', zorder=1)
+    # GT drawn last so it sits on top as the reference to beat
     ax.plot(ek_al[:, 0], ek_al[:, 1],
-            color=C_EKF, lw=1.8, alpha=0.75, label='RL-EKF  (ATE 23.4 m)', zorder=2)
+            color=C_EKF, lw=2.2, alpha=0.8, label='RL-EKF  (ATE 23.4 m)', zorder=2)
     ax.plot(fc_al[:, 0], fc_al[:, 1],
-            color=C_FC, lw=2.4, alpha=0.95, label='FusionCore  (ATE 5.5 m)', zorder=3)
+            color=C_FC, lw=2.2, alpha=0.9, label='FusionCore  (ATE 5.5 m)', zorder=3)
+    ax.plot(gt_x[gt_mask], gt_y[gt_mask],
+            color='#111827', lw=2.5, alpha=0.9,
+            label='Ground Truth — where the robot actually was', zorder=4)
 
     ax.plot(fc_al[0, 0], fc_al[0, 1], 'o', color=TEXT, ms=7, zorder=5)
     ax.text(fc_al[0, 0] + 8, fc_al[0, 1] + 8, 'Start', fontsize=9, color=TEXT)
@@ -153,6 +155,11 @@ def plot_trajectory(seq, out_dir):
     ax.set_ylabel('North (m)', fontsize=10, color=MUTED)
     ax.grid(color=BORDER, lw=0.7, zorder=0)
 
+    ax.text(0.5, -0.07,
+            'Goal: stay as close to the black line as possible.',
+            transform=ax.transAxes, ha='center', fontsize=10,
+            color=MUTED, style='italic')
+
     leg = ax.legend(fontsize=10.5, loc='upper left',
                     facecolor='white', edgecolor=BORDER, framealpha=1)
     for t in leg.get_texts():
@@ -161,87 +168,114 @@ def plot_trajectory(seq, out_dir):
     save(fig, out_dir / '01_trajectory.png')
 
 
-# ── Chart 2: ATE bar chart ────────────────────────────────────────────────
+# ── Chart 2: ATE — horizontal bar so ratio is obvious ────────────────────
 def plot_ate(out_dir):
-    fig, ax = base_fig(9, 7)
-    fig.subplots_adjust(left=0.12, right=0.82, top=0.86, bottom=0.12)
+    fig, ax = base_fig(11, 5)
+    fig.subplots_adjust(left=0.18, right=0.88, top=0.82, bottom=0.18)
     set_titles(fig,
-               'FusionCore is 4.2× More Accurate',
-               'Absolute Trajectory Error (ATE RMSE)  •  lower is better')
+               'How Far Off Was Each Filter, On Average?',
+               'Absolute Trajectory Error (ATE RMSE)  •  lower = closer to where the robot actually was')
 
-    names  = ['FusionCore', 'RL-EKF']
-    vals   = [5.517, 23.434]
-    colors = [C_FC, C_EKF]
-    alphas = [1.0, 0.85]
+    labels = ['RL-EKF', 'FusionCore']
+    vals   = [23.434, 5.517]
+    colors = [C_EKF, C_FC]
 
-    bars = ax.bar(names, vals, color=colors, width=0.45, zorder=3,
-                  alpha=1.0, edgecolor='none')
+    bars = ax.barh(labels, vals, color=colors, height=0.45,
+                   edgecolor='none', zorder=3)
 
-    # value labels on top of bars
-    for bar, v in zip(bars, vals):
-        ax.text(bar.get_x() + bar.get_width() / 2, v + 0.3,
-                f'{v:.1f} m', ha='center', va='bottom',
-                color=TEXT, fontsize=15, fontweight='bold')
+    # value + real-world anchor label at end of each bar
+    anchors = ['≈ width of a city intersection', '≈ length of a car']
+    for bar, v, anchor in zip(bars, vals, anchors):
+        ax.text(v + 0.3, bar.get_y() + bar.get_height() / 2,
+                f'  {v:.1f} m  —  {anchor}',
+                va='center', fontsize=11, color=TEXT, fontweight='bold')
 
-    # improvement arrow
-    x_arrow = 1.38
-    ax.annotate('', xy=(x_arrow, vals[0]), xytext=(x_arrow, vals[1]),
-                xycoords=('data', 'data'),
+    # "perfect" reference line
+    ax.axvline(0, color='#111827', lw=2.0, zorder=5)
+    ax.text(0.3, -0.62, 'Perfect\n(0 m error)', fontsize=8.5,
+            color='#111827', va='top', fontweight='bold')
+
+    # bracket showing the gap
+    ax.annotate('', xy=(vals[1], 0.55), xytext=(vals[0], 0.55),
                 arrowprops=dict(arrowstyle='<->', color=MUTED, lw=1.8))
-    ax.text(x_arrow + 0.06, (vals[0] + vals[1]) / 2,
-            '4.2×\nmore\naccurate', ha='left', va='center',
-            color=TEXT, fontsize=12, fontweight='bold', linespacing=1.4,
-            transform=ax.get_xaxis_transform() if False else ax.transData)
+    ax.text((vals[0] + vals[1]) / 2, 0.62,
+            '4.2× more accurate',
+            ha='center', va='bottom', fontsize=11,
+            color=TEXT, fontweight='bold')
 
-    ax.set_ylim(0, vals[1] * 1.3)
-    ax.set_xlim(-0.6, 1.9)
-    ax.set_ylabel('ATE RMSE (m)', fontsize=11, color=MUTED)
-    ax.tick_params(axis='x', labelsize=13, colors=TEXT)
-    ax.grid(axis='y', color=BORDER, lw=0.7, zorder=0)
+    ax.set_xlim(0, vals[0] * 1.55)
+    ax.set_xlabel('Average position error (m)', fontsize=11, color=MUTED)
+    ax.tick_params(axis='y', labelsize=13, colors=TEXT)
+    ax.grid(axis='x', color=BORDER, lw=0.7, zorder=0)
     ax.set_axisbelow(True)
-
-    badge(ax, 0.04, 0.97, '✓  Winner', good=True, size=10)
+    ax.invert_yaxis()
 
     save(fig, out_dir / '02_ate.png')
 
 
-# ── Chart 3: GPS spike ────────────────────────────────────────────────────
+# ── Chart 3: GPS spike — delta from own baseline ─────────────────────────
 def plot_spike(seq, out_dir):
     gt_ts, gt_x, gt_y, _ = load_tum(str(seq / 'ground_truth.tum'))
     fc_ts, fc_x, fc_y, _ = load_tum(str(seq / 'fusioncore_spike.tum'))
     ek_ts, ek_x, ek_y, _ = load_tum(str(seq / 'rl_ekf_spike.tum'))
 
     SPIKE_T = 120.0
+    WINDOW  = 30.0
     t0 = gt_ts[0]
 
-    def rel_errs(ts, x, y):
+    def get_errs(ts, x, y, t_lo, t_hi):
         rel = ts - t0
         errs = interp_error_2d(ts, x, y, gt_ts, gt_x, gt_y)
-        mask = (rel >= SPIKE_T - 35) & (rel <= SPIKE_T + 50)
+        mask = (rel >= t_lo) & (rel <= t_hi)
         return rel[mask] - SPIKE_T, errs[mask]
 
+    # baseline = mean error in 30s before spike
+    _, fc_pre = get_errs(fc_ts, fc_x, fc_y, SPIKE_T - WINDOW, SPIKE_T)
+    _, ek_pre = get_errs(ek_ts, ek_x, ek_y, SPIKE_T - WINDOW, SPIKE_T)
+    fc_base = float(np.nanmean(fc_pre))
+    ek_base = float(np.nanmean(ek_pre))
+
+    # full window: 30s before → 45s after
+    fc_t, fc_e = get_errs(fc_ts, fc_x, fc_y, SPIKE_T - WINDOW, SPIKE_T + 45)
+    ek_t, ek_e = get_errs(ek_ts, ek_x, ek_y, SPIKE_T - WINDOW, SPIKE_T + 45)
+
+    fc_delta = fc_e - fc_base
+    ek_delta = ek_e - ek_base
+
     fig, ax = base_fig(12, 7)
-    fig.subplots_adjust(left=0.1, right=0.96, top=0.86, bottom=0.13)
+    fig.subplots_adjust(left=0.11, right=0.96, top=0.84, bottom=0.13)
     set_titles(fig,
-               'FusionCore Rejects Corrupted GPS — RL-EKF Jumps 93 m',
-               'A single GPS fix was corrupted to +707 m NE  •  injected at t = 120 s')
+               'How Much Did Each Filter Move When the Fake GPS Arrived?',
+               '707 m corrupted fix injected at t = 0  •  both lines start at 0 = their own normal baseline')
 
-    fc_t, fc_e = rel_errs(fc_ts, fc_x, fc_y)
-    ek_t, ek_e = rel_errs(ek_ts, ek_x, ek_y)
+    ax.axhline(0, color='#111827', lw=1.5, zorder=1)
+    ax.fill_between(ek_t, ek_delta, alpha=0.12, color=C_EKF, zorder=2)
+    ax.plot(ek_t, ek_delta, color=C_EKF, lw=2.4,
+            label='RL-EKF — blindly accepted the fake fix', zorder=3)
+    ax.plot(fc_t, fc_delta, color=C_FC, lw=2.4,
+            label='FusionCore — Mahalanobis gate rejected it', zorder=4)
 
-    ax.fill_between(ek_t, ek_e, alpha=0.12, color=C_EKF)
-    ax.plot(ek_t, ek_e, color=C_EKF, lw=2.2, label='RL-EKF — accepted fake fix, jumped 93 m')
-    ax.plot(fc_t, fc_e, color=C_FC,  lw=2.5, label='FusionCore — Mahalanobis gate blocked spike')
+    ax.axvline(0, color='#EF4444', lw=2.0, ls='--', zorder=5)
 
-    # spike line
-    ax.axvline(0, color='#EF4444', lw=1.8, ls='--', alpha=0.85, zorder=5)
-    ymax = np.nanmax(ek_e) if len(ek_e) else 100
-    ax.text(1.5, ymax * 0.97, '← 707 m fake fix\n   injected here',
+    ax.figure.canvas.draw()
+    ymax = ax.get_ylim()[1]
+
+    ax.text(1.5, ymax * 0.96, '← fake fix\n   injected',
             color='#EF4444', fontsize=9.5, va='top', linespacing=1.5)
 
-    ax.set_xlabel('Seconds relative to spike injection', fontsize=11, color=MUTED)
-    ax.set_ylabel('Position error vs ground truth (m)', fontsize=11, color=MUTED)
-    ax.set_ylim(bottom=0)
+    # annotate peak EKF jump
+    ek_peak = int(np.nanargmax(ek_delta))
+    ax.annotate(f'+{ek_delta[ek_peak]:.0f} m',
+                xy=(ek_t[ek_peak], ek_delta[ek_peak]),
+                xytext=(ek_t[ek_peak] - 14, ek_delta[ek_peak] * 0.78),
+                color=C_EKF, fontsize=12, fontweight='bold',
+                arrowprops=dict(arrowstyle='->', color=C_EKF, lw=1.5))
+
+    ax.text(12, ymax * 0.08, '≈ 0 m change', color=C_FC,
+            fontsize=11, fontweight='bold')
+
+    ax.set_xlabel('Seconds relative to fake GPS injection', fontsize=11, color=MUTED)
+    ax.set_ylabel('Position change from own baseline (m)', fontsize=11, color=MUTED)
     ax.grid(color=BORDER, lw=0.7, zorder=0)
     ax.set_axisbelow(True)
 
@@ -250,8 +284,8 @@ def plot_spike(seq, out_dir):
     for t in leg.get_texts():
         t.set_color(TEXT)
 
-    badge(ax, 0.01, 0.97, '✓  FusionCore: +1 m  (REJECTED)', good=True,  size=10)
-    badge(ax, 0.01, 0.84, '✗  RL-EKF: +93 m  (JUMPED)',      good=False, size=10)
+    badge(ax, 0.73, 0.97, '✓  FC: +1 m — REJECTED', good=True,  size=10)
+    badge(ax, 0.73, 0.84, '✗  EKF: +93 m — JUMPED', good=False, size=10)
 
     save(fig, out_dir / '03_spike.png')
 
