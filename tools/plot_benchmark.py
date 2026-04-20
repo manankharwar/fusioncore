@@ -123,56 +123,73 @@ def save(fig, path):
     print(f'  → {path}')
 
 
-# ── Chart 1: Trajectory ───────────────────────────────────────────────────
+# ── Chart 1: Trajectory (two stacked panels) ─────────────────────────────
 def plot_trajectory(seq, out_dir):
     gt_ts, gt_x, gt_y, _ = load_tum(str(seq / 'ground_truth.tum'))
     fc_ts, fc_x, fc_y, _ = load_tum(str(seq / 'fusioncore.tum'))
     ek_ts, ek_x, ek_y, _ = load_tum(str(seq / 'rl_ekf.tum'))
 
-    fig, ax = base_fig(10, 10)
-    fig.subplots_adjust(left=0.1, right=0.92, top=0.88, bottom=0.08)
-    set_titles(fig,
-               'Route Accuracy — 600 s Campus Drive',
-               'NCLT 2012-01-08  •  RTK GPS ground truth  •  SE(2) aligned')
-
     gt_xy = np.stack([gt_x, gt_y], 1)
     fc_al = align_se2_temporal(fc_ts, np.stack([fc_x, fc_y], 1), gt_ts, gt_xy)
     ek_al = align_se2_temporal(ek_ts, np.stack([ek_x, ek_y], 1), gt_ts, gt_xy)
 
-    # Clip GT to the same 600s time window the filters covered
     t_end = max(fc_ts[-1], ek_ts[-1])
     gt_mask = gt_ts <= t_end
 
-    # Crop view to filter extent + padding
     pad = 60
     all_x = np.concatenate([fc_al[:, 0], ek_al[:, 0], gt_x[gt_mask]])
     all_y = np.concatenate([fc_al[:, 1], ek_al[:, 1], gt_y[gt_mask]])
     xlo, xhi = all_x.min() - pad, all_x.max() + pad
     ylo, yhi = all_y.min() - pad, all_y.max() + pad
 
-    ax.plot(ek_al[:, 0], ek_al[:, 1],
-            color=C_EKF, lw=2.0, alpha=0.8, label='RL-EKF  (ATE 23.4 m)', zorder=2)
-    ax.plot(fc_al[:, 0], fc_al[:, 1],
-            color=C_FC, lw=2.0, alpha=0.8, label='FusionCore  (ATE 5.5 m)', zorder=3)
-    # GT on top, dashed so it's visible even where it overlaps FC/EKF
-    ax.plot(gt_x[gt_mask], gt_y[gt_mask],
-            color='#111827', lw=1.8, ls='--', alpha=0.9,
-            label='Ground Truth (RTK GPS)', zorder=4)
+    fig, (ax_top, ax_bot) = plt.subplots(2, 1, figsize=(10, 16), facecolor=BG)
+    fig.subplots_adjust(left=0.1, right=0.95, top=0.94, bottom=0.04, hspace=0.08)
 
-    ax.plot(fc_al[0, 0], fc_al[0, 1], 'o', color=TEXT, ms=7, zorder=5)
-    ax.text(fc_al[0, 0] + 8, fc_al[0, 1] + 8, 'Start', fontsize=9, color=TEXT)
+    fig.text(0.5, 0.97, 'Route Accuracy — 600 s Campus Drive',
+             ha='center', fontsize=17, fontweight='bold', color=TEXT)
+    fig.text(0.5, 0.955, 'NCLT 2012-01-08  •  RTK GPS ground truth  •  SE(2) aligned',
+             ha='center', fontsize=10.5, color=MUTED)
 
-    ax.set_xlim(xlo, xhi)
-    ax.set_ylim(ylo, yhi)
-    ax.set_aspect('equal')
-    ax.set_xlabel('East (m)', fontsize=10, color=MUTED)
-    ax.set_ylabel('North (m)', fontsize=10, color=MUTED)
-    ax.grid(color=BORDER, lw=0.7, zorder=0)
+    def style_ax(ax):
+        ax.set_facecolor(BG)
+        ax.tick_params(colors=MUTED, labelsize=9)
+        for sp in ax.spines.values():
+            sp.set_edgecolor(BORDER)
+        ax.set_xlim(xlo, xhi)
+        ax.set_ylim(ylo, yhi)
+        ax.set_aspect('equal')
+        ax.grid(color=BORDER, lw=0.7, zorder=0)
 
-    leg = ax.legend(fontsize=10.5, loc='upper left',
-                    facecolor='white', edgecolor=BORDER, framealpha=1)
-    for t in leg.get_texts():
-        t.set_color(TEXT)
+    def plot_gt(ax):
+        ax.plot(gt_x[gt_mask], gt_y[gt_mask],
+                color='#111827', lw=1.8, ls='--', alpha=0.85,
+                label='Ground Truth (RTK GPS)', zorder=3)
+
+    # Top panel — RL-EKF
+    style_ax(ax_top)
+    ax_top.plot(ek_al[:, 0], ek_al[:, 1],
+                color=C_EKF, lw=2.0, alpha=0.85,
+                label='RL-EKF  (ATE 23.4 m)', zorder=2)
+    plot_gt(ax_top)
+    ax_top.plot(ek_al[0, 0], ek_al[0, 1], 'o', color=TEXT, ms=6, zorder=5)
+    ax_top.set_ylabel('North (m)', fontsize=10, color=MUTED)
+    ax_top.tick_params(labelbottom=False)
+    leg = ax_top.legend(fontsize=10, loc='upper left',
+                        facecolor='white', edgecolor=BORDER, framealpha=1)
+    for t in leg.get_texts(): t.set_color(TEXT)
+
+    # Bottom panel — FusionCore
+    style_ax(ax_bot)
+    ax_bot.plot(fc_al[:, 0], fc_al[:, 1],
+                color=C_FC, lw=2.0, alpha=0.85,
+                label='FusionCore  (ATE 5.5 m)', zorder=2)
+    plot_gt(ax_bot)
+    ax_bot.plot(fc_al[0, 0], fc_al[0, 1], 'o', color=TEXT, ms=6, zorder=5)
+    ax_bot.set_xlabel('East (m)', fontsize=10, color=MUTED)
+    ax_bot.set_ylabel('North (m)', fontsize=10, color=MUTED)
+    leg = ax_bot.legend(fontsize=10, loc='upper left',
+                        facecolor='white', edgecolor=BORDER, framealpha=1)
+    for t in leg.get_texts(): t.set_color(TEXT)
 
     save(fig, out_dir / '01_trajectory.png')
 
