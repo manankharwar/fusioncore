@@ -28,7 +28,7 @@ benchmarks/
 
 | Dataset | Sequence | FC ATE RMSE | RL ATE RMSE | Winner |
 |---------|----------|-------------|-------------|--------|
-| NCLT    | 2012-01-08 | **5.48m** | 109.9m | FusionCore (95%) |
+| NCLT    | 2012-01-08 | **7.10m** | 23.43m | FusionCore (70%) |
 
 ---
 
