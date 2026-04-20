@@ -2,30 +2,38 @@
 
 GPS cut from t=120.0s to t=165.0s (45s outage).
 
-## Results
+## Result: Inconclusive for FC vs RL-EKF
 
-| Filter | Error at outage start (m) | Error at GPS return (m) | Notes |
-|--------|--------------------------|-------------------------|-------|
-| FusionCore | 5.51 | 155.06 | +149m over 45s |
-| RL-EKF | 137.99 | 229.03 | +91m over 45s |
-| RL-UKF | N/A | N/A | Diverged at t≈31s — unusable |
+This test cannot cleanly compare FC and RL-EKF dead-reckoning quality with
+this experimental setup. Two approaches were tried, both have fatal flaws:
 
-## Interpretation Caveat
+**Raw coordinate comparison**: fails because the GT frame (ENU from RTK origin)
+and the filter odom frames differ in both origin and rotation. Numbers are dominated
+by frame offset, not actual drift.
 
-The raw position errors above are **not SE(3)-aligned** — RL-EKF starts 138m from
-truth while FusionCore starts at 5.5m, so the "net drift" numbers are not a clean
-apples-to-apples dead-reckoning comparison. The correct takeaway from this test:
+**SE(3)-aligned ATE on outage segment**: RL-EKF has a constant 138m global offset
+before the outage (its overall ATE). SE(3) alignment on the short 45s segment
+perfectly compensates for this constant offset, making RL-EKF appear to have
+near-zero dead-reckoning error (0.99m) — an artifact, not a real result.
 
-1. **RL-UKF is completely unusable** — it diverges numerically within 31 seconds, before the outage even begins.
-2. **Both FC and RL-EKF drift substantially** during 45s of pure dead-reckoning — this is a physics ceiling from MEMS IMU + wheel encoders (see ATE benchmark for context).
-3. A fair dead-reckoning comparison requires both filters to start from the same
-   error state, which would require a controlled experiment (e.g., align both
-   trajectories at outage-start, then measure relative drift). This is left as
-   future work.
+A correct dead-reckoning test requires both filters to start the outage from the
+same global error state. That needs a controlled setup (e.g., start the run with
+GPS off, let both filters initialize identically, then compare).
 
-## Methodology
+## What IS Conclusive
 
-- Outage duration: 45s
-- Both FC and RL-EKF run on IMU + wheel odometry only during outage
-- Errors are raw 3D Euclidean distance to RTK GPS ground truth (no SE(3) alignment)
-- RL-UKF trajectory excluded — diverged before outage window
+| Finding | Result |
+|---------|--------|
+| RL-UKF during GPS outage | **Filter diverged at t≈31s — before outage even started** |
+| RL-UKF overall | Numerically unstable, completely unusable |
+| FC vs RL-EKF outage | Inconclusive with this setup — needs controlled experiment |
+
+## Methodology Note
+
+A fair dead-reckoning benchmark would:
+1. Start both filters with GPS disabled from t=0 (no accumulated global error difference)
+2. Run 60–120s of pure dead-reckoning
+3. Compare ATE at the end using the same initial position
+
+This is left as future work. The main benchmark (ATE over 600s with GPS) and the
+spike rejection test are the reliable results for this dataset.
