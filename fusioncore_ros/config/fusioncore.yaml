@@ -4,6 +4,13 @@ fusioncore:
     odom_frame: odom
     publish_rate: 100.0
 
+    # Force 2D output: zeroes the Z position in the published odometry and TF.
+    # For ground robots where altitude is irrelevant (lawn mowers, AGVs, vacuums).
+    # Prevents GPS altitude noise or IMU Z drift from shifting the costmap plane.
+    # Orientation (roll/pitch) is untouched — only position.z is forced to zero.
+    # Leave false for any robot that actually moves in 3D (drones, arms, boats).
+    publish.force_2d: false
+
     imu.gyro_noise: 0.005
     # Set true if IMU has magnetometer (9-axis). False for 6-axis gyro/accel only.
     imu.has_magnetometer: false
@@ -61,9 +68,15 @@ fusioncore:
     gnss.lever_arm2_y: 0.0
     gnss.lever_arm2_z: 0.0
 
-    # compass_msgs/Azimuth heading topic (peci1 standard)
-    # Preferred over gnss.heading_topic when available
-    # Leave empty to use sensor_msgs/Imu heading instead
+    # Dual antenna GNSS heading topic (sensor_msgs/Imu message carrying heading).
+    # Used with receivers that output a second IMU-style message for heading
+    # (e.g. u-blox F9H, Septentrio dual-antenna). Leave empty to disable.
+    # When provided, validates heading immediately without needing 5m of travel.
+    gnss.heading_topic: ""
+
+    # compass_msgs/Azimuth heading topic (REP-145 standard).
+    # Preferred over gnss.heading_topic when your receiver publishes Azimuth.
+    # Leave empty to disable.
     gnss.azimuth_topic: ""
 
     # Mahalanobis outlier rejection
@@ -73,6 +86,21 @@ fusioncore:
     outlier_threshold_imu: 15.09    # chi2(6, 0.999)
     outlier_threshold_enc: 11.34    # chi2(3, 0.999)
     outlier_threshold_hdg: 10.83    # chi2(1, 0.999)
+
+    # Static bias initialization window (seconds). Default 0.0 = disabled.
+    #
+    # All MEMS IMUs have a small accelerometer and gyro bias that varies by unit.
+    # By default the filter starts with zero bias and takes ~60 seconds to learn
+    # the true value, causing a small position drift (~5-10cm) at startup.
+    #
+    # When set > 0, the filter collects IMU data for this duration before starting,
+    # estimates the bias directly from the mean readings, and initializes with the
+    # correct values. Startup drift drops from ~10cm to under 1cm.
+    #
+    # Recommended: 2.0 seconds. Robot MUST be stationary during the window.
+    # If the robot moves during the window, it falls back to zero bias automatically.
+    # No benefit if you already have GPS (position corrections override bias drift).
+    init.stationary_window: 0.0
 
     # Zero-velocity updates (ZUPT)
     # When encoder speed and UKF angular rate are both below threshold,
