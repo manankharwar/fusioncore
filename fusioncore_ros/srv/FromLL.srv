@@ -1,0 +1,8 @@
+# Convert GPS lat/lon/alt to map frame x/y/z.
+# Identical fields to robot_localization/srv/FromLL for drop-in compatibility.
+# Returns the point in the local ENU frame anchored at the first GPS fix (or
+# the configured reference.x/y/z origin). Returns zeros if the GPS reference
+# has not been set yet (no fix received since node start or last reset).
+geographic_msgs/GeoPoint ll_point
+---
+geometry_msgs/Point map_point

@@ -10,6 +10,7 @@ find_package(rclcpp_lifecycle REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(nav_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(geographic_msgs REQUIRED)
 find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
@@ -20,6 +21,12 @@ find_package(fusioncore_core REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
 find_package(PROJ REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
+
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "srv/FromLL.srv"
+  DEPENDENCIES geographic_msgs geometry_msgs
+)
 
 add_executable(fusioncore_node
   src/fusion_node.cpp
@@ -39,6 +46,7 @@ ament_target_dependencies(fusioncore_node
   sensor_msgs
   nav_msgs
   geometry_msgs
+  geographic_msgs
   tf2
   tf2_ros
   tf2_geometry_msgs
@@ -46,6 +54,10 @@ ament_target_dependencies(fusioncore_node
   compass_msgs
   diagnostic_msgs
   std_srvs
+)
+
+rosidl_target_interfaces(fusioncore_node
+  ${PROJECT_NAME} "rosidl_typesupport_cpp"
 )
 
 target_link_libraries(fusioncore_node
