@@ -12,7 +12,7 @@
 
 Every mobile robot needs to know where it is. It gets this from multiple sensors: IMU, wheel encoders, GPS: each of which is imperfect in its own way. IMUs drift. Wheels slip. GPS jumps. You need software that intelligently combines all three into one trustworthy position estimate.
 
-That software is called a sensor fusion package. The standard one for ROS, `robot_localization`, was officially deprecated in September 2023. Its designated replacement (`fuse`) has incomplete GPS support with no ECEF handling or RTK quality gating as of early 2026. At ROSCon UK 2025 the official workshop was still teaching both tools because no clear accessible replacement existed.
+That software is called a sensor fusion package. The standard one for ROS, `robot_localization`, has seen reduced development since 2023 and lacks native ECEF GPS, IMU bias estimation, and adaptive noise covariance. Its designated replacement (`fuse`) has incomplete GPS support with no ECEF handling or RTK quality gating as of early 2026. At ROSCon UK 2025 the official workshop was still teaching both tools because no clear accessible replacement existed.
 
 FusionCore is that replacement.
 
@@ -57,7 +57,7 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 | /diagnostics | Basic | Basic | Per-sensor health + outliers |
 | Published covariance | Yes | Yes | Full UKF P matrix |
 | Filter reset service | No | No | ~/reset (no restart needed) |
-| Maintenance | Deprecated Sep 2023 | Active | Active, 24h response |
+| Maintenance | Reduced since 2023 | Active | Active, 24h response |
 | License | BSD-3 | BSD-3 | Apache 2.0 |
 | ROS 2 Jazzy | Ported from ROS 1 | Native | Native, from scratch |
 
