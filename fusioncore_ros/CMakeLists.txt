@@ -56,9 +56,8 @@ ament_target_dependencies(fusioncore_node
   std_srvs
 )
 
-rosidl_target_interfaces(fusioncore_node
-  ${PROJECT_NAME} "rosidl_typesupport_cpp"
-)
+rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
+target_link_libraries(fusioncore_node ${cpp_typesupport_target})
 
 target_link_libraries(fusioncore_node
   Eigen3::Eigen
