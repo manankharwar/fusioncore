@@ -147,6 +147,13 @@ public:
     declare_parameter("zupt.angular_threshold",  0.05);  // rad/s
     declare_parameter("zupt.noise_sigma",        0.01);  // m/s: tight
 
+    // Static bias initialization window (seconds, default 0 = disabled).
+    // When > 0, the filter collects IMU data for this duration before starting.
+    // Gyro and accel biases are estimated from the mean readings, eliminating
+    // the ~60s startup transient caused by bias convergence from zero.
+    // Only activates if the robot is stationary during the window (encoder check).
+    declare_parameter("init.stationary_window", 0.0);
+
     declare_parameter("ukf.q_position",     0.01);
     declare_parameter("ukf.q_orientation",  1e-9);
     declare_parameter("ukf.q_velocity",     0.1);
@@ -261,6 +268,8 @@ public:
     zupt_velocity_threshold_ = get_parameter("zupt.velocity_threshold").as_double();
     zupt_angular_threshold_  = get_parameter("zupt.angular_threshold").as_double();
     zupt_noise_sigma_        = get_parameter("zupt.noise_sigma").as_double();
+
+    init_window_duration_ = get_parameter("init.stationary_window").as_double();
 
     fc_ = std::make_unique<fusioncore::FusionCore>(config);
 
@@ -530,14 +539,98 @@ private:
     last_imu_time_ = t;
 
     if (pending_init_) {
-      fusioncore::State initial;  // State() default-constructs with QW=1 (identity quaternion)
-      initial.P = fusioncore::StateMatrix::Identity() * 0.1;
-      initial.P(0,0) = 1000.0;  // large position uncertainty: accept first GPS
-      initial.P(1,1) = 1000.0;
-      initial.P(2,2) = 1000.0;
-      fc_->init(initial, t);
-      pending_init_ = false;
-      RCLCPP_INFO(get_logger(), "Filter initialized at t=%.3f (first IMU)", t);
+      if (init_window_duration_ <= 0.0) {
+        fusioncore::State initial;
+        initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+        initial.P(0,0) = 1000.0;
+        initial.P(1,1) = 1000.0;
+        initial.P(2,2) = 1000.0;
+        fc_->init(initial, t);
+        pending_init_ = false;
+        RCLCPP_INFO(get_logger(), "Filter initialized at t=%.3f (first IMU)", t);
+      } else {
+        // Static bias window: collect IMU samples before starting the filter.
+        if (!init_window_collecting_) {
+          init_window_collecting_ = true;
+          init_window_start_      = t;
+          init_window_aborted_    = false;
+          init_win_n_             = 0;
+          init_win_wx_ = init_win_wy_ = init_win_wz_ = 0.0;
+          init_win_ax_ = init_win_ay_ = init_win_az_ = 0.0;
+          init_win_qw_ = init_win_qx_ = init_win_qy_ = init_win_qz_ = 0.0;
+          init_win_orient_n_ = 0;
+          RCLCPP_INFO(get_logger(),
+            "Collecting %.1fs bias window before init...", init_window_duration_);
+        }
+
+        // Accumulate gyro and accel
+        init_win_wx_ += msg->angular_velocity.x;
+        init_win_wy_ += msg->angular_velocity.y;
+        init_win_wz_ += msg->angular_velocity.z;
+        init_win_ax_ += msg->linear_acceleration.x;
+        init_win_ay_ += msg->linear_acceleration.y;
+        init_win_az_ += msg->linear_acceleration.z;
+        ++init_win_n_;
+
+        // Accumulate orientation if available
+        const auto& ocov = msg->orientation_covariance;
+        bool has_orient = (ocov[0] > 0.0 || ocov[4] > 0.0 || ocov[8] > 0.0);
+        if (has_orient) {
+          init_win_qw_ += msg->orientation.w;
+          init_win_qx_ += msg->orientation.x;
+          init_win_qy_ += msg->orientation.y;
+          init_win_qz_ += msg->orientation.z;
+          ++init_win_orient_n_;
+        }
+
+        // Window complete?
+        if (t - init_window_start_ >= init_window_duration_) {
+          fusioncore::State initial;
+          initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+          initial.P(0,0) = 1000.0;
+          initial.P(1,1) = 1000.0;
+          initial.P(2,2) = 1000.0;
+
+          if (!init_window_aborted_ && init_win_n_ > 0) {
+            double n = static_cast<double>(init_win_n_);
+            initial.x[fusioncore::B_GX] = init_win_wx_ / n;
+            initial.x[fusioncore::B_GY] = init_win_wy_ / n;
+            initial.x[fusioncore::B_GZ] = init_win_wz_ / n;
+
+            if (init_win_orient_n_ > 0) {
+              double on = static_cast<double>(init_win_orient_n_);
+              double qw = init_win_qw_ / on, qx = init_win_qx_ / on;
+              double qy = init_win_qy_ / on, qz = init_win_qz_ / on;
+              double norm = std::sqrt(qw*qw + qx*qx + qy*qy + qz*qz);
+              qw /= norm; qx /= norm; qy /= norm; qz /= norm;
+              const double g = 9.80665;
+              double gx = 2.0*(qx*qz - qy*qw)*g;
+              double gy = 2.0*(qy*qz + qx*qw)*g;
+              double gz = (1.0 - 2.0*(qx*qx + qy*qy))*g;
+              initial.x[fusioncore::B_AX] = init_win_ax_ / n - gx;
+              initial.x[fusioncore::B_AY] = init_win_ay_ / n - gy;
+              initial.x[fusioncore::B_AZ] = init_win_az_ / n - gz;
+              RCLCPP_INFO(get_logger(),
+                "Bias window done: gyro=[%.4f,%.4f,%.4f] accel=[%.4f,%.4f,%.4f] rad/s, m/s²",
+                initial.x[fusioncore::B_GX], initial.x[fusioncore::B_GY], initial.x[fusioncore::B_GZ],
+                initial.x[fusioncore::B_AX], initial.x[fusioncore::B_AY], initial.x[fusioncore::B_AZ]);
+            } else {
+              RCLCPP_INFO(get_logger(),
+                "Bias window done (gyro only, no orientation): gyro=[%.4f,%.4f,%.4f]",
+                initial.x[fusioncore::B_GX], initial.x[fusioncore::B_GY], initial.x[fusioncore::B_GZ]);
+            }
+          } else {
+            RCLCPP_WARN(get_logger(),
+              "Bias window aborted (robot moved). Starting with zero bias.");
+          }
+
+          fc_->init(initial, t);
+          pending_init_         = false;
+          init_window_collecting_ = false;
+          RCLCPP_INFO(get_logger(), "Filter initialized at t=%.3f", t);
+        }
+        return;  // Don't process this IMU message through the filter yet
+      }
     }
 
     if (!fc_->is_initialized()) return;
@@ -694,6 +787,15 @@ private:
 
   void encoder_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
   {
+    // If collecting the bias window, abort it if the robot moves.
+    if (init_window_collecting_) {
+      double speed = std::abs(msg->twist.twist.linear.x);
+      double wz    = std::abs(msg->twist.twist.angular.z);
+      if (speed > zupt_velocity_threshold_ || wz > zupt_angular_threshold_) {
+        init_window_aborted_ = true;
+      }
+    }
+
     if (!fc_->is_initialized()) return;
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
@@ -1305,6 +1407,17 @@ private:
   std::string azimuth_topic_;
 
   bool        pending_init_        = false;
+
+  // Static bias initialization window
+  double init_window_duration_   = 0.0;
+  bool   init_window_collecting_ = false;
+  bool   init_window_aborted_    = false;
+  double init_window_start_      = 0.0;
+  int    init_win_n_             = 0;
+  double init_win_wx_ = 0.0, init_win_wy_ = 0.0, init_win_wz_ = 0.0;
+  double init_win_ax_ = 0.0, init_win_ay_ = 0.0, init_win_az_ = 0.0;
+  double init_win_qw_ = 0.0, init_win_qx_ = 0.0, init_win_qy_ = 0.0, init_win_qz_ = 0.0;
+  int    init_win_orient_n_      = 0;
   bool        gnss_ref_set_        = false;
   bool        imu_remove_gravity_  = false;
   std::string imu_frame_override_;
