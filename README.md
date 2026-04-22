@@ -83,6 +83,12 @@ colcon build
 source install/setup.bash
 ```
 
+> **Real robot users (no Gazebo):** `fusioncore_gazebo` depends on `ros_gz_sim` which pulls in Gazebo and its GUI components. On headless machines (Raspberry Pi, server) this install is large, unnecessary, and may fail. Skip it by adding a `COLCON_IGNORE` file before building:
+> ```bash
+> touch ~/ros2_ws/src/fusioncore/fusioncore_gazebo/COLCON_IGNORE
+> ```
+> This tells colcon to skip that package entirely. `fusioncore_core` and `fusioncore_ros` have no Gazebo dependency and build fine without it.
+
 ---
 
 ## Running the tests

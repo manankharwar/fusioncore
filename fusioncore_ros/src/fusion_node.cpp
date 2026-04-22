@@ -462,10 +462,12 @@ private:
     // Use configured IMU frame instead of hardcoded "imu_link"
     std::string imu_tf_frame = imu_frame_override_.empty() ? "imu_link" : imu_frame_override_;
 
-    // Check common sensor transforms
+    // Check common sensor transforms.
+    // Note: base_frame_ → odom_frame_ is intentionally NOT checked here.
+    // FusionCore itself publishes that TF, so it cannot exist before the filter
+    // starts — checking it would always produce a misleading MISSING warning.
     std::vector<std::pair<std::string,std::string>> to_check = {
       {imu_tf_frame, base_frame_},
-      {base_frame_, odom_frame_},
     };
 
     for (const auto& [from, to] : to_check) {
