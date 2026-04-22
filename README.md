@@ -320,14 +320,14 @@ fusioncore:
     adaptive.alpha: 0.01
 
     ukf.q_position: 0.01
-    ukf.q_orientation: 0.01
+    ukf.q_orientation: 1.0e-9  # quaternion regularization only: do NOT increase this
     ukf.q_velocity: 0.1
     ukf.q_angular_vel: 0.1
     ukf.q_acceleration: 1.0
     ukf.q_gyro_bias: 1.0e-5
     ukf.q_accel_bias: 1.0e-5
 ```
-For anyone upgrading from an older config file: if you have ukf.q_orientation: 0.01 in your YAML, change it to 1e-9 (or remove it to use the new default). The old value corrupts quaternion math at typical IMU rates.
+> **Upgrading from an older config?** If your YAML has `ukf.q_orientation: 0.01`, change it to `1.0e-9` or delete the line. The old value corrupts quaternion math at typical IMU rates and causes yaw drift and Z-axis rise in simulation.
 
 ### GPS Coordinate Reference System (CRS)
 
@@ -386,9 +386,13 @@ Before fusing any GPS fix, FusionCore computes how statistically implausible the
 
 This handles GPS jumps, multipath errors, and encoder slip spikes. The filter position stays stable during rejection: verified by injecting a 500m GPS jump in testing and observing zero position change.
 
+GNSS position covariance is floored before the gate is evaluated. This prevents RTK-grade receivers (typical σxy ~3mm) from triggering self-rejection when the filter has not yet converged to RTK-level accuracy.
+
 ### Zero velocity updates (ZUPT)
 
 When the robot is stationary: encoder speed below 0.05 m/s and angular rate below 0.05 rad/s: FusionCore fuses a zero velocity pseudo-measurement with very tight noise. This stops the IMU from drifting the velocity estimate while the robot is sitting still. Every serious inertial navigation system does this. Without ZUPT, IMU noise accumulates into a false velocity estimate over time even when the robot has not moved.
+
+All MEMS IMUs have a small accelerometer and gyro bias that is unknown at startup. By default the filter learns it over ~60 seconds, causing a small position offset at startup. Setting `init.stationary_window: 2.0` makes the filter collect 2 seconds of IMU data before starting, estimate the bias directly, and initialize with the correct values: reducing the startup transient from ~10cm to under 1cm. The robot must be stationary during the window; if it moves, the filter falls back to zero bias automatically.
 
 ### Adaptive noise covariance
 

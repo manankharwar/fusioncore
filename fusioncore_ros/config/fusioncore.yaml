@@ -7,7 +7,7 @@ fusioncore:
     # Force 2D output: zeroes the Z position in the published odometry and TF.
     # For ground robots where altitude is irrelevant (lawn mowers, AGVs, vacuums).
     # Prevents GPS altitude noise or IMU Z drift from shifting the costmap plane.
-    # Orientation (roll/pitch) is untouched — only position.z is forced to zero.
+    # Orientation (roll/pitch) is untouched: only position.z is forced to zero.
     # Leave false for any robot that actually moves in 3D (drones, arms, boats).
     publish.force_2d: false
 
