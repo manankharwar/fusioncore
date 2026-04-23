@@ -24,7 +24,7 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 
 | Filter | ATE RMSE | GPS spike response | Stability |
 |--------|----------|--------------------|-----------|
-| **FusionCore** | **5.5 m** | **+1 m (rejected)** | Stable for 600 s |
+| **FusionCore** | **5.6 m** | **+1 m (rejected)** | Stable for 600 s |
 | robot_localization EKF | 23.4 m | +93 m jump | Stable for 600 s |
 | robot_localization UKF |: |: | NaN divergence at t=31 s |
 
