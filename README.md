@@ -625,4 +625,4 @@ Apache 2.0. Includes explicit patent license grant that BSD-3 does not provide. 
 
 Issues answered within 24 hours. Open a GitHub issue or find the original discussion on ROS Discourse.
 
-This project exists because of a community thread from December 2024 asking for a `robot_localization` replacement that actually works on ROS 2 Jazzy. If you hit a problem: open an issue. That feedback drives the roadmap.
+This project exists because of a community thread from December 2024 asking for a `robot_localization` alternative with native ROS 2 Jazzy support. If you hit a problem: open an issue. That feedback drives the roadmap.
