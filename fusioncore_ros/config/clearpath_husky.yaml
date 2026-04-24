@@ -5,7 +5,7 @@
 #            Datasheet: ARW 0.07°/√hr → σ ≈ 0.003 rad/s at 100Hz
 #                       VRW 0.02 m/s/√hr → σ ≈ 0.05 m/s² at 100Hz
 # GPS:       u-blox F9P (standard GPS defaults; see RTK block below)
-# Tested:    datasheet-tuned, not yet field-validated — contributions welcome
+# Tested:    datasheet-tuned, not yet field-validated: contributions welcome
 #
 # Launch with topic remaps (Husky publishes odom and GPS at non-default topics):
 #
@@ -31,18 +31,18 @@ fusioncore:
     publish.force_2d: true          # Husky is a ground robot
 
     # ── IMU: Microstrain 3DM-GX5-25 ──────────────────────────────────────────
-    # GX5-25 is a 6-axis IMU (accel + gyro). No magnetometer — yaw from GPS
+    # GX5-25 is a 6-axis IMU (accel + gyro). No magnetometer: yaw from GPS
     # motion or dual-antenna heading. If you have a GX5-45 (adds magnetometer),
     # set has_magnetometer: true.
     imu.has_magnetometer: false
-    imu.gyro_noise: 0.003           # rad/s  — derived from ARW 0.07°/√hr spec
-    imu.accel_noise: 0.05           # m/s²   — derived from VRW 0.02 m/s/√hr spec
+    imu.gyro_noise: 0.003           # rad/s : derived from ARW 0.07°/√hr spec
+    imu.accel_noise: 0.05           # m/s²  : derived from VRW 0.02 m/s/√hr spec
     imu.remove_gravitational_acceleration: false  # Microstrain driver publishes raw
     imu.frame_id: "imu_link"
 
     # ── Wheel encoders: Husky A200 ────────────────────────────────────────────
     # 500 CPR optical encoders through a 24:1 gearbox, 0.1651m wheel radius.
-    # Tighter than the default — Husky's encoders are high quality.
+    # Tighter than the default: Husky's encoders are high quality.
     encoder.vel_noise: 0.02         # m/s
     encoder.yaw_noise: 0.01         # rad/s
 
@@ -50,14 +50,14 @@ fusioncore:
     # F9P autonomous CEP: 2.0m (1σ ≈ 2.4m). Conservative 2.5m set here.
     # For RTK float  (CEP 0.4m):  set base_noise_xy: 0.5,  min_fix_type: 3
     # For RTK fixed  (CEP 0.01m): set base_noise_xy: 0.015, min_fix_type: 4
-    gnss.base_noise_xy: 2.5         # m  — standard GPS (no RTK)
+    gnss.base_noise_xy: 2.5         # m : standard GPS (no RTK)
     gnss.base_noise_z: 5.0          # m
     gnss.heading_noise: 0.02
-    gnss.max_hdop: 3.5              # F9P tracks many constellations — HDOP is usually good
+    gnss.max_hdop: 3.5              # F9P tracks many constellations: HDOP is usually good
     gnss.min_satellites: 4
     gnss.min_fix_type: 1            # 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
 
-    # F9P antenna lever arm — measure from base_link to antenna center
+    # F9P antenna lever arm: measure from base_link to antenna center
     # x=forward, y=left, z=up (meters). Set to your actual mounting position.
     gnss.lever_arm_x: 0.0
     gnss.lever_arm_y: 0.0
@@ -69,7 +69,7 @@ fusioncore:
 
     # ── Outlier rejection ─────────────────────────────────────────────────────
     outlier_rejection: true
-    outlier_threshold_gnss: 16.27   # chi2(3, 0.001) — standard GPS, permissive
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.001): standard GPS, permissive
     outlier_threshold_imu: 15.09    # chi2(6, 0.001)
     outlier_threshold_enc: 11.34    # chi2(3, 0.001)
     outlier_threshold_hdg: 10.83    # chi2(1, 0.001)

@@ -525,7 +525,7 @@ Four automated tests: IMU drift rate, outlier rejection, GPS correction after dr
 
 ## Real robot configs
 
-Hardware configs in `fusioncore_ros/config/` — noise values pulled from datasheets, comments explain every parameter:
+Hardware configs in `fusioncore_ros/config/`: noise values pulled from datasheets, comments explain every parameter:
 
 | Config | Platform | IMU | GPS |
 |---|---|---|---|
@@ -535,7 +535,7 @@ Hardware configs in `fusioncore_ros/config/` — noise values pulled from datash
 
 Combine any hardware config with an [environment preset](fusioncore_ros/config/) (`env_open.yaml`, `env_urban.yaml`, `env_canopy.yaml`) to tune GPS trust for your operating conditions without touching the hardware config.
 
-To add your robot's config, open a [Hardware Config Request](https://github.com/manankharwar/fusioncore/issues/new/choose) or submit a PR — see [CONTRIBUTING.md](CONTRIBUTING.md).
+To add your robot's config, open a [Hardware Config Request](https://github.com/manankharwar/fusioncore/issues/new/choose) or submit a PR: see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Migrating from robot_localization
 

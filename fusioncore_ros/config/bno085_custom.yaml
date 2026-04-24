@@ -4,10 +4,10 @@
 # IMU:       Bosch BNO085 (9-axis: accel + gyro + magnetometer)
 #            Datasheet: Gyro noise 0.014 dps/√Hz → σ ≈ 0.005 rad/s at 100Hz
 #                       Accel noise 120 μg/√Hz → σ ≈ 0.1 m/s² at 100Hz
-# GPS:       Standard u-blox M8N class (CEP ~2.5m) — for F9P see clearpath_husky.yaml
+# GPS:       Standard u-blox M8N class (CEP ~2.5m): for F9P see clearpath_husky.yaml
 # Use for:   Raspberry Pi robots, custom rovers, AgileX Scout, anything with
 #            a BNO085 breakout board and a basic GPS receiver
-# Tested:    datasheet-tuned, not yet field-validated — contributions welcome
+# Tested:    datasheet-tuned, not yet field-validated: contributions welcome
 #
 # Launch:
 #   ros2 launch fusioncore_ros fusioncore.launch.py \
@@ -32,8 +32,8 @@ fusioncore:
     # With false: yaw is initialized from GPS motion after ~5m of travel.
     # With true: yaw is available immediately from the magnetometer.
     imu.has_magnetometer: false
-    imu.gyro_noise: 0.005           # rad/s  — derived from 0.014 dps/√Hz at 100Hz
-    imu.accel_noise: 0.1            # m/s²   — conservative for MEMS on a vibrating platform
+    imu.gyro_noise: 0.005           # rad/s : derived from 0.014 dps/√Hz at 100Hz
+    imu.accel_noise: 0.1            # m/s²  : conservative for MEMS on a vibrating platform
     imu.remove_gravitational_acceleration: false  # most BNO085 drivers publish raw specific force
     imu.frame_id: "imu_link"
 

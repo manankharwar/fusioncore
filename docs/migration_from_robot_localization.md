@@ -21,11 +21,11 @@ FusionCore is one node:
 /gnss/fix ────┘                  → odom → base_link TF
 ```
 
-GPS is handled internally — no `navsat_transform_node`, no topic wiring, no feedback loop.
+GPS is handled internally: no `navsat_transform_node`, no topic wiring, no feedback loop.
 
 ---
 
-## Step 1 — Remove robot_localization from your launch
+## Step 1: Remove robot_localization from your launch
 
 Remove or comment out:
 - `ekf_node` launch
@@ -54,7 +54,7 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 
 ---
 
-## Step 2 — Map your EKF parameters
+## Step 2: Map your EKF parameters
 
 | robot_localization (ekf_node) | FusionCore | Notes |
 |---|---|---|
@@ -73,7 +73,7 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 | `imu0_differential` | not needed | FC handles this internally |
 | `imu0_relative` | not needed | |
 | `imu0_queue_size` | not needed | |
-| `imu0_remove_gravitational_acceleration` | `imu.remove_gravitational_acceleration` | ⚠️ **logic is inverted** — see note below |
+| `imu0_remove_gravitational_acceleration` | `imu.remove_gravitational_acceleration` | ⚠️ **logic is inverted**: see note below |
 | `mahalanobis_threshold` | `outlier_threshold_gnss`, `outlier_threshold_imu`, `outlier_threshold_enc`, `outlier_threshold_hdg` | FC has per-sensor thresholds instead of one global value |
 | `process_noise_covariance` | `ukf.q_position`, `ukf.q_velocity`, etc. | FC exposes named scalars instead of a 15×15 matrix |
 | `initial_estimate_covariance` | not configurable | FC initializes automatically from first sensor readings |
@@ -95,7 +95,7 @@ Both flags with value `true` describe the same physical situation, but from oppo
 
 ---
 
-## Step 3 — Map your navsat_transform parameters
+## Step 3: Map your navsat_transform parameters
 
 | robot_localization (navsat_transform_node) | FusionCore | Notes |
 |---|---|---|
@@ -113,7 +113,7 @@ Both flags with value `true` describe the same physical situation, but from oppo
 
 ---
 
-## Step 4 — Remap topics
+## Step 4: Remap topics
 
 | robot_localization | FusionCore | Action |
 |---|---|---|
@@ -147,7 +147,7 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 
 ---
 
-## Step 5 — Update nav2_params.yaml
+## Step 5: Update nav2_params.yaml
 
 ```yaml
 # Before (robot_localization)
@@ -211,7 +211,7 @@ Be aware of these before migrating:
 
 ## Minimal working FusionCore config
 
-Starting point — copy this and adjust noise values to your hardware:
+Starting point: copy this and adjust noise values to your hardware:
 
 ```yaml
 fusioncore:
@@ -262,13 +262,13 @@ fusioncore:
 ```
 
 For hardware-specific noise values, see the configs in `fusioncore_ros/config/`:
-- [`clearpath_husky.yaml`](../fusioncore_ros/config/clearpath_husky.yaml) — Husky A200 + Microstrain GX5-25 + u-blox F9P
-- [`bno085_custom.yaml`](../fusioncore_ros/config/bno085_custom.yaml) — BNO085 + standard GPS (DIY robots)
-- [`duatic_mecanum.yaml`](../fusioncore_ros/config/duatic_mecanum.yaml) — Duatic mecanum + BNO085, no GPS
+- [`clearpath_husky.yaml`](../fusioncore_ros/config/clearpath_husky.yaml): Husky A200 + Microstrain GX5-25 + u-blox F9P
+- [`bno085_custom.yaml`](../fusioncore_ros/config/bno085_custom.yaml): BNO085 + standard GPS (DIY robots)
+- [`duatic_mecanum.yaml`](../fusioncore_ros/config/duatic_mecanum.yaml): Duatic mecanum + BNO085, no GPS
 
 Or combine a hardware config with an environment preset for GPS-quality-specific tuning:
-- [`env_open.yaml`](../fusioncore_ros/config/env_open.yaml) — agricultural / open sky
-- [`env_urban.yaml`](../fusioncore_ros/config/env_urban.yaml) — urban / multipath
-- [`env_canopy.yaml`](../fusioncore_ros/config/env_canopy.yaml) — forest / partial sky
+- [`env_open.yaml`](../fusioncore_ros/config/env_open.yaml): agricultural / open sky
+- [`env_urban.yaml`](../fusioncore_ros/config/env_urban.yaml): urban / multipath
+- [`env_canopy.yaml`](../fusioncore_ros/config/env_canopy.yaml): forest / partial sky
 
 Questions? Open a [GitHub Discussion](https://github.com/manankharwar/fusioncore/discussions).
