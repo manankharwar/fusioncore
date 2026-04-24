@@ -20,14 +20,15 @@ FusionCore is built to fill that gap.
 
 ## Benchmark results
 
-FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan): same IMU + wheel odometry + GPS, no manual tuning. Two sequences, same pipeline:
+FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan): same IMU + wheel odometry + GPS, no manual tuning. Three sequences, same pipeline:
 
 | Sequence | FC ATE RMSE | RL-EKF ATE RMSE | RL-UKF |
 |----------|-------------|-----------------|--------|
 | 2012-01-08 | **5.6 m** | 23.4 m | NaN divergence at t=31 s |
 | 2012-02-04 | **15.1 m** | 20.5 m | NaN divergence at t=22 s |
+| 2012-03-31 | **4.2 m** | 10.8 m | NaN divergence at t=18 s |
 
-FusionCore wins both sequences. Margin varies by sequence — GPS conditions on NCLT are not uniform across sessions. Full methodology, configs, and reproduce instructions in [`benchmarks/`](benchmarks/).
+FusionCore wins all three sequences. Margin varies with GPS conditions — NCLT sessions differ in fix quality and coverage. Full methodology, configs, and reproduce instructions in [`benchmarks/`](benchmarks/).
 
 ---
 
