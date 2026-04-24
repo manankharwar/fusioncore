@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f03a5458-761f-4bce-9e17-cc383bdcd57a" width="700">
+  <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay — all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
 </p>
 
 # FusionCore
@@ -21,6 +21,9 @@ FusionCore is built to fill that gap.
 ## Benchmark results
 
 FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan): same IMU + wheel odometry + GPS, no manual tuning. Six sequences, same pipeline:
+<p align="center">
+  <img src="figures/fig1_bar_chart.png" alt="ATE RMSE across 6 NCLT sequences" width="500">
+</p>
 
 | Sequence | FC ATE RMSE | RL-EKF ATE RMSE | RL-UKF |
 |----------|-------------|-----------------|--------|
@@ -32,10 +35,6 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 | 2013-02-23 | **4.1 m** | 5.8 m | NaN divergence |
 
 FusionCore wins 5 of 6 sequences. On 2012-11-04 (fall, degraded GPS), FC's Mahalanobis outlier gate still loses despite inertial coast mode (Q inflation on consecutive rejections): GPS was sufficiently degraded for long enough that accumulated drift could not be fully recovered. RL-EKF has no rejection gate and self-corrects immediately. RL-UKF diverged with NaN on all six sequences. Full methodology, configs, and reproduce instructions in [`benchmarks/`](benchmarks/).
-
-![ATE RMSE across 6 NCLT sequences](figures/fig1_bar_chart.png)
-
-![Trajectory overlay — all 6 sequences, SE3-aligned to RTK GPS ground truth](figures/fig2_traj_grid.png)
 
 ---
 
@@ -394,6 +393,10 @@ Before fusing any GPS fix, FusionCore computes how statistically implausible the
 This handles GPS jumps, multipath errors, and encoder slip spikes. The filter position stays stable during rejection: verified by injecting a 500m GPS jump in testing and observing zero position change.
 
 GNSS position covariance is floored before the gate is evaluated. This prevents RTK-grade receivers (typical σxy ~3mm) from triggering self-rejection when the filter has not yet converged to RTK-level accuracy.
+
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f03a5458-761f-4bce-9e17-cc383bdcd57a" width="700">
+</p>
 
 ### Zero velocity updates (ZUPT)
 
