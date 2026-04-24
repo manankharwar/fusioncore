@@ -567,51 +567,24 @@ velocity_smoother:
 
 **Step 2 — Launch FusionCore alongside Nav2:**
 
-```python
-# In your robot's launch file
-from launch_ros.actions import LifecycleNode
-from launch.actions import IncludeLaunchDescription, TimerAction, RegisterEventHandler, EmitEvent
-from launch_ros.event_handlers import OnStateTransition
-from launch_ros.events.lifecycle import ChangeState
-from lifecycle_msgs.msg import Transition
-from launch.launch_description_sources import PythonLaunchDescriptionSource
-from ament_index_python.packages import get_package_share_directory
+`fusioncore_nav2.launch.py` handles the full sequence: starts FusionCore, configures it, activates it, then starts Nav2 once the TF is live.
 
-fusioncore_node = LifecycleNode(
-    package="fusioncore_ros",
-    executable="fusioncore_node",
-    name="fusioncore",
-    namespace="",
-    output="screen",
-    parameters=["/path/to/your/fusioncore.yaml"],
-)
-
-nav2 = IncludeLaunchDescription(
-    PythonLaunchDescriptionSource(
-        os.path.join(get_package_share_directory("nav2_bringup"), "launch", "navigation_launch.py")
-    ),
-    launch_arguments={"params_file": "/path/to/your/nav2_params.yaml"}.items(),
-)
-
-# Configure FusionCore first, then activate, then start Nav2
-configure_fc = TimerAction(period=2.0, actions=[
-    EmitEvent(event=ChangeState(
-        lifecycle_node_matcher=lambda a: a == fusioncore_node,
-        transition_id=Transition.TRANSITION_CONFIGURE,
-    ))
-])
-
-activate_fc = RegisterEventHandler(OnStateTransition(
-    target_lifecycle_node=fusioncore_node,
-    start_state="configuring", goal_state="inactive",
-    entities=[EmitEvent(event=ChangeState(
-        lifecycle_node_matcher=lambda a: a == fusioncore_node,
-        transition_id=Transition.TRANSITION_ACTIVATE,
-    ))]
-))
-
-nav2_delayed = TimerAction(period=5.0, actions=[nav2])
+```bash
+ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
+  fusioncore_config:=/path/to/your/fusioncore.yaml \
+  nav2_params:=/path/to/your/nav2_params.yaml
 ```
+
+With an environment preset:
+
+```bash
+ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
+  fusioncore_config:=/path/to/your/fusioncore.yaml \
+  nav2_params:=/path/to/your/nav2_params.yaml \
+  env_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/env_urban.yaml
+```
+
+The launch file configures FusionCore after 2 s, activates it on the configuring → inactive transition, then starts Nav2 after 5 s — guaranteeing `odom → base_link` TF is publishing before Nav2's costmaps initialize.
 
 **That's it.** No additional nodes, no coordinate transforms, no remapping. FusionCore's `odom → base_link` TF is what Nav2's costmaps and planners track. GPS waypoint navigation via Nav2's `fromLL` service works automatically once FusionCore has a GPS fix.
 
