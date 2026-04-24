@@ -35,7 +35,7 @@ fusioncore:
     imu.remove_gravitational_acceleration: false
     # Override the IMU TF frame. Leave empty to use msg->header.frame_id.
     # Set to your IMU frame if the driver publishes with an empty frame_id.
-    imu.frame_id: ""
+    imu.frame_id: "base_link"
 
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
