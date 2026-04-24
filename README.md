@@ -534,6 +534,97 @@ To add your robot's config, open a GitHub issue or submit a PR.
 
 ---
 
+## Using FusionCore with Nav2
+
+FusionCore is a drop-in odometry source for Nav2. It publishes everything Nav2 needs out of the box — no remapping, no extra nodes.
+
+**What FusionCore publishes that Nav2 uses:**
+
+| FusionCore output | Nav2 use |
+|---|---|
+| `/fusion/odom` (`nav_msgs/Odometry`) | Set as `odom_topic` in `nav2_params.yaml` |
+| `odom → base_link` TF | Nav2 reads this directly — no config needed |
+| `/fusion/pose` (`PoseWithCovarianceStamped`) | AMCL initial pose, slam_toolbox pose input |
+| `/diagnostics` | Nav2-compatible diagnostic format |
+
+**Step 1 — Point Nav2 at FusionCore's odometry:**
+
+In your `nav2_params.yaml`, set `odom_topic` to `/fusion/odom` wherever it appears (typically `amcl`, `bt_navigator`, `velocity_smoother`):
+
+```yaml
+amcl:
+  ros__parameters:
+    odom_topic: /fusion/odom
+
+bt_navigator:
+  ros__parameters:
+    odom_topic: /fusion/odom
+
+velocity_smoother:
+  ros__parameters:
+    odom_topic: /fusion/odom
+```
+
+**Step 2 — Launch FusionCore alongside Nav2:**
+
+```python
+# In your robot's launch file
+from launch_ros.actions import LifecycleNode
+from launch.actions import IncludeLaunchDescription, TimerAction, RegisterEventHandler, EmitEvent
+from launch_ros.event_handlers import OnStateTransition
+from launch_ros.events.lifecycle import ChangeState
+from lifecycle_msgs.msg import Transition
+from launch.launch_description_sources import PythonLaunchDescriptionSource
+from ament_index_python.packages import get_package_share_directory
+
+fusioncore_node = LifecycleNode(
+    package="fusioncore_ros",
+    executable="fusioncore_node",
+    name="fusioncore",
+    namespace="",
+    output="screen",
+    parameters=["/path/to/your/fusioncore.yaml"],
+)
+
+nav2 = IncludeLaunchDescription(
+    PythonLaunchDescriptionSource(
+        os.path.join(get_package_share_directory("nav2_bringup"), "launch", "navigation_launch.py")
+    ),
+    launch_arguments={"params_file": "/path/to/your/nav2_params.yaml"}.items(),
+)
+
+# Configure FusionCore first, then activate, then start Nav2
+configure_fc = TimerAction(period=2.0, actions=[
+    EmitEvent(event=ChangeState(
+        lifecycle_node_matcher=lambda a: a == fusioncore_node,
+        transition_id=Transition.TRANSITION_CONFIGURE,
+    ))
+])
+
+activate_fc = RegisterEventHandler(OnStateTransition(
+    target_lifecycle_node=fusioncore_node,
+    start_state="configuring", goal_state="inactive",
+    entities=[EmitEvent(event=ChangeState(
+        lifecycle_node_matcher=lambda a: a == fusioncore_node,
+        transition_id=Transition.TRANSITION_ACTIVATE,
+    ))]
+))
+
+nav2_delayed = TimerAction(period=5.0, actions=[nav2])
+```
+
+**That's it.** No additional nodes, no coordinate transforms, no remapping. FusionCore's `odom → base_link` TF is what Nav2's costmaps and planners track. GPS waypoint navigation via Nav2's `fromLL` service works automatically once FusionCore has a GPS fix.
+
+**For GPS waypoint navigation** (`nav2_waypoint_follower` with `fromLL`):
+
+```bash
+# FusionCore exposes the fromLL service once it has a GPS fix
+ros2 service call /fromLL fusioncore_ros/srv/FromLL \
+  "{ll_point: {latitude: 43.2557, longitude: -79.8711, altitude: 0.0}}"
+```
+
+---
+
 ## Architecture
 
 ```
