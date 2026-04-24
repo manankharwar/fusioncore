@@ -16,6 +16,9 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
+      - name: Export ROS Python path
+        run: source /opt/ros/jazzy/setup.sh && echo "PYTHONPATH=${PYTHONPATH}" >> $GITHUB_ENV
+
       - uses: ros-tooling/action-ros-ci@v0.3
         with:
           target-ros2-distro: jazzy
