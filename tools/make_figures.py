@@ -3,9 +3,9 @@
 Generate publication-quality benchmark figures for FusionCore post.
 
 Outputs (in figures/):
-  fig1_bar_chart.png   — FC vs RL ATE RMSE across all 6 sequences
-  fig2_traj_grid.png   — 2×3 trajectory overlay grid, all sequences
-  fig3_coast_mode.png  — coast mode before/after for 2012-11-04
+  fig1_bar_chart.png  : FC vs RL ATE RMSE across all 6 sequences
+  fig2_traj_grid.png  : 2×3 trajectory overlay grid, all sequences
+  fig3_coast_mode.png : coast mode before/after for 2012-11-04
 
 Usage:
   python3 tools/make_figures.py
@@ -99,7 +99,7 @@ def make_bar_chart():
     ax.set_xticklabels(LABELS, fontsize=10)
     ax.set_ylabel('ATE RMSE (m)', fontsize=11)
     ax.set_title(
-        'FusionCore vs robot_localization EKF — 6 NCLT sequences, identical config, same pipeline',
+        'FusionCore vs robot_localization EKF: 6 NCLT sequences, identical config, same pipeline',
         fontsize=12, fontweight='bold', pad=14)
     ax.legend(loc='upper right', fontsize=10, framealpha=0.92)
     ax.yaxis.grid(True, linestyle='--', alpha=0.35, zorder=0)
@@ -123,7 +123,7 @@ def align_to_ref(traj_est_full, traj_ref_full, max_diff=1.0, max_pts=2500):
         traj_ref_full, traj_est_full, max_diff=max_diff)
 
     if len(ref_s.timestamps) < 10:
-        # Too few pairs — fall back: center at origin
+        # Too few pairs: fall back: center at origin
         xy = traj_est_full.positions_xyz[:, :2]
         xy = xy - xy[0]
         return xy[::max(1, len(xy) // max_pts)]
@@ -160,13 +160,12 @@ def make_traj_grid():
             ax.set_title(lbl, fontweight='bold')
             continue
 
-        # Clip GT to the time window covered by the filter outputs.
-        # nclt_rtk_to_tum.py converts the full session (90 min) but the
-        # benchmark only ran for ~200 s — clip to that window so GT doesn't
-        # swamp the plot with data the filters never saw.
+        # Clip GT to the time window the filters actually ran over.
+        # ground_truth.tum covers the full NCLT session (90 min);
+        # the benchmark only ran ~200 s — clip so GT matches filter extent.
         t0 = min(traj_fc.timestamps[0],  traj_rl.timestamps[0])
         t1 = max(traj_fc.timestamps[-1], traj_rl.timestamps[-1])
-        mask = (traj_gt.timestamps >= t0 - 2.0) & (traj_gt.timestamps <= t1 + 2.0)
+        mask   = (traj_gt.timestamps >= t0 - 2.0) & (traj_gt.timestamps <= t1 + 2.0)
         gt_pos = traj_gt.positions_xyz[mask, :2]
         step   = max(1, len(gt_pos) // 2500)
         gt_xy  = gt_pos[::step]
@@ -223,7 +222,7 @@ def make_traj_grid():
                bbox_to_anchor=(0.5, -0.03), framealpha=0.95, edgecolor='#CCCCCC')
 
     fig.suptitle(
-        'Trajectory comparison — 6 NCLT sequences, all seasons, same config, same pipeline',
+        'Trajectory comparison: 6 NCLT sequences, all seasons, same config, same pipeline',
         fontsize=13, fontweight='bold', y=1.02)
 
     out = OUT / 'fig2_traj_grid.png'
@@ -266,13 +265,13 @@ def make_coast_chart():
     ax.set_xticks(range(3))
     ax.set_xticklabels(labels, fontsize=10.5)
     ax.set_ylabel('ATE RMSE (m)', fontsize=11)
-    ax.set_title('2012-11-04 (Fall — degraded GPS)\nInertial coast mode: what changed',
+    ax.set_title('2012-11-04 (Fall: degraded GPS)\nInertial coast mode: what changed',
                  fontsize=12, fontweight='bold', pad=12)
     ax.set_ylim(0, COAST_BEFORE * 1.28)
     ax.yaxis.grid(True, linestyle='--', alpha=0.35, zorder=0)
     ax.set_axisbelow(True)
 
-    # Honest footnote
+    # Honest footnote:
     ax.text(0.98, 0.025,
             'RL still wins on this sequence.\nNo rejection gate = immediate GPS self-correction.',
             transform=ax.transAxes, ha='right', va='bottom',

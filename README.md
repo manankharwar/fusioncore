@@ -33,6 +33,10 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 
 FusionCore wins 5 of 6 sequences. On 2012-11-04 (fall, degraded GPS), FC's Mahalanobis outlier gate still loses despite inertial coast mode (Q inflation on consecutive rejections): GPS was sufficiently degraded for long enough that accumulated drift could not be fully recovered. RL-EKF has no rejection gate and self-corrects immediately. RL-UKF diverged with NaN on all six sequences. Full methodology, configs, and reproduce instructions in [`benchmarks/`](benchmarks/).
 
+![ATE RMSE across 6 NCLT sequences](figures/fig1_bar_chart.png)
+
+![Trajectory overlay — all 6 sequences, SE3-aligned to RTK GPS ground truth](figures/fig2_traj_grid.png)
+
 ---
 
 ## Why FusionCore
