@@ -4,6 +4,8 @@
 
 # FusionCore
 
+[![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
+
 **ROS 2 sensor fusion SDK. Combines IMU, wheel encoders, and GPS into one reliable position estimate. Self-tuning noise covariance. Apache 2.0.**
 
 ---
