@@ -1,0 +1,92 @@
+# Hardware config: BNO085 IMU + standard GPS (custom / DIY robot)
+#
+# Platform:  Any differential drive robot
+# IMU:       Bosch BNO085 (9-axis: accel + gyro + magnetometer)
+#            Datasheet: Gyro noise 0.014 dps/√Hz → σ ≈ 0.005 rad/s at 100Hz
+#                       Accel noise 120 μg/√Hz → σ ≈ 0.1 m/s² at 100Hz
+# GPS:       Standard u-blox M8N class (CEP ~2.5m) — for F9P see clearpath_husky.yaml
+# Use for:   Raspberry Pi robots, custom rovers, AgileX Scout, anything with
+#            a BNO085 breakout board and a basic GPS receiver
+# Tested:    datasheet-tuned, not yet field-validated — contributions welcome
+#
+# Launch:
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/bno085_custom.yaml
+#
+# Topic remaps depend on your driver. Common driver defaults:
+#   bno085_ros2 driver: publishes at /bno085/imu → remap: -r /imu/data:=/bno085/imu
+#   ublox_ros driver:   publishes at /fix         → remap: -r /gnss/fix:=/fix
+#   wheel odom:         depends on your controller → remap: -r /odom/wheels:=/your/odom/topic
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: true          # ground robot
+
+    # ── IMU: Bosch BNO085 ─────────────────────────────────────────────────────
+    # The BNO085 has an onboard magnetometer, but magnetic interference from
+    # motors and wiring makes it unreliable on most robot platforms. Leave
+    # has_magnetometer: false unless you've verified clean magnetic environment.
+    # With false: yaw is initialized from GPS motion after ~5m of travel.
+    # With true: yaw is available immediately from the magnetometer.
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.005           # rad/s  — derived from 0.014 dps/√Hz at 100Hz
+    imu.accel_noise: 0.1            # m/s²   — conservative for MEMS on a vibrating platform
+    imu.remove_gravitational_acceleration: false  # most BNO085 drivers publish raw specific force
+    imu.frame_id: "imu_link"
+
+    # ── Wheel encoders ────────────────────────────────────────────────────────
+    # Generic values for mid-quality differential drive.
+    # Tighten vel_noise if your encoders are high resolution (≥500 CPR).
+    # Loosen if your surface is slippery or wheels are soft.
+    encoder.vel_noise: 0.05         # m/s
+    encoder.yaw_noise: 0.02         # rad/s
+
+    # ── GPS: standard u-blox M8N class ───────────────────────────────────────
+    # u-blox M8N CEP: 2.5m typical in open sky.
+    # If you have a u-blox F9P or RTK, use clearpath_husky.yaml values instead.
+    gnss.base_noise_xy: 2.5         # m
+    gnss.base_noise_z: 5.0          # m
+    gnss.heading_noise: 0.02
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
+    gnss.min_fix_type: 1            # 1=GPS  (standard fix, no RTK required)
+
+    # Measure from base_link to GPS antenna center: x=forward, y=left, z=up
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    gnss.fix2_topic: ""
+    gnss.heading_topic: ""
+    gnss.azimuth_topic: ""
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+    outlier_threshold_imu: 15.09
+    outlier_threshold_enc: 11.34
+    outlier_threshold_hdg: 10.83
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true

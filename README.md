@@ -525,12 +525,21 @@ Four automated tests: IMU drift rate, outlier rejection, GPS correction after dr
 
 ## Real robot configs
 
-FusionCore ships with configs for real hardware setups tested by community members:
+Hardware configs in `fusioncore_ros/config/` — noise values pulled from datasheets, comments explain every parameter:
 
-- `fusioncore_ros/config/duatic_mecanum.yaml`: Duatic industrial mecanum manipulator. BNO085 IMU, no GPS, mecanum wheel odometry.
-- `fusioncore_ros/launch/fusioncore_duatic.launch.py`: One-command launch for the Duatic setup, handles all topic remapping automatically.
+| Config | Platform | IMU | GPS |
+|---|---|---|---|
+| [`clearpath_husky.yaml`](fusioncore_ros/config/clearpath_husky.yaml) | Clearpath Husky A200 | Microstrain 3DM-GX5-25 | u-blox F9P |
+| [`bno085_custom.yaml`](fusioncore_ros/config/bno085_custom.yaml) | Any differential drive (DIY / custom) | Bosch BNO085 | u-blox M8N class |
+| [`duatic_mecanum.yaml`](fusioncore_ros/config/duatic_mecanum.yaml) | Duatic mecanum manipulator | BNO085 | none |
 
-To add your robot's config, open a GitHub issue or submit a PR.
+Combine any hardware config with an [environment preset](fusioncore_ros/config/) (`env_open.yaml`, `env_urban.yaml`, `env_canopy.yaml`) to tune GPS trust for your operating conditions without touching the hardware config.
+
+To add your robot's config, open a [Hardware Config Request](https://github.com/manankharwar/fusioncore/issues/new/choose) or submit a PR — see [CONTRIBUTING.md](CONTRIBUTING.md).
+
+### Migrating from robot_localization
+
+Complete parameter mapping, topic changes, and step-by-step instructions: **[docs/migration_from_robot_localization.md](docs/migration_from_robot_localization.md)**
 
 ---
 

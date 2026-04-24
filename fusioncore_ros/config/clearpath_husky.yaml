@@ -1,0 +1,96 @@
+# Hardware config: Clearpath Husky A200
+#
+# Platform:  Clearpath Husky A200 (differential drive)
+# IMU:       Microstrain 3DM-GX5-25 (6-axis, no magnetometer)
+#            Datasheet: ARW 0.07°/√hr → σ ≈ 0.003 rad/s at 100Hz
+#                       VRW 0.02 m/s/√hr → σ ≈ 0.05 m/s² at 100Hz
+# GPS:       u-blox F9P (standard GPS defaults; see RTK block below)
+# Tested:    datasheet-tuned, not yet field-validated — contributions welcome
+#
+# Launch with topic remaps (Husky publishes odom and GPS at non-default topics):
+#
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/clearpath_husky.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/husky_velocity_controller/odom \
+#     -r /gnss/fix:=/fix
+#
+# For Nav2:
+#   ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/clearpath_husky.yaml \
+#     nav2_params:=/path/to/nav2_params.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/husky_velocity_controller/odom \
+#     -r /gnss/fix:=/fix
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: true          # Husky is a ground robot
+
+    # ── IMU: Microstrain 3DM-GX5-25 ──────────────────────────────────────────
+    # GX5-25 is a 6-axis IMU (accel + gyro). No magnetometer — yaw from GPS
+    # motion or dual-antenna heading. If you have a GX5-45 (adds magnetometer),
+    # set has_magnetometer: true.
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.003           # rad/s  — derived from ARW 0.07°/√hr spec
+    imu.accel_noise: 0.05           # m/s²   — derived from VRW 0.02 m/s/√hr spec
+    imu.remove_gravitational_acceleration: false  # Microstrain driver publishes raw
+    imu.frame_id: "imu_link"
+
+    # ── Wheel encoders: Husky A200 ────────────────────────────────────────────
+    # 500 CPR optical encoders through a 24:1 gearbox, 0.1651m wheel radius.
+    # Tighter than the default — Husky's encoders are high quality.
+    encoder.vel_noise: 0.02         # m/s
+    encoder.yaw_noise: 0.01         # rad/s
+
+    # ── GPS: u-blox F9P (standard autonomous GPS defaults) ───────────────────
+    # F9P autonomous CEP: 2.0m (1σ ≈ 2.4m). Conservative 2.5m set here.
+    # For RTK float  (CEP 0.4m):  set base_noise_xy: 0.5,  min_fix_type: 3
+    # For RTK fixed  (CEP 0.01m): set base_noise_xy: 0.015, min_fix_type: 4
+    gnss.base_noise_xy: 2.5         # m  — standard GPS (no RTK)
+    gnss.base_noise_z: 5.0          # m
+    gnss.heading_noise: 0.02
+    gnss.max_hdop: 3.5              # F9P tracks many constellations — HDOP is usually good
+    gnss.min_satellites: 4
+    gnss.min_fix_type: 1            # 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+
+    # F9P antenna lever arm — measure from base_link to antenna center
+    # x=forward, y=left, z=up (meters). Set to your actual mounting position.
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    gnss.fix2_topic: ""             # set to second antenna topic for dual-antenna heading
+    gnss.heading_topic: ""          # set to /gnss/heading if using u-blox F9H dual-antenna
+    gnss.azimuth_topic: ""
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.001) — standard GPS, permissive
+    outlier_threshold_imu: 15.09    # chi2(6, 0.001)
+    outlier_threshold_enc: 11.34    # chi2(3, 0.001)
+    outlier_threshold_hdg: 10.83    # chi2(1, 0.001)
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true
