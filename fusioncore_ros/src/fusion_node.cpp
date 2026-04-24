@@ -303,10 +303,6 @@ public:
       "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
 
-    // TF validation: check transforms exist before starting
-    rclcpp::sleep_for(std::chrono::milliseconds(500));
-    validate_transforms();
-
     return CallbackReturn::SUCCESS;
   }
 
@@ -315,6 +311,7 @@ public:
   CallbackReturn on_activate(const rclcpp_lifecycle::State &)
   {
     RCLCPP_INFO(get_logger(), "Activating FusionCore...");
+    validate_transforms();
 
     // Do NOT initialize the filter here with now().seconds().
     // With use_sim_time:true, now() may return 0 if /clock hasn't started yet.
