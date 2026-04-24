@@ -16,8 +16,12 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
-      - name: Export ROS Python path
-        run: source /opt/ros/jazzy/setup.sh && echo "PYTHONPATH=${PYTHONPATH}" >> $GITHUB_ENV
+      - name: Register ROS Python packages in system site-packages
+        run: |
+          ROS_PYPATH=/opt/ros/jazzy/lib/python3.12/site-packages
+          SITE=$(python3 -c "import site; print(site.getsitepackages()[0])")
+          echo "$ROS_PYPATH" | sudo tee "$SITE/ros_jazzy.pth"
+          echo "PYTHONPATH=$ROS_PYPATH" >> $GITHUB_ENV
 
       - uses: ros-tooling/action-ros-ci@v0.3
         with:
