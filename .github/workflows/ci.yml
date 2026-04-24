@@ -16,17 +16,30 @@ jobs:
         with:
           required-ros-distributions: jazzy
 
-      - name: Register ROS Python packages in system site-packages
+      - name: Install rosdep dependencies
         run: |
-          ROS_PYPATH=/opt/ros/jazzy/lib/python3.12/site-packages
-          SITE=$(python3 -c "import site; print(site.getsitepackages()[0])")
-          echo "$ROS_PYPATH" | sudo tee "$SITE/ros_jazzy.pth"
-          echo "PYTHONPATH=$ROS_PYPATH" >> $GITHUB_ENV
+          source /opt/ros/jazzy/setup.sh
+          sudo rosdep init 2>/dev/null || true
+          rosdep update
+          rosdep install -r --from-paths . --ignore-src --rosdistro jazzy -y
 
-      - uses: ros-tooling/action-ros-ci@v0.3
-        with:
-          target-ros2-distro: jazzy
-          package-name: |
-            compass_msgs
-            fusioncore_core
-            fusioncore_ros
+      - name: Build
+        run: |
+          source /opt/ros/jazzy/setup.sh
+          colcon build \
+            --packages-up-to compass_msgs fusioncore_core fusioncore_ros \
+            --cmake-args -DBUILD_TESTING=ON \
+            --event-handlers console_cohesion+
+
+      - name: Test
+        run: |
+          source /opt/ros/jazzy/setup.sh
+          source install/local_setup.bash
+          colcon test \
+            --packages-select compass_msgs fusioncore_core fusioncore_ros \
+            --event-handlers console_direct+
+
+      - name: Check test results
+        run: |
+          source /opt/ros/jazzy/setup.sh
+          colcon test-result --verbose
