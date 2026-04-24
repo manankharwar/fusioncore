@@ -37,7 +37,7 @@ LABELS  = ['Jan 2012\n(Winter)', 'Feb 2012\n(Winter)', 'Mar 2012\n(Spring)',
            'Aug 2012\n(Summer)', 'Nov 2012\n(Fall)',   'Feb 2013\n(Winter)']
 
 FC_ATE  = [5.633, 9.651, 4.209, 7.451, 28.687, 4.124]
-RL_ATE  = [23.429, 20.551, 10.786, 9.448, 10.901, 5.832]
+RL_ATE  = [23.487, 20.530, 10.786, 9.448, 10.901, 5.832]
 
 # Coast mode story data for 2012-11-04
 COAST_BEFORE = 61.4

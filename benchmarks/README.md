@@ -28,8 +28,8 @@ benchmarks/
 
 | Dataset | Sequence | FC ATE RMSE | RL-EKF ATE RMSE | RL-UKF | Winner |
 |---------|----------|-------------|-----------------|--------|--------|
-| NCLT (Univ. of Michigan) | 2012-01-08 | **5.6 m** | 23.4 m | NaN divergence at t=31s | FusionCore (4.2×) |
-| NCLT (Univ. of Michigan) | 2012-02-04 | **9.7 m** | 20.6 m | NaN divergence at t=22s | FusionCore (2.1×) |
+| NCLT (Univ. of Michigan) | 2012-01-08 | **5.6 m** | 23.5 m | NaN divergence at t=31s | FusionCore (4.2×) |
+| NCLT (Univ. of Michigan) | 2012-02-04 | **9.7 m** | 20.5 m | NaN divergence at t=22s | FusionCore (2.1×) |
 | NCLT (Univ. of Michigan) | 2012-03-31 | **4.2 m** | 10.8 m | NaN divergence at t=18s | FusionCore (2.6×) |
 | NCLT (Univ. of Michigan) | 2012-08-20 | **7.5 m** | 9.4 m | NaN divergence | FusionCore (1.3×) |
 | NCLT (Univ. of Michigan) | 2012-11-04 | 28.7 m | **10.9 m** | NaN divergence | RL-EKF (2.6×) |
