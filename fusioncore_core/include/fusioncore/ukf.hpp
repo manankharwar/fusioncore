@@ -70,10 +70,16 @@ public:
 
   bool is_initialized() const { return initialized_; }
 
+  // Scale applied to position diagonal of Q during inertial coast mode.
+  // 1.0 = normal operation; > 1.0 = inflated position uncertainty.
+  void set_position_noise_scale(double s) { pos_noise_scale_ = s; }
+  double position_noise_scale() const     { return pos_noise_scale_; }
+
 private:
   UKFParams params_;
   State state_;
-  bool initialized_ = false;
+  bool   initialized_      = false;
+  double pos_noise_scale_  = 1.0;
 
   // UKF weights
   int n_aug_;          // augmented state dimension

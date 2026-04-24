@@ -193,6 +193,11 @@ void UKF::predict(double dt) {
   // which would break all existing configurations and cause GPS Mahalanobis rejections
   // as P grows too slowly to track real motion.
   StateMatrix P_pred = Q_;
+  if (pos_noise_scale_ != 1.0) {
+    P_pred(X, X) *= pos_noise_scale_;
+    P_pred(Y, Y) *= pos_noise_scale_;
+    P_pred(Z, Z) *= pos_noise_scale_;
+  }
   for (int i = 0; i < n_sigma; ++i) {
     // Plain Euclidean difference: no normalize_state here.
     // With quaternion state there is no angle wrapping; normalizing a diff

@@ -75,6 +75,16 @@ struct FusionCoreConfig {
   //         Orientation update validates roll/pitch ONLY, not heading.
   //         Lever arm will not activate from IMU orientation alone.
   bool imu_has_magnetometer = false;
+
+  // Inertial coast mode: after this many consecutive GNSS rejections, inflate
+  // Q_position so P grows and the Mahalanobis gate naturally relaxes.
+  // This prevents cascade failure when the filter drifts during a GPS gap
+  // and then rejects the recovery fixes as apparent outliers.
+  // 0 = disabled; typical value: 5
+  int    gnss_coast_n        = 5;
+  // Multiplier applied to q_position each predict step while in coast mode.
+  // 20.0 ≈ 4.5× position sigma growth per second at 100Hz IMU.
+  double gnss_coast_q_factor = 20.0;
 };
 
 // How heading was validated: tracked per filter run
@@ -255,6 +265,10 @@ private:
   int imu_outliers_    = 0;
   int enc_outliers_    = 0;
   int hdg_outliers_    = 0;
+
+  // Inertial coast mode tracking
+  int  gnss_consecutive_rejects_ = 0;
+  bool gnss_in_coast_            = false;
 
   // Mahalanobis distance test
   template <int z_dim>

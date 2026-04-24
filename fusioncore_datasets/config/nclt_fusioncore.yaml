@@ -37,6 +37,8 @@ fusioncore:
     outlier_threshold_gnss: 16.27   # chi2(3, 0.999)
     outlier_threshold_enc: 11.34    # chi2(3, 0.999)
     outlier_threshold_imu: 15.09    # chi2(6, 0.999)
+    gnss.coast_n: 3                 # consecutive rejections before coast mode
+    gnss.coast_q_factor: 200.0      # Q_position multiplier during coast
 
     adaptive.imu: true
     adaptive.encoder: true
