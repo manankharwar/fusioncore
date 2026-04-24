@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay — all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
+  <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
 </p>
 
 # FusionCore
@@ -536,18 +536,18 @@ To add your robot's config, open a GitHub issue or submit a PR.
 
 ## Using FusionCore with Nav2
 
-FusionCore is a drop-in odometry source for Nav2. It publishes everything Nav2 needs out of the box — no remapping, no extra nodes.
+FusionCore is a drop-in odometry source for Nav2. It publishes everything Nav2 needs out of the box: no remapping, no extra nodes.
 
 **What FusionCore publishes that Nav2 uses:**
 
 | FusionCore output | Nav2 use |
 |---|---|
 | `/fusion/odom` (`nav_msgs/Odometry`) | Set as `odom_topic` in `nav2_params.yaml` |
-| `odom → base_link` TF | Nav2 reads this directly — no config needed |
+| `odom → base_link` TF | Nav2 reads this directly: no config needed |
 | `/fusion/pose` (`PoseWithCovarianceStamped`) | AMCL initial pose, slam_toolbox pose input |
 | `/diagnostics` | Nav2-compatible diagnostic format |
 
-**Step 1 — Point Nav2 at FusionCore's odometry:**
+**Step 1: Point Nav2 at FusionCore's odometry:**
 
 In your `nav2_params.yaml`, set `odom_topic` to `/fusion/odom` wherever it appears (typically `amcl`, `bt_navigator`, `velocity_smoother`):
 
@@ -565,7 +565,7 @@ velocity_smoother:
     odom_topic: /fusion/odom
 ```
 
-**Step 2 — Launch FusionCore alongside Nav2:**
+**Step 2: Launch FusionCore alongside Nav2:**
 
 `fusioncore_nav2.launch.py` handles the full sequence: starts FusionCore, configures it, activates it, then starts Nav2 once the TF is live.
 
@@ -584,7 +584,7 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
   env_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/env_urban.yaml
 ```
 
-The launch file configures FusionCore after 2 s, activates it on the configuring → inactive transition, then starts Nav2 after 5 s — guaranteeing `odom → base_link` TF is publishing before Nav2's costmaps initialize.
+The launch file configures FusionCore after 2 s, activates it on the configuring → inactive transition, then starts Nav2 after 5 s: guaranteeing `odom → base_link` TF is publishing before Nav2's costmaps initialize.
 
 **That's it.** No additional nodes, no coordinate transforms, no remapping. FusionCore's `odom → base_link` TF is what Nav2's costmaps and planners track. GPS waypoint navigation via Nav2's `fromLL` service works automatically once FusionCore has a GPS fix.
 

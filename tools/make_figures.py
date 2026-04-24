@@ -162,7 +162,7 @@ def make_traj_grid():
 
         # Clip GT to the time window the filters actually ran over.
         # ground_truth.tum covers the full NCLT session (90 min);
-        # the benchmark only ran ~200 s — clip so GT matches filter extent.
+        # the benchmark only ran ~200 s: clip so GT matches filter extent.
         t0 = min(traj_fc.timestamps[0],  traj_rl.timestamps[0])
         t1 = max(traj_fc.timestamps[-1], traj_rl.timestamps[-1])
         mask   = (traj_gt.timestamps >= t0 - 2.0) & (traj_gt.timestamps <= t1 + 2.0)

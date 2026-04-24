@@ -3,7 +3,7 @@
 # Use for: agricultural fields, rural roads, open parking lots, warehouse exteriors.
 # Conditions: clear line of sight to satellites, minimal multipath.
 #
-# Strategy: GPS is reliable here — trust it, accept looser geometry, adapt quickly.
+# Strategy: GPS is reliable here: trust it, accept looser geometry, adapt quickly.
 # Override on top of your hardware config:
 #   ros2 launch fusioncore_ros fusioncore.launch.py \
 #     fusioncore_config:=config/your_robot.yaml \
@@ -13,17 +13,17 @@ fusioncore:
   ros__parameters:
 
     # GPS noise: tight, clean signal in open sky
-    gnss.base_noise_xy: 0.5         # m (default 1.0 — trust GPS more)
+    gnss.base_noise_xy: 0.5         # m (default 1.0: trust GPS more)
     gnss.base_noise_z: 1.0          # m
 
-    # Accept slightly degraded geometry — sky is clear, fixes are good
+    # Accept slightly degraded geometry: sky is clear, fixes are good
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
 
-    # Outlier rejection: permissive — GPS is stable, no need to reject much
+    # Outlier rejection: permissive: GPS is stable, no need to reject much
     # chi2(3, 0.001) = 16.27: only the most extreme jumps get rejected
     outlier_threshold_gnss: 16.27
 
-    # Adaptive noise: fast learning — signal is stable and consistent
+    # Adaptive noise: fast learning: signal is stable and consistent
     adaptive.window: 30             # short window, signal doesn't vary much
     adaptive.alpha: 0.02            # faster adaptation

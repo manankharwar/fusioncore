@@ -58,7 +58,7 @@ def _launch_fusioncore(context, *args, **kwargs):
     return [fc, configure, activate]
 
 
-# ── Nav2 — delayed until FusionCore is publishing TF ─────────────────────────
+# ── Nav2: delayed until FusionCore is publishing TF ─────────────────────────
 
 def _launch_nav2(context, *args, **kwargs):
     nav2_params = LaunchConfiguration("nav2_params").perform(context)
@@ -94,7 +94,7 @@ def generate_launch_description():
             "env_config",
             default_value="",
             description=(
-                "Optional environment preset YAML — overrides GPS noise and outlier thresholds. "
+                "Optional environment preset YAML: overrides GPS noise and outlier thresholds. "
                 "Choices: env_open.yaml, env_urban.yaml, env_canopy.yaml"
             ),
         ),

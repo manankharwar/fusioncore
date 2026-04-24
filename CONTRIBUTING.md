@@ -1,6 +1,6 @@
 # Contributing to FusionCore
 
-Thanks for your interest. Contributions are welcome — hardware configs, bug fixes, tests, and documentation all help.
+Thanks for your interest. Contributions are welcome: hardware configs, bug fixes, tests, and documentation all help.
 
 ## The fastest way to contribute
 
@@ -8,8 +8,8 @@ The most impactful contributions right now are **hardware configs**. If you have
 
 ## Before you start
 
-- Check [open issues](https://github.com/manankharwar/fusioncore/issues) — the bug may already be reported
-- Check [Discussions](https://github.com/manankharwar/fusioncore/discussions) — the question may already be answered
+- Check [open issues](https://github.com/manankharwar/fusioncore/issues): the bug may already be reported
+- Check [Discussions](https://github.com/manankharwar/fusioncore/discussions): the question may already be answered
 - For anything bigger than a typo fix, open an issue or Discussion first so we can align before you write code
 
 ## Development setup
@@ -35,8 +35,8 @@ All 49 tests must pass. CI will catch it if they don't.
 A hardware config is a YAML file under `fusioncore_ros/config/` named after the platform (e.g. `clearpath_husky.yaml`, `ublox_f9p.yaml`).
 
 Copy `fusioncore_ros/config/fusioncore.yaml` as the starting point and adjust:
-- `imu.gyro_noise` / `imu.accel_noise` — pull from your IMU's datasheet
-- `gnss.base_noise_xy` — your GPS receiver's CEP spec
+- `imu.gyro_noise` / `imu.accel_noise`: pull from your IMU's datasheet
+- `gnss.base_noise_xy`: your GPS receiver's CEP spec
 - Any topic remaps specific to your platform
 
 Add a comment at the top with: platform name, IMU model, GPS receiver model, and whether it was field-tested or tuned from datasheet only. Field-tested configs get merged faster.
@@ -50,7 +50,7 @@ Add a comment at the top with: platform name, IMU model, GPS receiver model, and
 
 ## Code style
 
-C++17. Follow the style of the surrounding code — no reformatting unrelated lines. `clang-format` is not enforced but is appreciated.
+C++17. Follow the style of the surrounding code: no reformatting unrelated lines. `clang-format` is not enforced but is appreciated.
 
 ## Reporting bugs
 

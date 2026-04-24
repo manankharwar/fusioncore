@@ -3,7 +3,7 @@
 # Use for: city streets, building corridors, tunnels (partial), dense infrastructure.
 # Conditions: heavy multipath from buildings, reflected signals, variable satellite geometry.
 #
-# Strategy: GPS is untrustworthy — inflate noise, tighten outlier rejection,
+# Strategy: GPS is untrustworthy: inflate noise, tighten outlier rejection,
 # demand better geometry before fusing, adapt slowly to filter out erratic jumps.
 # Override on top of your hardware config:
 #   ros2 launch fusioncore_ros fusioncore.launch.py \
@@ -14,18 +14,18 @@ fusioncore:
   ros__parameters:
 
     # GPS noise: large, multipath makes position uncertain
-    gnss.base_noise_xy: 3.0         # m (default 1.0 — trust GPS much less)
+    gnss.base_noise_xy: 3.0         # m (default 1.0: trust GPS much less)
     gnss.base_noise_z: 6.0          # m (vertical GPS is especially bad between buildings)
 
-    # Only accept fixes with good geometry — building masking ruins HDOP fast
+    # Only accept fixes with good geometry: building masking ruins HDOP fast
     gnss.max_hdop: 2.5              # stricter than default 4.0
     gnss.min_satellites: 6          # need more sats to compensate for blockage
 
-    # Outlier rejection: tight — multipath causes large position jumps
+    # Outlier rejection: tight: multipath causes large position jumps
     # chi2(3, 0.05) = 7.81: rejects the worst 5% of Mahalanobis distances
     outlier_threshold_gnss: 7.81
 
-    # Adaptive noise: slow learning — signal quality jumps block to block
+    # Adaptive noise: slow learning: signal quality jumps block to block
     # A short window would adapt to a bad multipath burst and trust it
     adaptive.window: 100            # long window, smooth over erratic blocks
     adaptive.alpha: 0.005           # slow adaptation

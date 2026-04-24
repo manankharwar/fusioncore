@@ -3,7 +3,7 @@
 # Use for: forests, orchards, tree-lined paths, covered loading bays, partial roofs.
 # Conditions: intermittent GPS signal, signal arrives through gaps, variable quality.
 #
-# Strategy: GPS is intermittent and variable — moderate noise inflation, moderate
+# Strategy: GPS is intermittent and variable: moderate noise inflation, moderate
 # outlier rejection. Expect dropout periods; dead reckoning carries the load between fixes.
 # Override on top of your hardware config:
 #   ros2 launch fusioncore_ros fusioncore.launch.py \
@@ -13,18 +13,18 @@
 fusioncore:
   ros__parameters:
 
-    # GPS noise: moderate — fixes that do arrive are mostly real, but uncertain
+    # GPS noise: moderate: fixes that do arrive are mostly real, but uncertain
     gnss.base_noise_xy: 2.0         # m (default 1.0)
     gnss.base_noise_z: 4.0          # m
 
-    # Moderate geometry gate — under canopy, good HDOP is rare but not impossible
+    # Moderate geometry gate: under canopy, good HDOP is rare but not impossible
     gnss.max_hdop: 3.0
     gnss.min_satellites: 5
 
-    # Outlier rejection: moderate — signal comes through gaps, occasional reflections
+    # Outlier rejection: moderate: signal comes through gaps, occasional reflections
     # chi2(3, 0.01) = 11.34: rejects top 1% of Mahalanobis distances
     outlier_threshold_gnss: 11.34
 
-    # Adaptive noise: medium window — quality varies patch by patch
+    # Adaptive noise: medium window: quality varies patch by patch
     adaptive.window: 75
     adaptive.alpha: 0.008

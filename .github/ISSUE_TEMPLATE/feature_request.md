@@ -18,4 +18,4 @@ labels: enhancement
 
 ## Are you willing to contribute it?
 
-<!-- Yes / No / Maybe — helps us prioritize -->
+<!-- Yes / No / Maybe: helps us prioritize -->

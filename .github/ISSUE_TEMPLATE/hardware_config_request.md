@@ -25,7 +25,7 @@ labels: hardware-config
 
 ## Field tested?
 
-<!-- Yes / No / Partially — which parts have you validated on real hardware? -->
+<!-- Yes / No / Partially: which parts have you validated on real hardware? -->
 
 ## Additional context
 
