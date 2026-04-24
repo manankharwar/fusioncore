@@ -33,6 +33,7 @@ benchmarks/
 | NCLT (Univ. of Michigan) | 2012-03-31 | **4.2 m** | 10.8 m | NaN divergence at t=18s | FusionCore (2.6×) |
 | NCLT (Univ. of Michigan) | 2012-08-20 | **7.3 m** | 9.4 m | NaN divergence | FusionCore (1.3×) |
 | NCLT (Univ. of Michigan) | 2012-11-04 | 61.4 m | **10.9 m** | NaN divergence | RL-EKF (5.6×) |
+| NCLT (Univ. of Michigan) | 2013-02-23 | **4.1 m** | 5.8 m | NaN divergence | FusionCore (1.4×) |
 
 ---
 

@@ -20,7 +20,7 @@ FusionCore is built to fill that gap.
 
 ## Benchmark results
 
-FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan): same IMU + wheel odometry + GPS, no manual tuning. Three sequences, same pipeline:
+FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan): same IMU + wheel odometry + GPS, no manual tuning. Six sequences, same pipeline:
 
 | Sequence | FC ATE RMSE | RL-EKF ATE RMSE | RL-UKF |
 |----------|-------------|-----------------|--------|
@@ -29,8 +29,9 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 | 2012-03-31 | **4.2 m** | 10.8 m | NaN divergence at t=18 s |
 | 2012-08-20 | **7.3 m** | 9.4 m | NaN divergence |
 | 2012-11-04 | 61.4 m | **10.9 m** | NaN divergence |
+| 2013-02-23 | **4.1 m** | 5.8 m | NaN divergence |
 
-FusionCore wins 4 of 5 sequences. On 2012-11-04 (fall, degraded GPS), FC's Mahalanobis outlier gate triggered a cascade failure — the filter drifted during a GPS-poor window, then rejected legitimate fixes as outliers against its wrong state. RL-EKF has no rejection gate and self-corrected. This is a known failure mode under investigation. RL-UKF diverged with NaN on all five sequences. Full methodology, configs, and reproduce instructions in [`benchmarks/`](benchmarks/).
+FusionCore wins 5 of 6 sequences. On 2012-11-04 (fall, degraded GPS), FC's Mahalanobis outlier gate triggered a cascade failure — the filter drifted during a GPS-poor window, then rejected legitimate fixes as outliers against its wrong state. RL-EKF has no rejection gate and self-corrected. This is a known failure mode under investigation. RL-UKF diverged with NaN on all six sequences. Full methodology, configs, and reproduce instructions in [`benchmarks/`](benchmarks/).
 
 ---
 
