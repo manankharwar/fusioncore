@@ -3,7 +3,7 @@
 <package format="3">
   <name>fusioncore_ros</name>
   <version>0.2.0</version>
-  <description>FusionCore ROS 2 Jazzy wrapper: sensor fusion node</description>
+  <description>ROS 2 UKF sensor fusion for GPS, IMU and wheel encoders. 22-state filter with ECEF-native GPS handling, automatic IMU bias estimation, adaptive noise covariance, and chi-squared outlier rejection on every sensor. Drop-in robot_localization alternative. Native ROS 2 Jazzy, benchmarked on 6 NCLT public dataset sequences.</description>
   <maintainer email="kharwarm@mcmaster.ca">FusionCore</maintainer>
   <license>Apache-2.0</license>
 
