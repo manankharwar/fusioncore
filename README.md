@@ -18,8 +18,6 @@ The designated replacement (`fuse`) has been in development for a while but stil
 
 So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. It estimates IMU bias, adapts its noise covariance from the innovation sequence automatically, and gates outliers with a chi-squared test on every sensor. GPS is handled in ECEF directly: no coordinate projection, no extra node, no zone boundary issues.
 
-It loses on one of six benchmark sequences (November 2012, degraded GPS: the Mahalanobis gate works against it there). That's documented below with the full methodology.
-
 ---
 
 ## Benchmark results
