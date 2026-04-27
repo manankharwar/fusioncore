@@ -1,4 +1,4 @@
-# nav2_params.yaml — FusionCore + Nav2 reference configuration
+# nav2_params.yaml: FusionCore + Nav2 reference configuration
 #
 # Designed for: outdoor GPS navigation, differential-drive robot
 # Tested with:  Clearpath Husky A200, ROS 2 Jazzy, Nav2 Jazzy
@@ -6,7 +6,7 @@
 # FusionCore publishes:
 #   /fusion/odom         (nav_msgs/Odometry, 100 Hz)
 #   TF: odom → base_link (100 Hz)
-#   TF: map  → odom      (when reference.use_first_fix: true — first GPS fix sets origin)
+#   TF: map  → odom      (when reference.use_first_fix: true: first GPS fix sets origin)
 #
 # What to change for your robot:
 #   robot_radius          → half the widest dimension (or use footprint polygon)
@@ -46,7 +46,7 @@ planner_server:
     planner_plugins: ['GridBased']
     GridBased:
       plugin: "nav2_navfn_planner::NavfnPlanner"
-      tolerance: 0.5          # m — how close to goal counts as reached (relax for GPS noise)
+      tolerance: 0.5          # m: how close to goal counts as reached (relax for GPS noise)
       use_astar: true         # A* over Dijkstra for outdoor long-range
       allow_unknown: true     # plan through unexplored space (GPS-nav, no lidar map needed)
 
@@ -73,13 +73,13 @@ controller_server:
     general_goal_checker:
       stateful: true
       plugin: "nav2_controller::SimpleGoalChecker"
-      xy_goal_tolerance: 0.5      # m — relax for GPS-accuracy navigation
+      xy_goal_tolerance: 0.5      # m: relax for GPS-accuracy navigation
       yaw_goal_tolerance: 0.25    # rad
 
     FollowPath:
       plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
-      desired_linear_vel: 0.5     # m/s — set to your comfortable cruise speed
-      lookahead_dist: 1.5         # m — increase for faster/smoother outdoor driving
+      desired_linear_vel: 0.5     # m/s: set to your comfortable cruise speed
+      lookahead_dist: 1.5         # m: increase for faster/smoother outdoor driving
       min_lookahead_dist: 0.8
       max_lookahead_dist: 3.0
       lookahead_time: 1.5
@@ -96,7 +96,7 @@ controller_server:
       use_cost_regulated_linear_velocity_scaling: false
       regulated_linear_scaling_min_radius: 0.9
       regulated_linear_scaling_min_speed: 0.25
-      use_rotate_to_heading: true     # rotate in place before starting — safe for GPS nav
+      use_rotate_to_heading: true     # rotate in place before starting: safe for GPS nav
       allow_reversing: false
       rotate_to_heading_min_angle: 0.785  # ~45 deg: only rotate if heading error > this
       max_angular_accel: 1.5
@@ -121,7 +121,7 @@ velocity_smoother:
 # ── Costmaps ──────────────────────────────────────────────────────────────────
 # GPS-only navigation: no static map, no lidar.
 # Both costmaps use only the robot's footprint (inflation) and optional sensor layers.
-# If you have a lidar, add an obstacle_layer — see comment below.
+# If you have a lidar, add an obstacle_layer: see comment below.
 
 local_costmap:
   local_costmap:
@@ -132,10 +132,10 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width:  6        # m — local planning window
+      width:  6        # m: local planning window
       height: 6
       resolution: 0.05
-      robot_radius: 0.55   # m — Husky half-width. Replace with your robot's.
+      robot_radius: 0.55   # m: Husky half-width. Replace with your robot's.
       # footprint: "[[0.5, 0.35], [0.5, -0.35], [-0.5, -0.35], [-0.5, 0.35]]"
       plugins: ["inflation_layer"]
       # If you have lidar, add: plugins: ["obstacle_layer", "inflation_layer"]
@@ -150,7 +150,7 @@ local_costmap:
       inflation_layer:
         plugin: "nav2_costmap_2d::InflationLayer"
         cost_scaling_factor: 3.0
-        inflation_radius: 0.75   # m — pad around robot for obstacle clearance
+        inflation_radius: 0.75   # m: pad around robot for obstacle clearance
       always_send_full_costmap: true
 
 global_costmap:
@@ -177,13 +177,13 @@ global_costmap:
       always_send_full_costmap: true
 
 # ── Map server (empty map for GPS-only navigation) ────────────────────────────
-# FusionCore provides absolute GPS positioning — no lidar map needed.
+# FusionCore provides absolute GPS positioning: no lidar map needed.
 # This publishes a 100m × 100m empty costmap as the global map.
 # If you have a real map (pgm/yaml), point map_server here instead.
 map_server:
   ros__parameters:
     use_sim_time: false
-    yaml_filename: ""      # leave empty — map_server not needed for GPS-only nav
+    yaml_filename: ""      # leave empty: map_server not needed for GPS-only nav
 
 # ── Behaviour server (recovery behaviours) ────────────────────────────────────
 behavior_server:

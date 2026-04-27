@@ -1,6 +1,6 @@
 # Migrating from robot_localization to FusionCore
 
-If you're coming from `robot_localization` and want to switch, this guide walks you through it step by step — no prior knowledge of FusionCore required.
+If you're coming from `robot_localization` and want to switch, this guide walks you through it step by step: no prior knowledge of FusionCore required.
 
 ---
 
@@ -10,7 +10,7 @@ Everything you need is already in this repo. Here's the big picture before we di
 
 | File | What it does |
 |---|---|
-| `fusioncore_ros/config/fusioncore.yaml` (or your hardware config) | Tells FusionCore about your robot — IMU noise, GPS quality, sensor offsets |
+| `fusioncore_ros/config/fusioncore.yaml` (or your hardware config) | Tells FusionCore about your robot: IMU noise, GPS quality, sensor offsets |
 | `fusioncore_ros/config/nav2_params.yaml` | A ready-to-use Nav2 config pre-wired to FusionCore's output (if you use Nav2) |
 | `fusioncore_ros/launch/fusioncore_nav2.launch.py` | One launch file that starts both FusionCore and Nav2 together |
 
@@ -53,10 +53,10 @@ With FusionCore, it's one node:
 /gnss/fix ────┘                  → TF: odom → base_link
 ```
 
-GPS fusion happens inside — no `navsat_transform_node`, no feedback loop. The output topic changes from `/odometry/filtered` to `/fusion/odom`.
+GPS fusion happens inside: no `navsat_transform_node`, no feedback loop. The output topic changes from `/odometry/filtered` to `/fusion/odom`.
 
 **What stays the same:**
-- Your robot still publishes `/imu/data`, `/odom/wheels`, `/gnss/fix` (you may need a remap — see Step 4)
+- Your robot still publishes `/imu/data`, `/odom/wheels`, `/gnss/fix` (you may need a remap: see Step 4)
 - Nav2 still works the same way, it just reads from `/fusion/odom` instead of `/odometry/filtered`
 - The `odom → base_link` TF is still published the same way
 
@@ -99,9 +99,9 @@ FusionCore is a lifecycle node, so you need to configure and activate it after l
 
 FusionCore needs one YAML file that describes your hardware. You can start from a ready-made config for your platform:
 
-- [`config/clearpath_husky.yaml`](../fusioncore_ros/config/clearpath_husky.yaml) — Husky A200 + Microstrain GX5-25 + u-blox F9P
-- [`config/bno085_custom.yaml`](../fusioncore_ros/config/bno085_custom.yaml) — BNO085 + standard GPS (DIY robots)
-- [`config/duatic_mecanum.yaml`](../fusioncore_ros/config/duatic_mecanum.yaml) — Duatic mecanum + BNO085, no GPS
+- [`config/clearpath_husky.yaml`](../fusioncore_ros/config/clearpath_husky.yaml): Husky A200 + Microstrain GX5-25 + u-blox F9P
+- [`config/bno085_custom.yaml`](../fusioncore_ros/config/bno085_custom.yaml): BNO085 + standard GPS (DIY robots)
+- [`config/duatic_mecanum.yaml`](../fusioncore_ros/config/duatic_mecanum.yaml): Duatic mecanum + BNO085, no GPS
 
 Or start from scratch with this minimal template:
 
@@ -114,14 +114,14 @@ fusioncore:
     publish.force_2d: true   # set true for ground robots
 
     imu.has_magnetometer: false
-    imu.gyro_noise: 0.005    # rad/s — check your IMU datasheet
+    imu.gyro_noise: 0.005    # rad/s: check your IMU datasheet
     imu.accel_noise: 0.1     # m/s²
     imu.remove_gravitational_acceleration: false  # see gravity note below
 
     encoder.vel_noise: 0.05  # m/s
     encoder.yaw_noise: 0.02  # rad/s
 
-    gnss.base_noise_xy: 2.5  # m — standard GPS. Use 0.5 for RTK float, 0.015 for RTK fixed
+    gnss.base_noise_xy: 2.5  # m: standard GPS. Use 0.5 for RTK float, 0.015 for RTK fixed
     gnss.base_noise_z: 5.0
     gnss.max_hdop: 4.0
     gnss.min_satellites: 4
@@ -153,7 +153,7 @@ fusioncore:
     reference.use_first_fix: true   # map origin = first GPS fix
 ```
 
-**GPS quality presets** — if you want to override GPS noise thresholds for your environment without editing the robot config, you can layer an environment preset on top:
+**GPS quality presets**: if you want to override GPS noise thresholds for your environment without editing the robot config, you can layer an environment preset on top:
 
 ```bash
 ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
@@ -163,7 +163,7 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
 
 Available presets: [`env_open.yaml`](../fusioncore_ros/config/env_open.yaml), [`env_urban.yaml`](../fusioncore_ros/config/env_urban.yaml), [`env_canopy.yaml`](../fusioncore_ros/config/env_canopy.yaml).
 
-### Gravity removal — one thing to get right
+### Gravity removal: one thing to get right
 
 There's one parameter where the naming is confusing:
 
@@ -183,12 +183,12 @@ The names look the same but they mean opposite things. **Both set to `true` desc
 
 ## Step 3: Nav2 setup (if you use Nav2)
 
-This is the most common pain point when migrating — all the places in Nav2 that referenced `/odometry/filtered` need to point to `/fusion/odom`.
+This is the most common pain point when migrating: all the places in Nav2 that referenced `/odometry/filtered` need to point to `/fusion/odom`.
 
 **The easy path:** use the bundled `nav2_params.yaml` at `fusioncore_ros/config/nav2_params.yaml`. It comes pre-wired to `/fusion/odom` and is configured for outdoor GPS navigation (differential drive, Regulated Pure Pursuit, no AMCL). The `fusioncore_nav2.launch.py` launch file uses it by default.
 
 ```bash
-# This already uses the bundled nav2_params.yaml — nothing else needed
+# This already uses the bundled nav2_params.yaml: nothing else needed
 ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
   fusioncore_config:=your_robot.yaml
 ```
@@ -212,10 +212,10 @@ velocity_smoother:
   ros__parameters:
     odom_topic: /fusion/odom        # was /odometry/filtered
 
-# if you had AMCL, remove it — FusionCore handles global localization via GPS
+# if you had AMCL, remove it: FusionCore handles global localization via GPS
 ```
 
-Also remove AMCL if you had it. FusionCore publishes the `map → odom` TF directly via GPS — AMCL would conflict with it.
+Also remove AMCL if you had it. FusionCore publishes the `map → odom` TF directly via GPS: AMCL would conflict with it.
 
 ---
 
@@ -249,7 +249,7 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
   -r /gnss/fix:=/fix
 ```
 
-FusionCore publishes to `/fusion/odom`. Any downstream node that was reading `/odometry/filtered` needs to be updated to read `/fusion/odom` — the bundled nav2_params.yaml already handles this for Nav2.
+FusionCore publishes to `/fusion/odom`. Any downstream node that was reading `/odometry/filtered` needs to be updated to read `/fusion/odom`: the bundled nav2_params.yaml already handles this for Nav2.
 
 ---
 
@@ -274,7 +274,7 @@ FusionCore publishes to `/fusion/odom`. Any downstream node that was reading `/o
 | `imu0_differential` | not needed | FC handles this internally |
 | `imu0_relative` | not needed | |
 | `imu0_queue_size` | not needed | |
-| `imu0_remove_gravitational_acceleration` | `imu.remove_gravitational_acceleration` | Logic is inverted — see Step 2 above |
+| `imu0_remove_gravitational_acceleration` | `imu.remove_gravitational_acceleration` | Logic is inverted: see Step 2 above |
 | `mahalanobis_threshold` | `outlier_threshold_gnss/imu/enc/hdg` | FC has per-sensor thresholds instead of one global value |
 | `process_noise_covariance` | `ukf.q_position`, `ukf.q_velocity`, etc. | FC exposes named scalars instead of a 15×15 matrix |
 | `initial_estimate_covariance` | not configurable | FC initializes automatically from first sensor readings |
