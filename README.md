@@ -12,13 +12,13 @@
 
 ## Why I built this
 
-I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works, but it has some real gaps — no native ECEF GPS handling (it goes through `navsat_transform`, which adds latency and breaks at UTM zone boundaries), no IMU bias estimation, and noise covariances you have to tune by hand and re-tune whenever your environment changes.
+I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works, but it has some real gaps: no native ECEF GPS handling (it goes through `navsat_transform`, which adds latency and breaks at UTM zone boundaries), no IMU bias estimation, and noise covariances you have to tune by hand and re-tune whenever your environment changes.
 
-The designated replacement (`fuse`) has been in development for a while but still has incomplete GPS support — no ECEF handling, no RTK quality gating — as of early 2026.
+The designated replacement (`fuse`) has been in development for a while but still has incomplete GPS support: no ECEF handling, no RTK quality gating: as of early 2026.
 
-So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. It estimates IMU bias, adapts its noise covariance from the innovation sequence automatically, and gates outliers with a chi-squared test on every sensor. GPS is handled in ECEF directly — no coordinate projection, no extra node, no zone boundary issues.
+So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. It estimates IMU bias, adapts its noise covariance from the innovation sequence automatically, and gates outliers with a chi-squared test on every sensor. GPS is handled in ECEF directly: no coordinate projection, no extra node, no zone boundary issues.
 
-It loses on one of six benchmark sequences (November 2012, degraded GPS — the Mahalanobis gate works against it there). That's documented below with the full methodology.
+It loses on one of six benchmark sequences (November 2012, degraded GPS: the Mahalanobis gate works against it there). That's documented below with the full methodology.
 
 ---
 
