@@ -6,17 +6,19 @@
 
 [![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
 
-**ROS 2 sensor fusion SDK. Combines IMU, wheel encoders, and GPS into one reliable position estimate. Self-tuning noise covariance. Apache 2.0.**
+**ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate. No manual noise tuning. Apache 2.0.**
 
 ---
 
-## What problem does this solve?
+## Why I built this
 
-Every mobile robot needs to know where it is. It gets this from multiple sensors: IMU, wheel encoders, GPS: each of which is imperfect in its own way. IMUs drift. Wheels slip. GPS jumps. You need software that intelligently combines all three into one trustworthy position estimate.
+I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works, but it has some real gaps — no native ECEF GPS handling (it goes through `navsat_transform`, which adds latency and breaks at UTM zone boundaries), no IMU bias estimation, and noise covariances you have to tune by hand and re-tune whenever your environment changes.
 
-That software is called a sensor fusion package. The standard one for ROS, `robot_localization`, lacks native ECEF GPS fusion, IMU bias estimation, and adaptive noise covariance. Its designated replacement (`fuse`) has incomplete GPS support with no ECEF handling or RTK quality gating as of early 2026. No clear accessible replacement exists for either.
+The designated replacement (`fuse`) has been in development for a while but still has incomplete GPS support — no ECEF handling, no RTK quality gating — as of early 2026.
 
-FusionCore is built to fill that gap.
+So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. It estimates IMU bias, adapts its noise covariance from the innovation sequence automatically, and gates outliers with a chi-squared test on every sensor. GPS is handled in ECEF directly — no coordinate projection, no extra node, no zone boundary issues.
+
+It loses on one of six benchmark sequences (November 2012, degraded GPS — the Mahalanobis gate works against it there). That's documented below with the full methodology.
 
 ---
 
