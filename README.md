@@ -5,6 +5,7 @@
 # FusionCore
 
 [![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19834991.svg)](https://doi.org/10.5281/zenodo.19834991)
 
 **ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate. No manual noise tuning. Apache 2.0.**
 
@@ -703,6 +704,24 @@ fusioncore/
 ## License
 
 Apache 2.0. Includes explicit patent license grant that BSD-3 does not provide. Commercially safe
+
+---
+
+## Citation
+
+If you use FusionCore in your research, please cite:
+
+```bibtex
+@software{kharwar2026fusioncore,
+  author    = {Kharwar, Manan},
+  title     = {FusionCore: ROS 2 UKF Sensor Fusion},
+  year      = {2026},
+  publisher = {Zenodo},
+  version   = {0.2.0},
+  doi       = {10.5281/zenodo.19834991},
+  url       = {https://doi.org/10.5281/zenodo.19834991}
+}
+```
 
 ---
 
