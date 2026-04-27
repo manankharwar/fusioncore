@@ -1,0 +1,223 @@
+# nav2_params.yaml — FusionCore + Nav2 reference configuration
+#
+# Designed for: outdoor GPS navigation, differential-drive robot
+# Tested with:  Clearpath Husky A200, ROS 2 Jazzy, Nav2 Jazzy
+#
+# FusionCore publishes:
+#   /fusion/odom         (nav_msgs/Odometry, 100 Hz)
+#   TF: odom → base_link (100 Hz)
+#   TF: map  → odom      (when reference.use_first_fix: true — first GPS fix sets origin)
+#
+# What to change for your robot:
+#   robot_radius          → half the widest dimension (or use footprint polygon)
+#   max_vel_x             → your platform's max forward speed
+#   min_vel_x_backwards   → set 0.0 to prevent reversing
+#   base_frame_id         → must match fusioncore.yaml base_frame
+#
+# Usage:
+#   ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
+#     fusioncore_config:=<your_robot>.yaml \
+#     nav2_params:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/nav2_params.yaml
+#
+# For Clearpath Husky, also remap:
+#   --ros-args -r /odom/wheels:=/husky_velocity_controller/odom -r /gnss/fix:=/fix
+
+# ── Behaviour Tree navigator ───────────────────────────────────────────────────
+bt_navigator:
+  ros__parameters:
+    use_sim_time: false
+    global_frame: map
+    robot_base_frame: base_link
+    odom_topic: /fusion/odom         # must point to FusionCore's odometry output
+    bt_loop_duration: 10
+    default_server_timeout: 20
+    default_nav_to_pose_bt_xml: ""   # leave empty to use Nav2 default BT
+    default_nav_through_poses_bt_xml: ""
+    navigators: ['navigate_to_pose', 'navigate_through_poses']
+    navigate_to_pose:
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
+    navigate_through_poses:
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
+
+# ── Planner: NavFn (global A* path) ───────────────────────────────────────────
+planner_server:
+  ros__parameters:
+    use_sim_time: false
+    planner_plugins: ['GridBased']
+    GridBased:
+      plugin: "nav2_navfn_planner::NavfnPlanner"
+      tolerance: 0.5          # m — how close to goal counts as reached (relax for GPS noise)
+      use_astar: true         # A* over Dijkstra for outdoor long-range
+      allow_unknown: true     # plan through unexplored space (GPS-nav, no lidar map needed)
+
+# ── Controller: Regulated Pure Pursuit ────────────────────────────────────────
+# RPP works well outdoors with GPS: smooth, predictable, handles long straight runs.
+# For tight indoor spaces, switch to DWB (plugin: "dwb_core::DWBLocalPlanner").
+controller_server:
+  ros__parameters:
+    use_sim_time: false
+    controller_frequency: 20.0
+    min_x_velocity_threshold: 0.001
+    min_y_velocity_threshold: 0.5
+    min_theta_velocity_threshold: 0.001
+    failure_tolerance: 0.3
+    progress_checker_plugin: "progress_checker"
+    goal_checker_plugins: ["general_goal_checker"]
+    controller_plugins: ["FollowPath"]
+
+    progress_checker:
+      plugin: "nav2_controller::SimpleProgressChecker"
+      required_movement_radius: 0.5
+      movement_time_allowance: 10.0
+
+    general_goal_checker:
+      stateful: true
+      plugin: "nav2_controller::SimpleGoalChecker"
+      xy_goal_tolerance: 0.5      # m — relax for GPS-accuracy navigation
+      yaw_goal_tolerance: 0.25    # rad
+
+    FollowPath:
+      plugin: "nav2_regulated_pure_pursuit_controller::RegulatedPurePursuitController"
+      desired_linear_vel: 0.5     # m/s — set to your comfortable cruise speed
+      lookahead_dist: 1.5         # m — increase for faster/smoother outdoor driving
+      min_lookahead_dist: 0.8
+      max_lookahead_dist: 3.0
+      lookahead_time: 1.5
+      rotate_to_heading_angular_vel: 0.5   # rad/s
+      transform_tolerance: 0.1
+      use_velocity_scaled_lookahead_dist: true
+      min_approach_linear_velocity: 0.05
+      approach_velocity_scaling_dist: 1.0
+      use_collision_detection: true
+      max_allowed_time_to_collision_up_to_carrot: 1.0
+      use_regulated_linear_velocity_scaling: true
+      use_fixed_curvature_lookahead: false
+      curvature_feedforward_gain: 1.0
+      use_cost_regulated_linear_velocity_scaling: false
+      regulated_linear_scaling_min_radius: 0.9
+      regulated_linear_scaling_min_speed: 0.25
+      use_rotate_to_heading: true     # rotate in place before starting — safe for GPS nav
+      allow_reversing: false
+      rotate_to_heading_min_angle: 0.785  # ~45 deg: only rotate if heading error > this
+      max_angular_accel: 1.5
+      max_robot_pose_search_dist: 10.0
+
+# ── Smoother ──────────────────────────────────────────────────────────────────
+velocity_smoother:
+  ros__parameters:
+    use_sim_time: false
+    smoothing_frequency: 20.0
+    scale_velocities: false
+    feedback: "OPEN_LOOP"
+    odom_topic: /fusion/odom        # must point to FusionCore's odometry output
+    odom_duration: 0.1
+    deadband_velocity: [0.0, 0.0, 0.0]
+    velocity_timeout: 1.0
+    max_velocity:     [ 0.5, 0.0,  1.0]  # [x m/s, y m/s, yaw rad/s]
+    min_velocity:     [-0.5, 0.0, -1.0]
+    max_accel:        [ 0.5, 0.0,  1.5]
+    max_decel:        [-0.5, 0.0, -1.5]
+
+# ── Costmaps ──────────────────────────────────────────────────────────────────
+# GPS-only navigation: no static map, no lidar.
+# Both costmaps use only the robot's footprint (inflation) and optional sensor layers.
+# If you have a lidar, add an obstacle_layer — see comment below.
+
+local_costmap:
+  local_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 5.0
+      publish_frequency: 2.0
+      global_frame: odom
+      robot_base_frame: base_link
+      rolling_window: true
+      width:  6        # m — local planning window
+      height: 6
+      resolution: 0.05
+      robot_radius: 0.55   # m — Husky half-width. Replace with your robot's.
+      # footprint: "[[0.5, 0.35], [0.5, -0.35], [-0.5, -0.35], [-0.5, 0.35]]"
+      plugins: ["inflation_layer"]
+      # If you have lidar, add: plugins: ["obstacle_layer", "inflation_layer"]
+      # obstacle_layer:
+      #   plugin: "nav2_costmap_2d::ObstacleLayer"
+      #   observation_sources: scan
+      #   scan:
+      #     topic: /scan
+      #     max_obstacle_height: 2.0
+      #     clearing: true
+      #     marking: true
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.75   # m — pad around robot for obstacle clearance
+      always_send_full_costmap: true
+
+global_costmap:
+  global_costmap:
+    ros__parameters:
+      use_sim_time: false
+      update_frequency: 1.0
+      publish_frequency: 1.0
+      global_frame: map
+      robot_base_frame: base_link
+      robot_radius: 0.55
+      resolution: 0.05
+      track_unknown_space: true     # true = plan through unknown (GPS-nav mode)
+      plugins: ["static_layer", "inflation_layer"]
+      static_layer:
+        plugin: "nav2_costmap_2d::StaticLayer"
+        map_subscribe_transient_local: true
+        # No map server needed for GPS-only: publish an empty map or remove this layer
+        # and set track_unknown_space: true + allow_unknown: true in the planner.
+      inflation_layer:
+        plugin: "nav2_costmap_2d::InflationLayer"
+        cost_scaling_factor: 3.0
+        inflation_radius: 0.75
+      always_send_full_costmap: true
+
+# ── Map server (empty map for GPS-only navigation) ────────────────────────────
+# FusionCore provides absolute GPS positioning — no lidar map needed.
+# This publishes a 100m × 100m empty costmap as the global map.
+# If you have a real map (pgm/yaml), point map_server here instead.
+map_server:
+  ros__parameters:
+    use_sim_time: false
+    yaml_filename: ""      # leave empty — map_server not needed for GPS-only nav
+
+# ── Behaviour server (recovery behaviours) ────────────────────────────────────
+behavior_server:
+  ros__parameters:
+    use_sim_time: false
+    costmap_topic: local_costmap/costmap_raw
+    footprint_topic: local_costmap/published_footprint
+    cycle_frequency: 10.0
+    behavior_plugins: ["spin", "backup", "drive_on_heading", "wait"]
+    spin:
+      plugin: "nav2_behaviors::Spin"
+    backup:
+      plugin: "nav2_behaviors::BackUp"
+    drive_on_heading:
+      plugin: "nav2_behaviors::DriveOnHeading"
+    wait:
+      plugin: "nav2_behaviors::Wait"
+    local_frame: odom
+    global_frame: map
+    robot_base_frame: base_link
+    transform_tolerance: 0.1
+    simulate_ahead_time: 2.0
+    max_rotational_vel: 0.5
+    min_rotational_vel: 0.1
+    rotational_acc_lim: 1.5
+
+# ── Lifecycle managers ────────────────────────────────────────────────────────
+lifecycle_manager_navigation:
+  ros__parameters:
+    use_sim_time: false
+    autostart: true
+    node_names:
+      - planner_server
+      - controller_server
+      - behavior_server
+      - bt_navigator
+      - velocity_smoother

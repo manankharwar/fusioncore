@@ -100,9 +100,11 @@ def generate_launch_description():
         ),
         DeclareLaunchArgument(
             "nav2_params",
+            default_value=os.path.join(pkg, "config", "nav2_params.yaml"),
             description=(
-                "Path to your nav2_params.yaml. "
-                "Must set odom_topic: /fusion/odom in amcl, bt_navigator, velocity_smoother."
+                "Path to Nav2 params YAML. Default is the bundled reference config "
+                "(outdoor GPS, differential drive, Regulated Pure Pursuit). "
+                "Override with your own file for custom robots or indoor lidar nav."
             ),
         ),
         DeclareLaunchArgument(
