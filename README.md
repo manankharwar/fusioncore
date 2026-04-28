@@ -1,12 +1,10 @@
-
-
 # FusionCore
 
 [![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.19834991.svg)](https://doi.org/10.5281/zenodo.19834991)
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
 
-**ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate. No manual noise tuning. Apache 2.0.**
+**ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate. No manual noise tuning.**
 
 ---
 
