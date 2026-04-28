@@ -1,0 +1,62 @@
+site_name: FusionCore
+site_url: https://manankharwar.github.io/fusioncore/
+site_description: ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate.
+site_author: Manan Kharwar
+repo_url: https://github.com/manankharwar/fusioncore
+repo_name: manankharwar/fusioncore
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+    - scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+  features:
+    - navigation.instant
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.suggest
+    - content.code.copy
+    - content.action.edit
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+plugins:
+  - search
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Configuration: configuration.md
+  - Hardware:
+    - Overview & Configs: hardware/index.md
+    - Environment Presets: hardware/environment-presets.md
+  - Nav2 Integration: nav2.md
+  - Simulation: simulation.md
+  - Migrating from robot_localization: migration_from_robot_localization.md
+  - How It Works: how-it-works.md
+  - Reference:
+    - Topics & TF: reference/topics.md
+    - Benchmark Results: reference/benchmark.md
+    - Architecture: reference/architecture.md
