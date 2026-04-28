@@ -4,7 +4,7 @@
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19834991-blue)](https://doi.org/10.5281/zenodo.19834991)
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
 
-**ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate. No manual noise tuning.**
+**ROS 2 sensor fusion: IMU + wheel encoders + GPS fused via UKF at 100 Hz. Drop-in alternative to robot_localization with native ECEF GPS handling, automatic IMU bias estimation, and zero manual noise tuning.**
 
 ---
 
