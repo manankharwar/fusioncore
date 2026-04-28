@@ -43,7 +43,7 @@ d² = νᵀ · S⁻¹ · ν
 
 where `ν` is the innovation (predicted vs measured) and `S` is the innovation covariance. This is compared against chi-squared thresholds at the 99.9th percentile for each sensor's dimensionality.
 
-Fixes that exceed the threshold are rejected without updating the filter. Verified by injecting a 500 m GPS jump in testing — zero position change.
+Fixes that exceed the threshold are rejected without updating the filter. Verified by injecting a 500 m GPS jump in testing: zero position change.
 
 GNSS position covariance is floored before the gate. This prevents RTK-grade receivers (σxy ~3 mm) from triggering self-rejection when the filter hasn't yet converged to RTK-level accuracy.
 
@@ -61,7 +61,7 @@ Every serious inertial navigation system does this. Without ZUPT, a robot sittin
 
 All MEMS IMUs have a small accelerometer and gyro bias that varies by unit. By default the filter starts at zero bias and takes ~60 seconds to converge, causing a small position offset (~5–10 cm) at startup.
 
-Setting `init.stationary_window: 2.0` makes the filter collect 2 seconds of IMU data before starting, estimate bias directly from the mean readings, and initialize with correct values. Startup drift drops from ~10 cm to under 1 cm. The robot must be stationary during the window — if it moves, the filter falls back to zero bias automatically.
+Setting `init.stationary_window: 2.0` makes the filter collect 2 seconds of IMU data before starting, estimate bias directly from the mean readings, and initialize with correct values. Startup drift drops from ~10 cm to under 1 cm. The robot must be stationary during the window: if it moves, the filter falls back to zero bias automatically.
 
 ---
 
@@ -75,7 +75,7 @@ After a few minutes of operation, R converges to the real sensor characteristics
 
 ## GPS lever arm
 
-If the GPS antenna is not at `base_link` — mounted on top, or forward of center — its readings correspond to a different trajectory than `base_link`. FusionCore corrects for this:
+If the GPS antenna is not at `base_link`: mounted on top, or forward of center: its readings correspond to a different trajectory than `base_link`. FusionCore corrects for this:
 
 ```
 p_antenna = p_base + R * lever_arm

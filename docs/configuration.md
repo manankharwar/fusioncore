@@ -20,8 +20,8 @@ fusioncore:
     publish.force_2d: true   # zeroes Z position and Z velocity. Use for ground robots.
 
     # ── IMU ──────────────────────────────────────────────────────────────────
-    imu.gyro_noise: 0.005       # rad/s — from your IMU datasheet (ARW spec)
-    imu.accel_noise: 0.1        # m/s²  — from your IMU datasheet (VRW spec)
+    imu.gyro_noise: 0.005       # rad/s: from your IMU datasheet (ARW spec)
+    imu.accel_noise: 0.1        # m/s² : from your IMU datasheet (VRW spec)
     imu.has_magnetometer: false # true for 9-axis (BNO08x, VectorNav, Xsens)
                                 # false for 6-axis: yaw comes from gyro integration
     imu.remove_gravitational_acceleration: false
@@ -42,12 +42,12 @@ fusioncore:
     encoder2.topic: ""          # e.g. "/kiss/odometry" or "/icp_odom"
 
     # ── GPS ───────────────────────────────────────────────────────────────────
-    gnss.base_noise_xy: 1.0     # m — baseline sigma at HDOP=1
+    gnss.base_noise_xy: 1.0     # m: baseline sigma at HDOP=1
                                 # scaled automatically by HDOP from the message
                                 # standard autonomous GPS: 1.0–2.5
                                 # RTK float: 0.5,  RTK fixed: 0.015
     gnss.base_noise_z: 2.0      # m
-    gnss.heading_noise: 0.02    # rad — for dual antenna heading
+    gnss.heading_noise: 0.02    # rad: for dual antenna heading
 
     gnss.max_hdop: 4.0          # reject fixes with HDOP worse than this
     gnss.min_satellites: 4
@@ -75,10 +75,10 @@ fusioncore:
 
     # ── Outlier rejection ─────────────────────────────────────────────────────
     outlier_rejection: true
-    outlier_threshold_gnss: 16.27   # chi2(3, 0.999) — 3D GPS position
-    outlier_threshold_imu:  15.09   # chi2(6, 0.999) — 6D IMU
-    outlier_threshold_enc:  11.34   # chi2(3, 0.999) — 3D encoder
-    outlier_threshold_hdg:  10.83   # chi2(1, 0.999) — 1D heading
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.999): 3D GPS position
+    outlier_threshold_imu:  15.09   # chi2(6, 0.999): 6D IMU
+    outlier_threshold_enc:  11.34   # chi2(3, 0.999): 3D encoder
+    outlier_threshold_hdg:  10.83   # chi2(1, 0.999): 1D heading
     # Do NOT lower these below chi2 critical values. At 7.0 normal GPS noise
     # trips the gate and every fix gets rejected.
 
@@ -91,7 +91,7 @@ fusioncore:
 
     # ── UKF process noise ─────────────────────────────────────────────────────
     ukf.q_position: 0.01
-    ukf.q_orientation: 1.0e-9   # quaternion regularization ONLY — do not increase
+    ukf.q_orientation: 1.0e-9   # quaternion regularization ONLY: do not increase
     ukf.q_velocity: 0.1
     ukf.q_angular_vel: 0.1
     ukf.q_acceleration: 1.0

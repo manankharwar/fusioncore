@@ -39,7 +39,7 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
 
 ## DIY robots (BNO085)
 
-The BNO085 is a 9-axis AHRS that outputs full orientation. Set `imu.has_magnetometer: true` in the config — this tells FusionCore to trust the orientation output directly rather than integrating gyro only.
+The BNO085 is a 9-axis AHRS that outputs full orientation. Set `imu.has_magnetometer: true` in the config: this tells FusionCore to trust the orientation output directly rather than integrating gyro only.
 
 ---
 

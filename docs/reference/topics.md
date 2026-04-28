@@ -29,7 +29,7 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 | Topic | Type | Rate | Notes |
 |---|---|---|---|
 | `/fusion/odom` | `nav_msgs/Odometry` | 100 Hz | Fused position + orientation + velocity + full covariance |
-| `/fusion/pose` | `geometry_msgs/PoseWithCovarianceStamped` | 100 Hz | Same pose — compatible with AMCL, slam_toolbox, Nav2 pose initializer |
+| `/fusion/pose` | `geometry_msgs/PoseWithCovarianceStamped` | 100 Hz | Same pose: compatible with AMCL, slam_toolbox, Nav2 pose initializer |
 | `/diagnostics` | `diagnostic_msgs/DiagnosticArray` | 1 Hz | Per-sensor health, outlier counts, heading status |
 | `/tf` | TF | 100 Hz | `odom → base_link` |
 

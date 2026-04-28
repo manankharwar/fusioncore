@@ -9,7 +9,7 @@
 
 ## What it does
 
-FusionCore is a 22-state UKF that fuses IMU, wheel encoders, and GPS into a single clean odometry output at 100 Hz. It runs as a single ROS 2 lifecycle node — no `navsat_transform`, no coordinate projection node, no feedback loop between two filters.
+FusionCore is a 22-state UKF that fuses IMU, wheel encoders, and GPS into a single clean odometry output at 100 Hz. It runs as a single ROS 2 lifecycle node: no `navsat_transform`, no coordinate projection node, no feedback loop between two filters.
 
 It publishes `/fusion/odom` and the full `odom → base_link` TF. Nav2 consumes it directly.
 
@@ -62,7 +62,7 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
   fusioncore_config:=/path/to/your_robot.yaml
 ```
 
-That's the full stack — FusionCore + Nav2, lifecycle managed automatically.
+That's the full stack: FusionCore + Nav2, lifecycle managed automatically.
 
 **No Nav2?** Use `fusioncore.launch.py` instead:
 

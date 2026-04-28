@@ -83,13 +83,13 @@ ros2 topic hz /fusion/odom
 
 You can verify all FusionCore features using fake sensor data. Open 4 terminals:
 
-**Terminal 1 — launch:**
+**Terminal 1: launch:**
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash
 ros2 launch fusioncore_ros fusioncore.launch.py
 ```
 
-**Terminal 2 — configure and activate:**
+**Terminal 2: configure and activate:**
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash
 
@@ -102,7 +102,7 @@ sleep 1
 ros2 lifecycle set /fusioncore activate
 ```
 
-**Terminal 3 — feed fake sensors:**
+**Terminal 3: feed fake sensors:**
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash
 
@@ -132,7 +132,7 @@ ros2 topic pub /gnss/fix sensor_msgs/msg/NavSatFix "{
 }" --rate 5
 ```
 
-**Terminal 4 — verify:**
+**Terminal 4: verify:**
 ```bash
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash
 

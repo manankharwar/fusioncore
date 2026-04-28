@@ -13,7 +13,7 @@ FusionCore is a drop-in odometry source for Nav2. It publishes everything Nav2 n
 
 ## Outdoor GPS navigation (the main path)
 
-One command starts the entire stack — FusionCore + Nav2, lifecycle managed automatically:
+One command starts the entire stack: FusionCore + Nav2, lifecycle managed automatically:
 
 ```bash
 ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
