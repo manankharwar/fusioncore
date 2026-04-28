@@ -1,0 +1,1644 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate.">
+      
+      
+        <meta name="author" content="Manan Kharwar">
+      
+      
+        <link rel="canonical" href="https://manankharwar.github.io/fusioncore/migration_from_robot_localization/">
+      
+      
+        <link rel="prev" href="../simulation/">
+      
+      
+        <link rel="next" href="../how-it-works/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Migrating from robot_localization - FusionCore</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="teal">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#migrating-from-robot_localization-to-fusioncore" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="FusionCore" class="md-header__button md-logo" aria-label="FusionCore" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            FusionCore
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Migrating from robot_localization
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="slate" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="" data-md-color-scheme="default" data-md-color-primary="teal" data-md-color-accent="teal"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/manankharwar/fusioncore" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    manankharwar/fusioncore
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="FusionCore" class="md-nav__button md-logo" aria-label="FusionCore" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    FusionCore
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/manankharwar/fusioncore" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    manankharwar/fusioncore
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Hardware
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Hardware
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hardware/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Overview & Configs
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hardware/environment-presets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Environment Presets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../nav2/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Nav2 Integration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../simulation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Simulation
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from robot_localization
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migrating from robot_localization
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#three-files-one-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three files, one command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-changing-and-what-isnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's changing (and what isn't)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-remove-robot_localization-from-your-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Remove robot_localization from your launch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-create-your-robot-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Create your robot config
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 2: Create your robot config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gravity-removal-one-thing-to-get-right" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gravity removal: one thing to get right
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-nav2-setup-if-you-use-nav2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Nav2 setup (if you use Nav2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-remap-your-topics-if-your-robot-uses-non-default-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Remap your topics (if your robot uses non-default names)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-parameter-mapping-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full parameter mapping reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Full parameter mapping reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ekf-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EKF parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#navsat_transform-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navsat_transform parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-fusioncore-handles-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What FusionCore handles automatically
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-robot_localization-has-that-fusioncore-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What robot_localization has that FusionCore doesn't
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../how-it-works/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    How It Works
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/topics/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Topics & TF
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/benchmark/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Benchmark Results
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../reference/architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#three-files-one-command" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Three files, one command
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#whats-changing-and-what-isnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What's changing (and what isn't)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-1-remove-robot_localization-from-your-launch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 1: Remove robot_localization from your launch
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-2-create-your-robot-config" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 2: Create your robot config
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Step 2: Create your robot config">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#gravity-removal-one-thing-to-get-right" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Gravity removal: one thing to get right
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-3-nav2-setup-if-you-use-nav2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 3: Nav2 setup (if you use Nav2)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-4-remap-your-topics-if-your-robot-uses-non-default-names" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Step 4: Remap your topics (if your robot uses non-default names)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-parameter-mapping-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Full parameter mapping reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Full parameter mapping reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#ekf-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        EKF parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#navsat_transform-parameters" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        navsat_transform parameters
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-fusioncore-handles-automatically" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What FusionCore handles automatically
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#what-robot_localization-has-that-fusioncore-doesnt" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        What robot_localization has that FusionCore doesn't
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+    <a href="https://github.com/manankharwar/fusioncore/edit/main/docs/migration_from_robot_localization.md" title="Edit this page" class="md-content__button md-icon" rel="edit">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 20H6V4h7v5h5v3.1l2-2V8l-6-6H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h4zm10.2-7c.1 0 .3.1.4.2l1.3 1.3c.2.2.2.6 0 .8l-1 1-2.1-2.1 1-1c.1-.1.2-.2.4-.2m0 3.9L14.1 23H12v-2.1l6.1-6.1z"/></svg>
+    </a>
+  
+  
+
+
+<h1 id="migrating-from-robot_localization-to-fusioncore">Migrating from robot_localization to FusionCore<a class="headerlink" href="#migrating-from-robot_localization-to-fusioncore" title="Permanent link">&para;</a></h1>
+<p>If you're coming from <code>robot_localization</code> and want to switch, this guide walks you through it step by step: no prior knowledge of FusionCore required.</p>
+<hr />
+<h2 id="three-files-one-command">Three files, one command<a class="headerlink" href="#three-files-one-command" title="Permanent link">&para;</a></h2>
+<p>Everything you need is already in this repo. Here's the big picture before we dive in:</p>
+<table>
+<thead>
+<tr>
+<th>File</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>fusioncore_ros/config/fusioncore.yaml</code> (or your hardware config)</td>
+<td>Tells FusionCore about your robot: IMU noise, GPS quality, sensor offsets</td>
+</tr>
+<tr>
+<td><code>fusioncore_ros/config/nav2_params.yaml</code></td>
+<td>A ready-to-use Nav2 config pre-wired to FusionCore's output (if you use Nav2)</td>
+</tr>
+<tr>
+<td><code>fusioncore_ros/launch/fusioncore_nav2.launch.py</code></td>
+<td>One launch file that starts both FusionCore and Nav2 together</td>
+</tr>
+</tbody>
+</table>
+<p>Once you have your robot config set up, the entire stack starts with:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>/path/to/your_robot.yaml
+</code></pre></div>
+<p>That's it. FusionCore starts, configures itself, activates, and Nav2 comes up 5 seconds later once localization is publishing. No separate <code>navsat_transform_node</code>, no feedback loop, no topic wiring.</p>
+<p><strong>Don't use Nav2?</strong> Use <code>fusioncore.launch.py</code> instead:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>/path/to/your_robot.yaml
+</code></pre></div>
+<hr />
+<h2 id="whats-changing-and-what-isnt">What's changing (and what isn't)<a class="headerlink" href="#whats-changing-and-what-isnt" title="Permanent link">&para;</a></h2>
+<p>With <code>robot_localization</code>, you wired two nodes together:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>/imu/data ──────────────────────────────────────────────────┐
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>/odom/wheels ──────→ ekf_node → /odometry/filtered          │
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>/odometry/filtered ─→ navsat_transform_node → GPS in ENU ───┘
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>/fix ──────────────→ navsat_transform_node
+</code></pre></div>
+<p>Two nodes, two config files, feedback loop between them, lots of parameter tuning.</p>
+<p>With FusionCore, it's one node:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>/imu/data ────┐
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>/odom/wheels ─┤→ fusioncore_node → /fusion/odom
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>/gnss/fix ────┘                  → TF: odom → base_link
+</code></pre></div>
+<p>GPS fusion happens inside: no <code>navsat_transform_node</code>, no feedback loop. The output topic changes from <code>/odometry/filtered</code> to <code>/fusion/odom</code>.</p>
+<p><strong>What stays the same:</strong>
+- Your robot still publishes <code>/imu/data</code>, <code>/odom/wheels</code>, <code>/gnss/fix</code> (you may need a remap: see Step 4)
+- Nav2 still works the same way, it just reads from <code>/fusion/odom</code> instead of <code>/odometry/filtered</code>
+- The <code>odom → base_link</code> TF is still published the same way</p>
+<hr />
+<h2 id="step-1-remove-robot_localization-from-your-launch">Step 1: Remove robot_localization from your launch<a class="headerlink" href="#step-1-remove-robot_localization-from-your-launch" title="Permanent link">&para;</a></h2>
+<p>In your launch file, remove or comment out:
+- The <code>ekf_node</code> launch
+- The <code>navsat_transform_node</code> launch
+- Any parameter files you were loading for those nodes</p>
+<p>You don't need to replace them with anything complex. Either use the provided launch file (recommended):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>/path/to/your_robot.yaml
+</code></pre></div>
+<p>Or if you have your own launch file, add FusionCore as a lifecycle node:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">launch_ros.actions</span><span class="w"> </span><span class="kn">import</span> <span class="n">LifecycleNode</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">fusioncore_node</span> <span class="o">=</span> <span class="n">LifecycleNode</span><span class="p">(</span>
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>    <span class="n">package</span><span class="o">=</span><span class="s2">&quot;fusioncore_ros&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">executable</span><span class="o">=</span><span class="s2">&quot;fusioncore_node&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;fusioncore&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">namespace</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">output</span><span class="o">=</span><span class="s2">&quot;screen&quot;</span><span class="p">,</span>
+<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a>    <span class="n">parameters</span><span class="o">=</span><span class="p">[</span><span class="s2">&quot;/path/to/fusioncore.yaml&quot;</span><span class="p">],</span>
+<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a><span class="p">)</span>
+</code></pre></div>
+<p>FusionCore is a lifecycle node, so you need to configure and activate it after launch. The provided <code>fusioncore_nav2.launch.py</code> does this automatically (2-second delay, then configure → activate). If you're writing your own launch file, see the launch file source at <code>fusioncore_ros/launch/fusioncore_nav2.launch.py</code> for how to wire the lifecycle transitions.</p>
+<hr />
+<h2 id="step-2-create-your-robot-config">Step 2: Create your robot config<a class="headerlink" href="#step-2-create-your-robot-config" title="Permanent link">&para;</a></h2>
+<p>FusionCore needs one YAML file that describes your hardware. You can start from a ready-made config for your platform:</p>
+<ul>
+<li><a href="../fusioncore_ros/config/clearpath_husky.yaml"><code>config/clearpath_husky.yaml</code></a>: Husky A200 + Microstrain GX5-25 + u-blox F9P</li>
+<li><a href="../fusioncore_ros/config/bno085_custom.yaml"><code>config/bno085_custom.yaml</code></a>: BNO085 + standard GPS (DIY robots)</li>
+<li><a href="../fusioncore_ros/config/duatic_mecanum.yaml"><code>config/duatic_mecanum.yaml</code></a>: Duatic mecanum + BNO085, no GPS</li>
+</ul>
+<p>Or start from scratch with this minimal template:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">fusioncore</span><span class="p">:</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">ros__parameters</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">base_frame</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">base_link</span><span class="w">    </span><span class="c1"># must match your robot&#39;s base TF frame</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">    </span><span class="nt">odom_frame</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">odom</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">    </span><span class="nt">publish_rate</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100.0</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">    </span><span class="nt">publish.force_2d</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">   </span><span class="c1"># set true for ground robots</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">    </span><span class="nt">imu.has_magnetometer</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">    </span><span class="nt">imu.gyro_noise</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.005</span><span class="w">    </span><span class="c1"># rad/s: check your IMU datasheet</span>
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a><span class="w">    </span><span class="nt">imu.accel_noise</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1</span><span class="w">     </span><span class="c1"># m/s²</span>
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="w">    </span><span class="nt">imu.remove_gravitational_acceleration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># see gravity note below</span>
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="nt">encoder.vel_noise</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.05</span><span class="w">  </span><span class="c1"># m/s</span>
+<a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">    </span><span class="nt">encoder.yaw_noise</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.02</span><span class="w">  </span><span class="c1"># rad/s</span>
+<a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a>
+<a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">    </span><span class="nt">gnss.base_noise_xy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">2.5</span><span class="w">  </span><span class="c1"># m: standard GPS. Use 0.5 for RTK float, 0.015 for RTK fixed</span>
+<a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a><span class="w">    </span><span class="nt">gnss.base_noise_z</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5.0</span>
+<a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="w">    </span><span class="nt">gnss.max_hdop</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4.0</span>
+<a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">    </span><span class="nt">gnss.min_satellites</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">4</span>
+<a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="nt">gnss.min_fix_type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1</span><span class="w">     </span><span class="c1"># 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED</span>
+<a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a>
+<a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">    </span><span class="nt">outlier_rejection</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">    </span><span class="nt">outlier_threshold_gnss</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16.27</span>
+<a id="__codelineno-6-24" name="__codelineno-6-24" href="#__codelineno-6-24"></a><span class="w">    </span><span class="nt">outlier_threshold_imu</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15.09</span>
+<a id="__codelineno-6-25" name="__codelineno-6-25" href="#__codelineno-6-25"></a><span class="w">    </span><span class="nt">outlier_threshold_enc</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">11.34</span>
+<a id="__codelineno-6-26" name="__codelineno-6-26" href="#__codelineno-6-26"></a><span class="w">    </span><span class="nt">outlier_threshold_hdg</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10.83</span>
+<a id="__codelineno-6-27" name="__codelineno-6-27" href="#__codelineno-6-27"></a>
+<a id="__codelineno-6-28" name="__codelineno-6-28" href="#__codelineno-6-28"></a><span class="w">    </span><span class="nt">adaptive.imu</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-6-29" name="__codelineno-6-29" href="#__codelineno-6-29"></a><span class="w">    </span><span class="nt">adaptive.encoder</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-6-30" name="__codelineno-6-30" href="#__codelineno-6-30"></a><span class="w">    </span><span class="nt">adaptive.gnss</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-6-31" name="__codelineno-6-31" href="#__codelineno-6-31"></a><span class="w">    </span><span class="nt">adaptive.window</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+<a id="__codelineno-6-32" name="__codelineno-6-32" href="#__codelineno-6-32"></a><span class="w">    </span><span class="nt">adaptive.alpha</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.01</span>
+<a id="__codelineno-6-33" name="__codelineno-6-33" href="#__codelineno-6-33"></a>
+<a id="__codelineno-6-34" name="__codelineno-6-34" href="#__codelineno-6-34"></a><span class="w">    </span><span class="nt">ukf.q_position</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.01</span>
+<a id="__codelineno-6-35" name="__codelineno-6-35" href="#__codelineno-6-35"></a><span class="w">    </span><span class="nt">ukf.q_orientation</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0e-9</span>
+<a id="__codelineno-6-36" name="__codelineno-6-36" href="#__codelineno-6-36"></a><span class="w">    </span><span class="nt">ukf.q_velocity</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1</span>
+<a id="__codelineno-6-37" name="__codelineno-6-37" href="#__codelineno-6-37"></a><span class="w">    </span><span class="nt">ukf.q_angular_vel</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.1</span>
+<a id="__codelineno-6-38" name="__codelineno-6-38" href="#__codelineno-6-38"></a><span class="w">    </span><span class="nt">ukf.q_acceleration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0</span>
+<a id="__codelineno-6-39" name="__codelineno-6-39" href="#__codelineno-6-39"></a><span class="w">    </span><span class="nt">ukf.q_gyro_bias</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0e-5</span>
+<a id="__codelineno-6-40" name="__codelineno-6-40" href="#__codelineno-6-40"></a><span class="w">    </span><span class="nt">ukf.q_accel_bias</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1.0e-5</span>
+<a id="__codelineno-6-41" name="__codelineno-6-41" href="#__codelineno-6-41"></a>
+<a id="__codelineno-6-42" name="__codelineno-6-42" href="#__codelineno-6-42"></a><span class="w">    </span><span class="nt">input.gnss_crs</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;EPSG:4326&quot;</span>
+<a id="__codelineno-6-43" name="__codelineno-6-43" href="#__codelineno-6-43"></a><span class="w">    </span><span class="nt">output.crs</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;EPSG:4978&quot;</span>
+<a id="__codelineno-6-44" name="__codelineno-6-44" href="#__codelineno-6-44"></a><span class="w">    </span><span class="nt">output.convert_to_enu_at_reference</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-6-45" name="__codelineno-6-45" href="#__codelineno-6-45"></a><span class="w">    </span><span class="nt">reference.use_first_fix</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">   </span><span class="c1"># map origin = first GPS fix</span>
+</code></pre></div>
+<p><strong>GPS quality presets</strong>: if you want to override GPS noise thresholds for your environment without editing the robot config, you can layer an environment preset on top:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>your_robot.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span>env_config:<span class="o">=</span><span class="k">$(</span>ros2<span class="w"> </span>pkg<span class="w"> </span>prefix<span class="w"> </span>fusioncore_ros<span class="k">)</span>/share/fusioncore_ros/config/env_urban.yaml
+</code></pre></div>
+<p>Available presets: <a href="../fusioncore_ros/config/env_open.yaml"><code>env_open.yaml</code></a>, <a href="../fusioncore_ros/config/env_urban.yaml"><code>env_urban.yaml</code></a>, <a href="../fusioncore_ros/config/env_canopy.yaml"><code>env_canopy.yaml</code></a>.</p>
+<h3 id="gravity-removal-one-thing-to-get-right">Gravity removal: one thing to get right<a class="headerlink" href="#gravity-removal-one-thing-to-get-right" title="Permanent link">&para;</a></h3>
+<p>There's one parameter where the naming is confusing:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="c1"># robot_localization:</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nt">imu0_remove_gravitational_acceleration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="c1"># means: &quot;remove gravity before I fuse it&quot;</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># FusionCore:</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="nt">imu.remove_gravitational_acceleration</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="c1"># means: &quot;my driver already removed gravity, add it back&quot;</span>
+</code></pre></div>
+<p>The names look the same but they mean opposite things. <strong>Both set to <code>true</code> describe the same physical situation.</strong> Rule of thumb: check <code>linear_acceleration.z</code> at rest. If it reads <code>~9.8 m/s²</code>, set <code>false</code>. If it reads <code>~0.0</code>, set <code>true</code>.</p>
+<hr />
+<h2 id="step-3-nav2-setup-if-you-use-nav2">Step 3: Nav2 setup (if you use Nav2)<a class="headerlink" href="#step-3-nav2-setup-if-you-use-nav2" title="Permanent link">&para;</a></h2>
+<p>This is the most common pain point when migrating: all the places in Nav2 that referenced <code>/odometry/filtered</code> need to point to <code>/fusion/odom</code>.</p>
+<p><strong>The easy path:</strong> use the bundled <code>nav2_params.yaml</code> at <code>fusioncore_ros/config/nav2_params.yaml</code>. It comes pre-wired to <code>/fusion/odom</code> and is configured for outdoor GPS navigation (differential drive, Regulated Pure Pursuit, no AMCL). The <code>fusioncore_nav2.launch.py</code> launch file uses it by default.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># This already uses the bundled nav2_params.yaml: nothing else needed</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>your_robot.yaml
+</code></pre></div>
+<p><strong>Customizing:</strong> if you have your own <code>nav2_params.yaml</code>, pass it as an argument:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>your_robot.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span>nav2_params:<span class="o">=</span>/path/to/your_nav2_params.yaml
+</code></pre></div>
+<p><strong>Updating your existing Nav2 config manually:</strong> if you want to keep your own nav2_params.yaml, find and replace every instance of <code>/odometry/filtered</code> with <code>/fusion/odom</code>. The three places that need it:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">bt_navigator</span><span class="p">:</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">ros__parameters</span><span class="p">:</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="nt">odom_topic</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/fusion/odom</span><span class="w">        </span><span class="c1"># was /odometry/filtered</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="nt">velocity_smoother</span><span class="p">:</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="nt">ros__parameters</span><span class="p">:</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="nt">odom_topic</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/fusion/odom</span><span class="w">        </span><span class="c1"># was /odometry/filtered</span>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="c1"># if you had AMCL, remove it: FusionCore handles global localization via GPS</span>
+</code></pre></div>
+<p>Also remove AMCL if you had it. FusionCore publishes the <code>map → odom</code> TF directly via GPS: AMCL would conflict with it.</p>
+<hr />
+<h2 id="step-4-remap-your-topics-if-your-robot-uses-non-default-names">Step 4: Remap your topics (if your robot uses non-default names)<a class="headerlink" href="#step-4-remap-your-topics-if-your-robot-uses-non-default-names" title="Permanent link">&para;</a></h2>
+<p>FusionCore subscribes to these topics by default:</p>
+<table>
+<thead>
+<tr>
+<th>Input</th>
+<th>Default topic</th>
+<th>Your topic</th>
+<th>Remap needed?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IMU</td>
+<td><code>/imu/data</code></td>
+<td>probably the same</td>
+<td>usually no</td>
+</tr>
+<tr>
+<td>Wheel odometry</td>
+<td><code>/odom/wheels</code></td>
+<td>often different</td>
+<td>likely yes</td>
+</tr>
+<tr>
+<td>GPS fix</td>
+<td><code>/gnss/fix</code></td>
+<td>often <code>/fix</code></td>
+<td>often yes</td>
+</tr>
+</tbody>
+</table>
+<p>If your wheel odom topic or GPS topic is different, add remaps to your launch command:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span>your_robot.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="w">  </span>--ros-args<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a><span class="w">  </span>-r<span class="w"> </span>/odom/wheels:<span class="o">=</span>/your/wheel/odom/topic<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="w">  </span>-r<span class="w"> </span>/gnss/fix:<span class="o">=</span>/fix
+</code></pre></div>
+<p><strong>Clearpath Husky example</strong> (odom at <code>/husky_velocity_controller/odom</code>, GPS at <code>/fix</code>):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>ros2<span class="w"> </span>launch<span class="w"> </span>fusioncore_ros<span class="w"> </span>fusioncore_nav2.launch.py<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span>fusioncore_config:<span class="o">=</span><span class="k">$(</span>ros2<span class="w"> </span>pkg<span class="w"> </span>prefix<span class="w"> </span>fusioncore_ros<span class="k">)</span>/share/fusioncore_ros/config/clearpath_husky.yaml<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span>--ros-args<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a><span class="w">  </span>-r<span class="w"> </span>/odom/wheels:<span class="o">=</span>/husky_velocity_controller/odom<span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="w">  </span>-r<span class="w"> </span>/gnss/fix:<span class="o">=</span>/fix
+</code></pre></div>
+<p>FusionCore publishes to <code>/fusion/odom</code>. Any downstream node that was reading <code>/odometry/filtered</code> needs to be updated to read <code>/fusion/odom</code>: the bundled nav2_params.yaml already handles this for Nav2.</p>
+<hr />
+<h2 id="full-parameter-mapping-reference">Full parameter mapping reference<a class="headerlink" href="#full-parameter-mapping-reference" title="Permanent link">&para;</a></h2>
+<h3 id="ekf-parameters">EKF parameters<a class="headerlink" href="#ekf-parameters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>robot_localization (ekf_node)</th>
+<th>FusionCore</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frequency</code></td>
+<td><code>publish_rate</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>sensor_timeout</code></td>
+<td>automatic</td>
+<td>FC detects stale sensors per-sensor automatically</td>
+</tr>
+<tr>
+<td><code>two_d_mode: true</code></td>
+<td><code>publish.force_2d: true</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>transform_time_offset</code></td>
+<td>automatic</td>
+<td>FC handles timing internally</td>
+</tr>
+<tr>
+<td><code>transform_timeout</code></td>
+<td>automatic</td>
+<td></td>
+</tr>
+<tr>
+<td><code>predict_to_current_time</code></td>
+<td>always on</td>
+<td>FC always predicts to current time</td>
+</tr>
+<tr>
+<td><code>smooth_lagged_data</code></td>
+<td>automatic</td>
+<td>FC replays buffered IMU for delayed GPS</td>
+</tr>
+<tr>
+<td><code>history_length</code></td>
+<td>automatic</td>
+<td>FC uses a 1-second IMU ring buffer</td>
+</tr>
+<tr>
+<td><code>imu0</code> (topic name)</td>
+<td>remap <code>/imu/data</code></td>
+<td>FC subscribes to <code>/imu/data</code> by default</td>
+</tr>
+<tr>
+<td><code>odom0</code> (topic name)</td>
+<td>remap <code>/odom/wheels</code></td>
+<td>FC subscribes to <code>/odom/wheels</code> by default</td>
+</tr>
+<tr>
+<td><code>imu0_config</code></td>
+<td>not needed</td>
+<td>FC fuses all available IMU axes automatically</td>
+</tr>
+<tr>
+<td><code>odom0_config</code></td>
+<td>not needed</td>
+<td>FC fuses linear velocity and yaw rate from odometry</td>
+</tr>
+<tr>
+<td><code>imu0_differential</code></td>
+<td>not needed</td>
+<td>FC handles this internally</td>
+</tr>
+<tr>
+<td><code>imu0_relative</code></td>
+<td>not needed</td>
+<td></td>
+</tr>
+<tr>
+<td><code>imu0_queue_size</code></td>
+<td>not needed</td>
+<td></td>
+</tr>
+<tr>
+<td><code>imu0_remove_gravitational_acceleration</code></td>
+<td><code>imu.remove_gravitational_acceleration</code></td>
+<td>Logic is inverted: see Step 2 above</td>
+</tr>
+<tr>
+<td><code>mahalanobis_threshold</code></td>
+<td><code>outlier_threshold_gnss/imu/enc/hdg</code></td>
+<td>FC has per-sensor thresholds instead of one global value</td>
+</tr>
+<tr>
+<td><code>process_noise_covariance</code></td>
+<td><code>ukf.q_position</code>, <code>ukf.q_velocity</code>, etc.</td>
+<td>FC exposes named scalars instead of a 15×15 matrix</td>
+</tr>
+<tr>
+<td><code>initial_estimate_covariance</code></td>
+<td>not configurable</td>
+<td>FC initializes automatically from first sensor readings</td>
+</tr>
+<tr>
+<td><code>print_diagnostics</code></td>
+<td>always on</td>
+<td>FC publishes to <code>/diagnostics</code> at 1 Hz</td>
+</tr>
+</tbody>
+</table>
+<h3 id="navsat_transform-parameters">navsat_transform parameters<a class="headerlink" href="#navsat_transform-parameters" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>robot_localization (navsat_transform_node)</th>
+<th>FusionCore</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>frequency</code></td>
+<td><code>publish_rate</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>delay</code></td>
+<td>not needed</td>
+<td>FC handles timing automatically</td>
+</tr>
+<tr>
+<td><code>magnetic_declination_radians</code></td>
+<td>not needed</td>
+<td>FC uses ECEF (true north), not magnetic north</td>
+</tr>
+<tr>
+<td><code>yaw_offset</code></td>
+<td>not needed</td>
+<td></td>
+</tr>
+<tr>
+<td><code>zero_altitude</code></td>
+<td><code>publish.force_2d: true</code></td>
+<td></td>
+</tr>
+<tr>
+<td><code>broadcast_utm_transform</code></td>
+<td>not applicable</td>
+<td>FC fuses in ECEF, outputs local ENU</td>
+</tr>
+<tr>
+<td><code>publish_filtered_gps</code></td>
+<td>not available</td>
+<td>not currently supported</td>
+</tr>
+<tr>
+<td><code>use_odometry_yaw</code></td>
+<td>automatic</td>
+<td>FC initializes heading from motion automatically</td>
+</tr>
+<tr>
+<td><code>wait_for_datum</code></td>
+<td><code>reference.use_first_fix: true</code></td>
+<td>true = anchor to first fix (default)</td>
+</tr>
+<tr>
+<td><code>datum</code></td>
+<td><code>reference.x</code>, <code>reference.y</code>, <code>reference.z</code></td>
+<td>set in your output CRS coordinates</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="what-fusioncore-handles-automatically">What FusionCore handles automatically<a class="headerlink" href="#what-fusioncore-handles-automatically" title="Permanent link">&para;</a></h2>
+<p>These required manual config in robot_localization:</p>
+<table>
+<thead>
+<tr>
+<th>Task</th>
+<th>robot_localization</th>
+<th>FusionCore</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IMU frame → base_link transform</td>
+<td>specify <code>imu0_config</code> axes manually</td>
+<td>looks up TF tree automatically</td>
+</tr>
+<tr>
+<td>GPS antenna offset (lever arm)</td>
+<td>ignored</td>
+<td><code>gnss.lever_arm_x/y/z</code> applied per-fix</td>
+</tr>
+<tr>
+<td>Sensor noise tuning</td>
+<td>manual <code>process_noise_covariance</code> matrix</td>
+<td>adaptive noise from innovation sequence</td>
+</tr>
+<tr>
+<td>Zero-velocity updates (ZUPT)</td>
+<td>not built-in</td>
+<td>auto when encoder + UKF angular rate below threshold</td>
+</tr>
+<tr>
+<td>IMU bias estimation</td>
+<td>not built-in</td>
+<td>gyro + accel bias states in the 22D state vector</td>
+</tr>
+<tr>
+<td>GPS quality gating</td>
+<td>not built-in</td>
+<td><code>gnss.max_hdop</code>, <code>gnss.min_satellites</code>, <code>gnss.min_fix_type</code></td>
+</tr>
+<tr>
+<td>Delayed GPS fusion</td>
+<td><code>smooth_lagged_data</code> + <code>history_length</code></td>
+<td>IMU ring buffer replay, always on</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="what-robot_localization-has-that-fusioncore-doesnt">What robot_localization has that FusionCore doesn't<a class="headerlink" href="#what-robot_localization-has-that-fusioncore-doesnt" title="Permanent link">&para;</a></h2>
+<p>Know these before you migrate:</p>
+<table>
+<thead>
+<tr>
+<th>Feature</th>
+<th>robot_localization</th>
+<th>FusionCore</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Multiple independent odometry sources</td>
+<td>yes (odom0, odom1, ...)</td>
+<td>primary wheel odom + one secondary via <code>encoder2.topic</code></td>
+</tr>
+<tr>
+<td>Configurable state vector</td>
+<td>yes (per-sensor config booleans)</td>
+<td>fixed 22D state (position, orientation, velocity, biases)</td>
+</tr>
+<tr>
+<td>Arbitrary sensor plugins</td>
+<td>yes (extensible)</td>
+<td>IMU, wheel odometry, GPS only</td>
+</tr>
+<tr>
+<td>Published filtered GPS</td>
+<td><code>publish_filtered_gps: true</code></td>
+<td>not currently supported</td>
+</tr>
+<tr>
+<td>navsat datum from ROS service</td>
+<td><code>/datum</code> service</td>
+<td>not currently supported</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<p>Questions? Open a <a href="https://github.com/manankharwar/fusioncore/discussions">GitHub Discussion</a>.</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.instant", "navigation.sections", "navigation.top", "search.highlight", "search.suggest", "content.code.copy", "content.action.edit"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>
