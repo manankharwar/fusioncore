@@ -1,6 +1,4 @@
-<p align="center">
-  <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
-</p>
+
 
 # FusionCore
 
@@ -19,6 +17,10 @@ I needed sensor fusion for a mobile robot project and reached for `robot_localiz
 The designated replacement (`fuse`) has been in development for a while but still has incomplete GPS support as of early 2026.
 
 So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. It estimates IMU bias, adapts its noise covariance from the innovation sequence automatically, and gates outliers with a chi-squared test on every sensor. GPS is handled in ECEF directly: no coordinate projection, no extra node, no zone boundary issues.
+
+<p align="center">
+  <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
+</p>
 
 ---
 
