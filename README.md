@@ -4,17 +4,15 @@
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19834991-blue)](https://doi.org/10.5281/zenodo.19834991)
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
 
-**ROS 2 sensor fusion: IMU + wheel encoders + GPS fused via UKF at 100 Hz. Drop-in alternative to robot_localization with native ECEF GPS handling, automatic IMU bias estimation, and zero manual noise tuning.**
+**ROS 2 sensor fusion: IMU + wheel encoders + GPS fused via UKF at 100 Hz. 22-state filter with IMU bias estimation, adaptive noise covariance, and chi-squared outlier rejection on every sensor.**
 
 ---
 
 ## Why I built this
 
-I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works, but it has real gaps: no native ECEF GPS handling (it goes through `navsat_transform`, which adds latency and breaks at UTM zone boundaries), no IMU bias estimation, and noise covariances you have to tune by hand and re-tune whenever your environment changes.
+I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works well. But I wanted a filter that estimated IMU gyro and accelerometer bias as part of the state vector, adapted its noise covariance from real sensor behavior rather than config values, and rejected outliers on every sensor update — not just GPS.
 
-The designated replacement (`fuse`) has been in development for a while but still has incomplete GPS support as of early 2026.
-
-So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. It estimates IMU bias, adapts its noise covariance from the innovation sequence automatically, and gates outliers with a chi-squared test on every sensor. GPS is handled in ECEF directly: no coordinate projection, no extra node, no zone boundary issues.
+So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. Gyro and accelerometer bias are estimated continuously as filter states. Noise covariance adapts from the innovation sequence automatically. Every sensor update — IMU, wheel odometry, GPS — goes through a chi-squared gate before it touches the filter. GPS is handled in ECEF directly, no coordinate projection.
 
 <p align="center">
   <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="650">
@@ -76,7 +74,7 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
 
 ## License
 
-Apache 2.0. Includes explicit patent license grant that BSD-3 does not provide.
+Apache 2.0.
 
 ---
 

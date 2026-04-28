@@ -17,20 +17,21 @@ GPS is optional. FusionCore runs fine on IMU + wheel odometry alone for indoor r
 
 ---
 
-## Why not robot_localization?
+## How FusionCore differs from robot_localization
+
+robot_localization is a solid, well-maintained package used on tens of thousands of robots. FusionCore makes different architectural choices:
 
 | Capability | robot_localization | FusionCore |
 |---|---|---|
-| GPS fusion | navsat_transform node (extra node, latency, UTM zone issues) | ECEF-native, single node |
-| IMU bias estimation | No | Gyro + accel bias states |
-| Outlier rejection | mahalanobis_threshold (one global threshold) | Chi-squared gating per sensor |
-| Adaptive noise | Manual YAML tuning, re-tune per environment | Auto from innovation sequence |
+| IMU bias estimation | Not in state vector | Gyro + accel bias as filter states |
+| Outlier rejection | Single global Mahalanobis threshold | Chi-squared gating per sensor |
+| Adaptive noise | Fixed config values | Auto from innovation sequence |
 | ZUPT | Not built-in | Auto when stationary |
-| Delay compensation | history_length (approximate) | Full IMU replay retrodiction |
-| GPS fix quality gating | No | GPS / DGPS / RTK_FLOAT / RTK_FIXED |
-| Dual antenna heading | No | Yes |
+| Delay compensation | `smooth_lagged_data` + `history_length` | IMU ring buffer replay |
+| GPS fix quality gating | Not built-in | HDOP, satellite count, fix type |
+| Dual antenna heading | Not built-in | Yes |
+| Inertial coast mode | Not built-in | Auto on sustained GPS dropout |
 | ROS 2 Jazzy | Ported from ROS 1 | Native, from scratch |
-| License | BSD-3 | Apache 2.0 (patent grant included) |
 
 ---
 

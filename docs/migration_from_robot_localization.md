@@ -305,7 +305,7 @@ These required manual config in robot_localization:
 |---|---|---|
 | IMU frame → base_link transform | specify `imu0_config` axes manually | looks up TF tree automatically |
 | GPS antenna offset (lever arm) | ignored | `gnss.lever_arm_x/y/z` applied per-fix |
-| Sensor noise tuning | manual `process_noise_covariance` matrix | adaptive noise from innovation sequence |
+| Sensor noise tuning | fixed config values | adaptive noise from innovation sequence |
 | Zero-velocity updates (ZUPT) | not built-in | auto when encoder + UKF angular rate below threshold |
 | IMU bias estimation | not built-in | gyro + accel bias states in the 22D state vector |
 | GPS quality gating | not built-in | `gnss.max_hdop`, `gnss.min_satellites`, `gnss.min_fix_type` |
