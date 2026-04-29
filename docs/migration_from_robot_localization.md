@@ -308,7 +308,8 @@ These required manual config in robot_localization:
 | Sensor noise tuning | fixed config values | adaptive noise from innovation sequence |
 | Zero-velocity updates (ZUPT) | not built-in | auto when encoder + UKF angular rate below threshold |
 | IMU bias estimation | not built-in | gyro + accel bias states in the 22D state vector |
-| GPS quality gating | not built-in | `gnss.max_hdop`, `gnss.min_satellites`, `gnss.min_fix_type` |
+| GPS fix quality pre-filter | not built-in | `gnss.max_hdop`, `gnss.min_satellites`, `gnss.min_fix_type` |
+| Measurement rejection | Mahalanobis threshold (per sensor, scalar) | Chi-squared gate (per sensor, calibrated to sensor DOF) |
 | Delayed GPS fusion | `smooth_lagged_data` + `history_length` | IMU ring buffer replay, always on |
 
 ---

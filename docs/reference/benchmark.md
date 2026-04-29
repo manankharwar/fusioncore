@@ -17,7 +17,9 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 
 FusionCore wins 5 of 6 sequences. RL-UKF diverged with NaN on all six.
 
-On 2012-11-04 (fall, degraded GPS), FC's Mahalanobis outlier gate still loses: GPS was sufficiently degraded for long enough that accumulated drift could not be fully recovered. RL-EKF has no rejection gate and self-corrects immediately when GPS comes back.
+**Note:** These results were generated with an RL config that had misconfigured Mahalanobis threshold parameter names (parameter was silently ignored). A corrected re-run with properly configured RL gating is in progress and results will be updated here. The RL-UKF NaN divergences are unaffected — the RL maintainer has independently confirmed the UKF has numerical instability issues.
+
+On 2012-11-04 (fall, degraded GPS), FC's chi-squared gate traps itself: sustained GPS degradation causes continuous rejection → state drift → further rejection. RL-EKF re-anchors when signal improves. FusionCore's inertial coast mode reduces this gap (61.4 m → 28.7 m) but RL still wins this sequence.
 
 <p align="center">
   <img src="../../figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
