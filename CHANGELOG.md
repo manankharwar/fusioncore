@@ -6,6 +6,19 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.2.1]: 2026-04-28
+
+### Fixed
+- **`duatic_mecanum.yaml`**: `ukf.q_orientation` was `0.01`, causing yaw drift at IMU rates. Corrected to `1.0e-9`.
+- **CMakeLists versions**: `fusioncore_ros` and `fusioncore_core` project versions were out of sync with `package.xml`. Both now track `0.2.1`.
+
+### Added
+- **`wheels_indoor.yaml`**: new hardware config for any indoor robot with IMU + wheel odometry, no GPS. Covers differential drive, mecanum, Turtlebot3, ROS 2 Control, Nav2 default setups.
+- **`icp_indoor.yaml`**: new hardware config for indoor robots using LiDAR ICP odometry (KISS-ICP, rtabmap `icp_odometry`) instead of or alongside wheel encoders.
+- **Hardware docs**: new decision table ("Which setup are you?") and per-config setup guides for indoor wheel and ICP setups.
+
+---
+
 ## [0.1.1]: 2026-04-03
 
 ### Fixed

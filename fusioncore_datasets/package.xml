@@ -1,7 +1,7 @@
 <?xml version="1.0"?>
 <package format="3">
   <name>fusioncore_datasets</name>
-  <version>0.2.0</version>
+  <version>0.2.1</version>
   <description>NCLT dataset adapter and benchmark pipeline for FusionCore vs robot_localization</description>
   <maintainer email="manankharwar2001@gmail.com">Manan Kharwar</maintainer>
   <license>Apache-2.0</license>
