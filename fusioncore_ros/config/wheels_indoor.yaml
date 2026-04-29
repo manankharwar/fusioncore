@@ -28,7 +28,7 @@
 # SLAM integration:
 #   FusionCore publishes odom → base_link TF.
 #   slam_toolbox or RTABMAP publish map → odom TF.
-#   Launch both independently — they do not conflict.
+#   Launch both independently: they do not conflict.
 
 fusioncore:
   ros__parameters:

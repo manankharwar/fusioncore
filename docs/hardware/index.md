@@ -6,12 +6,12 @@ Pick the row that matches your sensors. Everything else follows from there.
 
 | My sensors | Use case | Start here |
 |---|---|---|
-| IMU + wheel odometry | Indoor, no GPS — warehouse, home robot, lab | [`wheels_indoor.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/wheels_indoor.yaml) |
-| IMU + LiDAR ICP | Indoor, no wheel odom — using KISS-ICP or rtabmap | [`icp_indoor.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/icp_indoor.yaml) |
+| IMU + wheel odometry | Indoor, no GPS: warehouse, home robot, lab | [`wheels_indoor.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/wheels_indoor.yaml) |
+| IMU + LiDAR ICP | Indoor, no wheel odom: using KISS-ICP or rtabmap | [`icp_indoor.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/icp_indoor.yaml) |
 | IMU + wheel odom + LiDAR ICP | Indoor, both velocity sources for redundancy | [`wheels_indoor.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/wheels_indoor.yaml) + uncomment `encoder2.topic` |
 | IMU + wheel odom + GPS | Outdoor, field robots, GPS navigation | [`bno085_custom.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/bno085_custom.yaml) or [`clearpath_husky.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/clearpath_husky.yaml) |
 
-**Variations within each setup — one-line changes, not separate configs:**
+**Variations within each setup: one-line changes, not separate configs:**
 
 | Variation | Parameter to change |
 |---|---|

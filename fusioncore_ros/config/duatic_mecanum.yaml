@@ -1,7 +1,7 @@
 # Hardware config: Duatic mecanum robot + BNO085 IMU, no GPS
 #
 # Platform:  Duatic mecanum manipulator platform
-# IMU:       Bosch BNO085 (6-axis mode — magnetometer disabled due to motor interference)
+# IMU:       Bosch BNO085 (6-axis mode: magnetometer disabled due to motor interference)
 # GPS:       None. Filter starts at origin, runs on IMU + wheel odom only.
 #
 # Launch:

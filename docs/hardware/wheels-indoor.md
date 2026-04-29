@@ -20,13 +20,13 @@ Common wheel odom topic remaps:
 | ROS 2 Control diff_drive | `/diff_controller/odom` | `-r /odom/wheels:=/diff_controller/odom` |
 | Turtlebot3 | `/odom` | `-r /odom/wheels:=/odom` |
 | Nav2 default | `/odom` | `-r /odom/wheels:=/odom` |
-| Already `/odom/wheels` | — | no remap needed |
+| Already `/odom/wheels` |: | no remap needed |
 
 ---
 
 ## What FusionCore gives you indoors
 
-Without GPS, FusionCore gives you **clean local odometry** — not global position. It starts at the origin and builds from there. What it adds over raw wheel odom:
+Without GPS, FusionCore gives you **clean local odometry**: not global position. It starts at the origin and builds from there. What it adds over raw wheel odom:
 
 - IMU gyro + accel bias estimated continuously as filter states → less heading drift
 - Chi-squared outlier rejection on wheel odom → encoder spikes don't corrupt the state
@@ -67,7 +67,7 @@ encoder2.topic: "/kiss/odometry"    # KISS-ICP
 # encoder2.topic: "/icp_odom"       # rtabmap icp_odometry
 ```
 
-FusionCore fuses both independently. If wheel odom has a spike, the chi-squared gate rejects it — ICP keeps the estimate grounded.
+FusionCore fuses both independently. If wheel odom has a spike, the chi-squared gate rejects it: ICP keeps the estimate grounded.
 
 If you have **no wheel odom at all** and only LiDAR ICP, use [`icp_indoor.yaml`](icp-indoor.md) instead.
 

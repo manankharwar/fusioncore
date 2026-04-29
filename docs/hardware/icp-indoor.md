@@ -1,6 +1,6 @@
 # Indoor / GPS-denied robots (LiDAR ICP odometry)
 
-For robots operating indoors, underground, or anywhere GPS isn't available. FusionCore runs fine without GPS — it starts at the origin and builds a local odometry frame from IMU + LiDAR ICP alone.
+For robots operating indoors, underground, or anywhere GPS isn't available. FusionCore runs fine without GPS: it starts at the origin and builds a local odometry frame from IMU + LiDAR ICP alone.
 
 ---
 
@@ -28,9 +28,9 @@ Replace `/kiss/odometry` with whatever your ICP pipeline publishes:
 |---|---|
 | KISS-ICP | `/kiss/odometry` |
 | rtabmap `icp_odometry` | `/icp_odom` |
-| cartographer | `/tracked_pose` (pose only — needs twist wrapper) |
+| cartographer | `/tracked_pose` (pose only: needs twist wrapper) |
 
-FusionCore treats LiDAR ICP odometry exactly like wheel odometry: same outlier gate, same adaptive noise, same ZUPT logic. The only difference is the noise values — ICP is more accurate than wheels so `icp_indoor.yaml` uses tighter defaults (`encoder.vel_noise: 0.02` instead of `0.05`).
+FusionCore treats LiDAR ICP odometry exactly like wheel odometry: same outlier gate, same adaptive noise, same ZUPT logic. The only difference is the noise values: ICP is more accurate than wheels so `icp_indoor.yaml` uses tighter defaults (`encoder.vel_noise: 0.02` instead of `0.05`).
 
 ---
 
@@ -43,7 +43,7 @@ If your wheel odom is reliable, use it as primary and add ICP as a second cross-
 encoder2.topic: "/kiss/odometry"
 ```
 
-Then launch without the remap — FusionCore subscribes to `/odom/wheels` natively and picks up ICP as a second velocity source.
+Then launch without the remap: FusionCore subscribes to `/odom/wheels` natively and picks up ICP as a second velocity source.
 
 ---
 
@@ -102,6 +102,6 @@ Without GPS corrections, IMU bias matters more indoors. Add this to your config:
 init.stationary_window: 2.0
 ```
 
-This collects 2 seconds of stationary IMU data at startup to estimate bias before the filter starts. Reduces startup drift from ~10 cm to under 1 cm. Robot must be stationary for the first 2 seconds after launch — it falls back automatically if it detects movement.
+This collects 2 seconds of stationary IMU data at startup to estimate bias before the filter starts. Reduces startup drift from ~10 cm to under 1 cm. Robot must be stationary for the first 2 seconds after launch: it falls back automatically if it detects movement.
 
 The `icp_indoor.yaml` config has this enabled by default.
