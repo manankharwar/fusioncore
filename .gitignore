@@ -51,7 +51,7 @@ log/
 frames_*.gv
 frames_*.pdf
 
-# Outreach / private contact data — never commit
+# Outreach / private contact data: never commit
 stargazers_outreach.tsv
 outreach_emails.md
 outreach_twitter.md

@@ -10,9 +10,9 @@
 
 ## Why I built this
 
-I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works well. But I wanted a filter that estimated IMU gyro and accelerometer bias as part of the state vector, adapted its noise covariance from real sensor behavior rather than config values, and rejected outliers on every sensor update — not just GPS.
+I needed sensor fusion for a mobile robot project and reached for `robot_localization` like everyone does. It works well. But I wanted a filter that estimated IMU gyro and accelerometer bias as part of the state vector, adapted its noise covariance from real sensor behavior rather than config values, and rejected outliers on every sensor update: not just GPS.
 
-So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. Gyro and accelerometer bias are estimated continuously as filter states. Noise covariance adapts from the innovation sequence automatically. Every sensor update — IMU, wheel odometry, GPS — goes through a chi-squared gate before it touches the filter. GPS is handled in ECEF directly, no coordinate projection.
+So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and GPS natively. Gyro and accelerometer bias are estimated continuously as filter states. Noise covariance adapts from the innovation sequence automatically. Every sensor update: IMU, wheel odometry, GPS: goes through a chi-squared gate before it touches the filter. GPS is handled in ECEF directly, no coordinate projection.
 
 <p align="center">
   <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="650">

@@ -23,7 +23,7 @@ robot_localization is a solid, well-maintained package used on tens of thousands
 
 | Capability | robot_localization | FusionCore |
 |---|---|---|
-| GPS fusion | navsat_transform node required; ECEF TF frame added in rolling-devel | Filter state runs natively in ECEF — no UTM projection |
+| GPS fusion | navsat_transform node required; ECEF TF frame added in rolling-devel | Filter state runs natively in ECEF: no UTM projection |
 | IMU bias estimation | Not in state vector | Gyro + accel bias as filter states |
 | Outlier rejection | Single global Mahalanobis threshold | Chi-squared gating per sensor |
 | Adaptive noise | Fixed config values | Auto from innovation sequence |
