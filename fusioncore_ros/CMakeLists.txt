@@ -20,7 +20,17 @@ find_package(Eigen3 REQUIRED)
 find_package(fusioncore_core REQUIRED)
 find_package(diagnostic_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
-find_package(PROJ REQUIRED)
+find_package(PROJ QUIET)
+if(NOT PROJ_FOUND)
+  # PROJ 8 (Ubuntu 22.04 / Humble) ships no CMake config; fall back to pkg-config
+  find_package(PkgConfig REQUIRED)
+  pkg_check_modules(PROJ REQUIRED proj)
+  if(NOT TARGET PROJ::proj)
+    add_library(PROJ::proj INTERFACE IMPORTED)
+    target_include_directories(PROJ::proj INTERFACE ${PROJ_INCLUDE_DIRS})
+    target_link_libraries(PROJ::proj INTERFACE ${PROJ_LINK_LIBRARIES})
+  endif()
+endif()
 find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
