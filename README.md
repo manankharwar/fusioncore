@@ -24,14 +24,16 @@ So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, and G
 
 FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/): same IMU + wheel odometry + GPS, no manual tuning. Six sequences:
 
+RL-EKF run with `odom0_twist_rejection_threshold: 4.03` and `odom1_pose_rejection_threshold: 3.72` (chi²-equivalent to FusionCore's thresholds at 99.9% confidence).
+
 | Sequence | FC ATE RMSE | RL-EKF ATE RMSE | RL-UKF |
 |---|---|---|---|
-| 2012-01-08 | **5.6 m** | 23.4 m | NaN divergence at t=31 s |
-| 2012-02-04 | **9.7 m** | 20.6 m | NaN divergence at t=22 s |
-| 2012-03-31 | **4.2 m** | 10.8 m | NaN divergence at t=18 s |
-| 2012-08-20 | **7.5 m** | 9.4 m | NaN divergence |
-| 2012-11-04 | 28.7 m | **10.9 m** | NaN divergence |
-| 2013-02-23 | **4.1 m** | 5.8 m | NaN divergence |
+| 2012-01-08 | **5.6 m** | 13.0 m | NaN divergence at t=31 s |
+| 2012-02-04 | **9.7 m** | 19.1 m | NaN divergence at t=22 s |
+| 2012-03-31 | **4.2 m** | 54.3 m | NaN divergence at t=18 s |
+| 2012-08-20 | **7.5 m** | 24.1 m | NaN divergence |
+| 2012-11-04 | 28.6 m | **9.6 m** | NaN divergence |
+| 2013-02-23 | **4.1 m** | 11.0 m | NaN divergence |
 
 ---
 

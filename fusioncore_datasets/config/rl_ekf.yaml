@@ -27,8 +27,8 @@ rl_ekf:
     odom0_differential: false
     odom0_relative: false
     odom0_queue_size: 10
-    # chi2(3, 0.999)=16.27; RL compares n_sigmas^2 vs squared-Mahal, so sqrt(16.27)=4.03
-    odom0_mahal_threshold: 4.03
+    # chi2(3, 0.999)=16.27; RL threshold is unsquared Mahalanobis distance = sqrt(16.27)=4.03
+    odom0_twist_rejection_threshold: 4.03
 
     # navsat_transform output: fuse XY position from GPS
     odom1: /gps/odometry
@@ -41,7 +41,7 @@ rl_ekf:
     odom1_relative: false
     odom1_queue_size: 10
     # chi2(2, 0.999)=13.82; sqrt(13.82)=3.72
-    odom1_mahal_threshold: 3.72
+    odom1_pose_rejection_threshold: 3.72
 
     # IMU: fuse orientation (roll/pitch only: yaw from GPS track), angular velocity, acceleration
     imu0: /imu/data
