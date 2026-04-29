@@ -19,8 +19,8 @@ The most impactful contributions right now are **hardware configs**. If you have
 git clone https://github.com/manankharwar/fusioncore.git
 cd fusioncore
 
-source /opt/ros/jazzy/setup.sh
-rosdep install -r --from-paths . --ignore-src --rosdistro jazzy -y
+source /opt/ros/jazzy/setup.sh  # replace jazzy with humble on Ubuntu 22.04
+rosdep install -r --from-paths . --ignore-src --rosdistro jazzy -y  # replace jazzy with humble on Ubuntu 22.04
 colcon build --packages-up-to compass_msgs fusioncore_core fusioncore_ros --cmake-args -DBUILD_TESTING=ON
 
 # Run all tests before and after your change

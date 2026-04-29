@@ -39,11 +39,13 @@ RL-EKF run with `odom0_twist_rejection_threshold: 4.03` and `odom1_pose_rejectio
 
 ## Install
 
+Supports **ROS 2 Jazzy** (Ubuntu 24.04) and **Humble** (Ubuntu 22.04).
+
 ```bash
 mkdir -p ~/ros2_ws/src && cd ~/ros2_ws/src
 git clone https://github.com/manankharwar/fusioncore.git
 cd ~/ros2_ws
-source /opt/ros/jazzy/setup.bash
+source /opt/ros/jazzy/setup.bash  # or /opt/ros/humble/setup.bash
 rosdep install --from-paths src --ignore-src -r -y
 colcon build && source install/setup.bash
 ```

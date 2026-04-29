@@ -8,24 +8,31 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        include:
+          - ros_distro: jazzy
+            os: ubuntu-24.04
+          - ros_distro: humble
+            os: ubuntu-22.04
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
       - uses: ros-tooling/setup-ros@v0.7
         with:
-          required-ros-distributions: jazzy
+          required-ros-distributions: ${{ matrix.ros_distro }}
 
       - name: Install rosdep dependencies
         run: |
-          source /opt/ros/jazzy/setup.sh
+          source /opt/ros/${{ matrix.ros_distro }}/setup.sh
           sudo rosdep init 2>/dev/null || true
           rosdep update
-          rosdep install -r --from-paths . --ignore-src --rosdistro jazzy -y
+          rosdep install -r --from-paths . --ignore-src --rosdistro ${{ matrix.ros_distro }} -y
 
       - name: Build
         run: |
-          source /opt/ros/jazzy/setup.sh
+          source /opt/ros/${{ matrix.ros_distro }}/setup.sh
           colcon build \
             --packages-up-to compass_msgs fusioncore_core fusioncore_ros \
             --cmake-args -DBUILD_TESTING=ON \
@@ -33,7 +40,7 @@ jobs:
 
       - name: Test
         run: |
-          source /opt/ros/jazzy/setup.sh
+          source /opt/ros/${{ matrix.ros_distro }}/setup.sh
           source install/local_setup.bash
           colcon test \
             --packages-select compass_msgs fusioncore_core fusioncore_ros \
@@ -41,5 +48,5 @@ jobs:
 
       - name: Check test results
         run: |
-          source /opt/ros/jazzy/setup.sh
+          source /opt/ros/${{ matrix.ros_distro }}/setup.sh
           colcon test-result --verbose

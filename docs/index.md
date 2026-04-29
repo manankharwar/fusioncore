@@ -32,11 +32,14 @@ robot_localization is a solid, well-maintained package used on tens of thousands
 | GPS fix quality gating | Not built-in | HDOP, satellite count, fix type |
 | Dual antenna heading | Not built-in | Yes |
 | Inertial coast mode | Not built-in | Auto on sustained GPS dropout |
-| ROS 2 Jazzy | Ported from ROS 1 | Native, from scratch |
+| ROS 2 Jazzy / Humble | Ported from ROS 1 | Native, from scratch |
 
 ---
 
 ## Install
+
+!!! note "Humble users"
+    Replace `jazzy` with `humble` in the commands below (Ubuntu 22.04).
 
 ```bash
 mkdir -p ~/ros2_ws/src

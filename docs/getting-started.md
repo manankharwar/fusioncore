@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- ROS 2 Jazzy Jalisco (primary) or ROS 2 Kilted (community tested)
+- ROS 2 Jazzy Jalisco (Ubuntu 24.04) or Humble Hawksbill (Ubuntu 22.04)
 - A colcon workspace (`~/ros2_ws`)
 
 ---
@@ -10,6 +10,9 @@
 ## Install
 
 FusionCore is a monorepo with 4 packages: `compass_msgs`, `fusioncore_core`, `fusioncore_ros`, and `fusioncore_gazebo`. The repo must live inside `src/` for colcon to find them.
+
+!!! note "Humble users"
+    Replace `jazzy` with `humble` in all commands below.
 
 ```bash
 mkdir -p ~/ros2_ws/src
