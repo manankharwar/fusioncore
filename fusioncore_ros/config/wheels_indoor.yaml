@@ -1,0 +1,120 @@
+# Hardware config: IMU + wheel odometry, no GPS (generic indoor robot)
+#
+# Platform:  Any differential drive or mecanum ground robot
+# IMU:       Any 6-axis MEMS (MPU-6050, ICM-42688, OAK-D, Realsense D435i)
+#            For 9-axis (BNO085, VectorNav, Xsens): set imu.has_magnetometer: true
+# Odometry:  Wheel encoders via nav_msgs/Odometry
+# GPS:       Not required. Filter starts at origin and drifts locally.
+# Use for:   Warehouse AGVs, home robots, indoor research platforms,
+#            any ground robot running SLAM indoors
+#
+# Note on yaw drift: without GPS or a magnetometer, heading comes from
+# gyro integration only. Bias estimation slows the drift significantly
+# but does not eliminate it. ZUPT suppresses it during standstill.
+# For long sessions, pair with slam_toolbox or RTABMAP: SLAM corrects
+# accumulated heading error via loop closure.
+#
+# Launch:
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/wheels_indoor.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/your/wheel/odom/topic   # if not already /odom/wheels
+#
+# Common topic remaps:
+#   ROS 2 Control diff_drive:  -r /odom/wheels:=/diff_controller/odom
+#   Nav2 default:              -r /odom/wheels:=/odom
+#   Turtlebot3:                -r /odom/wheels:=/odom
+#
+# SLAM integration:
+#   FusionCore publishes odom → base_link TF.
+#   slam_toolbox or RTABMAP publish map → odom TF.
+#   Launch both independently — they do not conflict.
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: true            # ground robot
+
+    # ── IMU ───────────────────────────────────────────────────────────────────
+    # Generic 6-axis MEMS defaults. Adjust from your IMU datasheet if available.
+    # has_magnetometer: set true if you have a 9-axis IMU (BNO085, VectorNav).
+    #   true  = yaw from magnetometer: available immediately, no drift (but
+    #           sensitive to motor/wiring interference on robot platforms)
+    #   false = yaw from gyro integration: drifts slowly, SLAM loop closure
+    #           corrects it. Safer default for most robots.
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.005             # rad/s : conservative MEMS default
+    imu.accel_noise: 0.1              # m/s²
+    imu.remove_gravitational_acceleration: false
+    # Set your IMU TF frame if your driver doesn't fill header.frame_id.
+    # Leave empty to use whatever the driver publishes in the message header.
+    imu.frame_id: ""
+
+    # ── Wheel encoders ────────────────────────────────────────────────────────
+    # Generic values for mid-quality differential drive.
+    # Tighten vel_noise if you have high-resolution encoders (≥500 CPR).
+    # Loosen if your surface is slippery, wheels are soft, or odom is noisy.
+    encoder.vel_noise: 0.05           # m/s
+    encoder.yaw_noise: 0.02           # rad/s
+
+    # ── Optional second velocity source ──────────────────────────────────────
+    # Uncomment to add LiDAR ICP or visual odometry as a second velocity source.
+    # FusionCore fuses both independently: wheel odom primary, ICP cross-check.
+    # encoder2.topic: "/kiss/odometry"    # KISS-ICP
+    # encoder2.topic: "/icp_odom"         # rtabmap icp_odometry
+
+    # ── GPS: disabled ─────────────────────────────────────────────────────────
+    gnss.base_noise_xy: 2.5
+    gnss.base_noise_z: 5.0
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
+    gnss.min_fix_type: 1
+    gnss.fix2_topic: ""
+    gnss.heading_topic: ""
+    gnss.azimuth_topic: ""
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+    outlier_threshold_imu: 15.09
+    outlier_threshold_enc: 11.34
+    outlier_threshold_hdg: 10.83
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: false              # no GPS
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── ZUPT ──────────────────────────────────────────────────────────────────
+    # Critical indoors: suppresses IMU drift during standstill.
+    # Without GPS corrections, every second of stationary drift matters.
+    zupt.enabled: true
+    zupt.velocity_threshold: 0.05     # m/s
+    zupt.angular_threshold: 0.05      # rad/s
+    zupt.noise_sigma: 0.01
+
+    # ── Startup bias init ─────────────────────────────────────────────────────
+    # Recommended indoors: no GPS to correct early drift.
+    # Robot must be stationary for 2 seconds after launch.
+    init.stationary_window: 2.0
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9         # quaternion regularization only: do not increase
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: false    # no GPS: start at origin
+    reference.x: 0.0
+    reference.y: 0.0
+    reference.z: 0.0

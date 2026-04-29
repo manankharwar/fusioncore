@@ -1,18 +1,32 @@
+# Hardware config: Duatic mecanum robot + BNO085 IMU, no GPS
+#
+# Platform:  Duatic mecanum manipulator platform
+# IMU:       Bosch BNO085 (6-axis mode — magnetometer disabled due to motor interference)
+# GPS:       None. Filter starts at origin, runs on IMU + wheel odom only.
+#
+# Launch:
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/duatic_mecanum.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/your/mecanum/odom/topic
+
 fusioncore:
   ros__parameters:
     base_frame: duarover_base
     odom_frame: odom
     publish_rate: 50.0
+    publish.force_2d: true
 
-    # BNO085 without magnetometer: yaw from gyro integration (will drift)
+    # BNO085 in 6-axis mode (magnetometer disabled: motor interference on Duatic)
     imu.has_magnetometer: false
-    imu.gyro_noise: 0.005
-    imu.accel_noise: 0.1
+    imu.gyro_noise: 0.005             # rad/s
+    imu.accel_noise: 0.1              # m/s²
+    imu.remove_gravitational_acceleration: false
 
-    encoder.vel_noise: 0.05
-    encoder.yaw_noise: 0.02
+    encoder.vel_noise: 0.05           # m/s
+    encoder.yaw_noise: 0.02           # rad/s
 
-    # GPS disabled: IMU + odometry only
+    # GPS disabled
     gnss.base_noise_xy: 1.0
     gnss.base_noise_z: 2.0
     gnss.heading_noise: 0.02
@@ -20,33 +34,37 @@ fusioncore:
     gnss.min_satellites: 4
     gnss.fix2_topic: ""
     gnss.azimuth_topic: ""
-
     gnss.lever_arm_x: 0.0
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
-
     gnss.lever_arm2_x: 0.0
     gnss.lever_arm2_y: 0.0
     gnss.lever_arm2_z: 0.0
 
-    # Mahalanobis outlier rejection
     outlier_rejection: true
     outlier_threshold_gnss: 16.27
     outlier_threshold_imu: 15.09
     outlier_threshold_enc: 11.34
     outlier_threshold_hdg: 10.83
 
-    # Adaptive noise covariance
     adaptive.imu: true
     adaptive.encoder: true
-    adaptive.gnss: false      # no GPS
+    adaptive.gnss: false
     adaptive.window: 50
     adaptive.alpha: 0.01
 
     ukf.q_position: 0.01
-    ukf.q_orientation: 0.01
+    ukf.q_orientation: 1.0e-9         # quaternion regularization only: do not increase
     ukf.q_velocity: 0.1
     ukf.q_angular_vel: 0.1
     ukf.q_acceleration: 1.0
     ukf.q_gyro_bias: 1.0e-5
     ukf.q_accel_bias: 1.0e-5
+
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: false
+    reference.x: 0.0
+    reference.y: 0.0
+    reference.z: 0.0
