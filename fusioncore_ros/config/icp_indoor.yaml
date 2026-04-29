@@ -1,0 +1,130 @@
+# Hardware config: IMU + LiDAR ICP odometry, no GPS (indoor robots)
+#
+# Platform:  Any ground robot with a LiDAR and IMU, operating indoors
+#            or anywhere GPS is unavailable
+# IMU:       Any 6-axis MEMS (MPU-6050, ICM-42688, OAK-D built-in, Realsense D435i)
+#            For 9-axis (BNO085, VectorNav, Xsens): set imu.has_magnetometer: true
+# LiDAR:     Any LiDAR supported by KISS-ICP or rtabmap_odom
+# GPS:       Not required. Filter starts at origin and runs on IMU + LiDAR only.
+# Use for:   Indoor robots, underground, warehouses, any GPS-denied environment
+# Tested:    KISS-ICP and rtabmap icp_odometry, Velodyne VLP-16, OAK-D IMU
+#
+# ── How to use ────────────────────────────────────────────────────────────────
+#
+# Option A: LiDAR ICP as your only odometry source (no wheel odom)
+#   Remap /odom/wheels to your ICP topic:
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/icp_indoor.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/kiss/odometry        # KISS-ICP
+#     -r /odom/wheels:=/icp_odom             # rtabmap icp_odometry
+#
+# Option B: Wheel odom as primary + LiDAR ICP as secondary cross-check
+#   Set encoder2.topic below and remap wheel odom if needed:
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/icp_indoor.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/your/wheel/odom/topic
+#   (and uncomment encoder2.topic below)
+#
+# ── Common IMU topic remaps ───────────────────────────────────────────────────
+#   OAK-D camera IMU:      /imu  → -r /imu/data:=/imu
+#   Realsense D435i IMU:   /camera/imu  → -r /imu/data:=/camera/imu
+#   Most other drivers publish at /imu/data already (no remap needed)
+#
+# ── SLAM integration (slam_toolbox, RTABMAP) ─────────────────────────────────
+#   FusionCore publishes odom → base_link TF.
+#   Your SLAM system publishes map → odom TF.
+#   They do not conflict. Just launch both.
+#
+#   ros2 launch slam_toolbox online_async_launch.py   # slam_toolbox
+#   ros2 launch rtabmap_slam rtabmap.launch.py        # RTABMAP
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: true            # ground robot
+
+    # ── IMU ───────────────────────────────────────────────────────────────────
+    # Generic 6-axis MEMS values. Tighten gyro_noise if you have a higher-grade
+    # IMU (e.g. Microstrain GX5: 0.0017 rad/s). Loosen if your robot vibrates.
+    imu.has_magnetometer: false       # set true for 9-axis (BNO085, VectorNav)
+    imu.gyro_noise: 0.005             # rad/s
+    imu.accel_noise: 0.1              # m/s²
+    imu.remove_gravitational_acceleration: false
+    # Set your IMU's TF frame here if your driver doesn't set header.frame_id.
+    # OAK-D: "oak_imu_frame"   Realsense: "camera_imu_optical_frame"
+    # Leave empty to use whatever the driver publishes in the message header.
+    imu.frame_id: ""
+
+    # ── Primary odometry (LiDAR ICP or wheel odom) ────────────────────────────
+    # FusionCore subscribes to /odom/wheels. Remap it to your ICP topic at
+    # launch time (see examples above). These noise values suit LiDAR ICP well:
+    # ICP is more accurate than wheel odom so we use tighter values.
+    encoder.vel_noise: 0.02           # m/s  (tighter than wheel odom: ICP is accurate)
+    encoder.yaw_noise: 0.005          # rad/s
+
+    # ── Secondary odometry (optional) ────────────────────────────────────────
+    # Uncomment if you want to fuse a second velocity source alongside wheel odom.
+    # encoder2.topic: "/kiss/odometry"
+
+    # ── GPS: disabled ─────────────────────────────────────────────────────────
+    # No GPS indoors. reference.use_first_fix: false means FusionCore starts at
+    # origin (0,0,0) and builds a local map from there. Your SLAM system handles
+    # the global map frame.
+    gnss.base_noise_xy: 2.5
+    gnss.base_noise_z: 5.0
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
+    gnss.min_fix_type: 1
+    gnss.fix2_topic: ""
+    gnss.heading_topic: ""
+    gnss.azimuth_topic: ""
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+    outlier_threshold_imu: 15.09
+    outlier_threshold_enc: 11.34      # chi2(3, 0.999): rejects ICP jumps
+    outlier_threshold_hdg: 10.83
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: false              # no GPS: adaptive gnss has nothing to adapt
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── ZUPT ──────────────────────────────────────────────────────────────────
+    # ICP odometry can report small non-zero velocities even when stationary
+    # (scan matching jitter). Loosen the threshold slightly from the default.
+    zupt.enabled: true
+    zupt.velocity_threshold: 0.08    # m/s: slightly looser than default for ICP jitter
+    zupt.angular_threshold: 0.05     # rad/s
+    zupt.noise_sigma: 0.01
+
+    # ── Startup bias init ─────────────────────────────────────────────────────
+    # Recommended indoors: collects 2s of stationary IMU data to estimate bias
+    # before the filter starts. Reduces startup drift from ~10cm to <1cm.
+    # Robot must be stationary for 2 seconds after launch.
+    init.stationary_window: 2.0
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+
+    # ── No GPS coordinate system needed ───────────────────────────────────────
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: false    # no GPS: start at origin
+    reference.x: 0.0
+    reference.y: 0.0
+    reference.z: 0.0

@@ -51,6 +51,7 @@ nav:
   - Configuration: configuration.md
   - Hardware:
     - Overview & Configs: hardware/index.md
+    - Indoor / LiDAR ICP (no GPS): hardware/icp-indoor.md
     - Environment Presets: hardware/environment-presets.md
   - Nav2 Integration: nav2.md
   - Simulation: simulation.md
