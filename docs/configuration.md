@@ -76,7 +76,9 @@ fusioncore:
     # ── Outlier rejection ─────────────────────────────────────────────────────
     outlier_rejection: true
     outlier_threshold_gnss: 16.27   # chi2(3, 0.999): 3D GPS position
-    outlier_threshold_imu:  15.09   # chi2(6, 0.999): 6D IMU
+    outlier_threshold_imu:  15.09   # chi2(6, 0.999): 6D IMU (gyro + accel)
+                                   # If imu.has_magnetometer: false, IMU only fuses roll/pitch (DOF=2).
+                                   # Lower to 13.82 (chi2(2, 0.999)) to maintain 99.9% confidence.
     outlier_threshold_enc:  11.34   # chi2(3, 0.999): 3D encoder
     outlier_threshold_hdg:  10.83   # chi2(1, 0.999): 1D heading
     # Do NOT lower these below chi2 critical values. At 7.0 normal GPS noise

@@ -33,17 +33,47 @@ No silent failures. No mysterious drift from a missing transform you didn't noti
 
 ---
 
+## State vector
+
+FusionCore maintains a 22-dimensional state vector:
+
+| Index | State | Units |
+|-------|-------|-------|
+| 0–2   | Position x, y, z | m (ENU frame) |
+| 3–6   | Orientation quaternion qw, qx, qy, qz | — |
+| 7–9   | Linear velocity vx, vy, vz | m/s (body frame) |
+| 10–12 | Angular velocity wx, wy, wz | rad/s (body frame) |
+| 13–15 | Linear acceleration ax, ay, az | m/s² (body frame) |
+| 16–18 | Gyroscope bias bωx, bωy, bωz | rad/s |
+| 19–21 | Accelerometer bias bax, bay, baz | m/s² |
+
+Orientation is stored as a unit quaternion internally. Roll, pitch, and yaw are derived from it for output and logging only.
+
+---
+
 ## Mahalanobis outlier rejection
 
-Before fusing any GPS fix, FusionCore computes how statistically implausible the measurement is given the current state estimate:
+Before fusing any measurement, FusionCore computes how statistically implausible it is given the current state estimate:
 
 ```
 d² = νᵀ · S⁻¹ · ν
 ```
 
-where `ν` is the innovation (predicted vs measured) and `S` is the innovation covariance. This is compared against chi-squared thresholds at the 99.9th percentile for each sensor's dimensionality.
+where `ν` is the innovation (predicted vs measured) and `S` is the innovation covariance. This is compared against a chi-squared threshold at the 99.9th percentile. Measurements that exceed the threshold are rejected without updating the filter.
 
-Fixes that exceed the threshold are rejected without updating the filter. Verified by injecting a 500 m GPS jump in testing: zero position change.
+Each sensor has its own threshold and its own measurement dimensionality (DOF):
+
+| Sensor | DOF | Default threshold | Config key |
+|--------|-----|-------------------|------------|
+| GNSS position | 3 | 16.27 | `outlier_threshold_gnss` |
+| IMU (6-axis, no mag) | 6 | 15.09 | `outlier_threshold_imu` |
+| IMU roll/pitch only¹ | 2 | — | `outlier_threshold_imu` |
+| Encoder | 3 | 11.34 | `outlier_threshold_enc` |
+| Heading (dual antenna) | 1 | 10.83 | `outlier_threshold_hdg` |
+
+¹ When `imu.has_magnetometer: false`, the IMU only fuses roll and pitch (DOF=2). The threshold value does not auto-rescale. If you are using a 6-axis IMU without magnetometer, lower `outlier_threshold_imu` to `13.82` (chi2(2, 0.999)) to maintain the same rejection confidence level.
+
+Verified by injecting a 500 m GPS jump in testing: zero position change.
 
 GNSS position covariance is floored before the gate. This prevents RTK-grade receivers (σxy ~3 mm) from triggering self-rejection when the filter hasn't yet converged to RTK-level accuracy.
 
