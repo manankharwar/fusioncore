@@ -51,6 +51,23 @@ Orientation is stored as a unit quaternion internally. Roll, pitch, and yaw are 
 
 ---
 
+## IMU update paths
+
+FusionCore runs two independent IMU update steps on every message:
+
+**1. Raw IMU update (always 6D)**
+Fuses gyro rates (wx, wy, wz) and accelerations (ax, ay, az) directly. This runs regardless of `imu.has_magnetometer` and is always a 6-dimensional measurement. Angular rates for all three axes are fused here.
+
+**2. Orientation update (from imu_filter_madgwick or driver)**
+Fuses the orientation derived by a separate filter (e.g. `imu_filter_madgwick`). The dimensionality depends on `imu.has_magnetometer`:
+
+- `true` (9-axis IMU): fuses roll, pitch, and yaw → 3D update
+- `false` (6-axis IMU): fuses roll and pitch only, yaw is omitted → 2D update
+
+These are two separate Kalman update steps with independent outlier gates. The `outlier_threshold_imu` config key applies to both.
+
+---
+
 ## Mahalanobis outlier rejection
 
 Before fusing any measurement, FusionCore computes how statistically implausible it is given the current state estimate:
@@ -59,19 +76,22 @@ Before fusing any measurement, FusionCore computes how statistically implausible
 d² = νᵀ · S⁻¹ · ν
 ```
 
-where `ν` is the innovation (predicted vs measured) and `S` is the innovation covariance. This is compared against a chi-squared threshold at the 99.9th percentile. Measurements that exceed the threshold are rejected without updating the filter.
+where `ν` is the innovation (predicted vs measured) and `S` is the innovation covariance. `d²` follows a chi-squared distribution and is compared against a threshold at the 99.9th percentile. Measurements that exceed the threshold are rejected without updating the filter.
 
-Each sensor has its own threshold and its own measurement dimensionality (DOF):
+Each sensor path has its own threshold and measurement dimensionality (DOF):
 
-| Sensor | DOF | Default threshold | Config key |
-|--------|-----|-------------------|------------|
+| Sensor path | DOF | Default threshold | Config key |
+|-------------|-----|-------------------|------------|
 | GNSS position | 3 | 16.27 | `outlier_threshold_gnss` |
-| IMU (6-axis, no mag) | 6 | 15.09 | `outlier_threshold_imu` |
-| IMU roll/pitch only¹ | 2 | — | `outlier_threshold_imu` |
+| Raw IMU (gyro + accel) | 6 | 15.09 | `outlier_threshold_imu` |
+| IMU orientation — 9-axis | 3 | 15.09 | `outlier_threshold_imu` |
+| IMU orientation — 6-axis (no mag) | 2 | 15.09 | `outlier_threshold_imu` |
 | Encoder | 3 | 11.34 | `outlier_threshold_enc` |
-| Heading (dual antenna) | 1 | 10.83 | `outlier_threshold_hdg` |
+| Heading (dual antenna / azimuth) | 1 | 10.83 | `outlier_threshold_hdg` |
 
-¹ When `imu.has_magnetometer: false`, the IMU only fuses roll and pitch (DOF=2). The threshold value does not auto-rescale. If you are using a 6-axis IMU without magnetometer, lower `outlier_threshold_imu` to `13.82` (chi2(2, 0.999)) to maintain the same rejection confidence level.
+`outlier_threshold_imu` applies to all IMU update paths but does not auto-rescale when the orientation update drops from 6D to 2D. The default `15.09` is calibrated for the 6D raw IMU update. If you are using a 6-axis IMU (`has_magnetometer: false`), the orientation gate runs at DOF=2 — lower `outlier_threshold_imu` to `13.82` (chi2(2, 0.999)) to maintain 99.9% confidence on that path.
+
+Note: `d²` is compared against the threshold directly (not `d`). Equivalently, `d > sqrt(threshold)` produces the same rejection boundary since d is always positive — chi2 tables use `d²` by convention.
 
 Verified by injecting a 500 m GPS jump in testing: zero position change.
 
