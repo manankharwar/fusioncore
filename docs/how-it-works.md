@@ -40,7 +40,7 @@ FusionCore maintains a 22-dimensional state vector:
 | Index | State | Units |
 |-------|-------|-------|
 | 0–2   | Position x, y, z | m (ENU frame) |
-| 3–6   | Orientation quaternion qw, qx, qy, qz | — |
+| 3–6   | Orientation quaternion qw, qx, qy, qz |: |
 | 7–9   | Linear velocity vx, vy, vz | m/s (body frame) |
 | 10–12 | Angular velocity wx, wy, wz | rad/s (body frame) |
 | 13–15 | Linear acceleration ax, ay, az | m/s² (body frame) |
@@ -84,14 +84,14 @@ Each sensor path has its own threshold and measurement dimensionality (DOF):
 |-------------|-----|-------------------|------------|
 | GNSS position | 3 | 16.27 | `outlier_threshold_gnss` |
 | Raw IMU (gyro + accel) | 6 | 15.09 | `outlier_threshold_imu` |
-| IMU orientation — 9-axis | 3 | 15.09 | `outlier_threshold_imu` |
-| IMU orientation — 6-axis (no mag) | 2 | 15.09 | `outlier_threshold_imu` |
+| IMU orientation: 9-axis | 3 | 15.09 | `outlier_threshold_imu` |
+| IMU orientation: 6-axis (no mag) | 2 | 15.09 | `outlier_threshold_imu` |
 | Encoder | 3 | 11.34 | `outlier_threshold_enc` |
 | Heading (dual antenna / azimuth) | 1 | 10.83 | `outlier_threshold_hdg` |
 
-`outlier_threshold_imu` applies to all IMU update paths but does not auto-rescale when the orientation update drops from 6D to 2D. The default `15.09` is calibrated for the 6D raw IMU update. If you are using a 6-axis IMU (`has_magnetometer: false`), the orientation gate runs at DOF=2 — lower `outlier_threshold_imu` to `13.82` (chi2(2, 0.999)) to maintain 99.9% confidence on that path.
+`outlier_threshold_imu` applies to all IMU update paths but does not auto-rescale when the orientation update drops from 6D to 2D. The default `15.09` is calibrated for the 6D raw IMU update. If you are using a 6-axis IMU (`has_magnetometer: false`), the orientation gate runs at DOF=2: lower `outlier_threshold_imu` to `13.82` (chi2(2, 0.999)) to maintain 99.9% confidence on that path.
 
-Note: `d²` is compared against the threshold directly (not `d`). Equivalently, `d > sqrt(threshold)` produces the same rejection boundary since d is always positive — chi2 tables use `d²` by convention.
+Note: `d²` is compared against the threshold directly (not `d`). Equivalently, `d > sqrt(threshold)` produces the same rejection boundary since d is always positive: chi2 tables use `d²` by convention.
 
 Verified by injecting a 500 m GPS jump in testing: zero position change.
 
