@@ -5,8 +5,7 @@
 #
 # FusionCore publishes:
 #   /fusion/odom         (nav_msgs/Odometry, 100 Hz)
-#   TF: odom → base_link (100 Hz)
-#   TF: map  → odom      (when reference.use_first_fix: true: first GPS fix sets origin)
+#   TF: odom → base_link (100 Hz, GPS-corrected: odom origin anchored to first GPS fix)
 #
 # What to change for your robot:
 #   robot_radius          → half the widest dimension (or use footprint polygon)
