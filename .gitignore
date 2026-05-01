@@ -60,3 +60,8 @@ new_stargazers.tsv
 check_new_stars.sh
 
 posts/
+
+# Article drafts, Word docs, and figure generation scripts: not for public repo
+outreach/
+tools/gen_architecture_fig.py
+tools/gen_article_docx.py
