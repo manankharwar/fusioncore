@@ -1036,7 +1036,7 @@ private:
         if (cov(2,2) < kMinVarZ)  cov(2,2) = kMinVarZ;
         fix.has_full_covariance = true;
         fix.full_covariance = cov;
-        fix.hdop = std::sqrt(cov(0,0));  // for validity check
+        fix.hdop = std::sqrt((cov(0,0) + cov(1,1)) / 2.0);  // for validity check
         fix.vdop = std::sqrt(cov(2,2));
         fix.satellites = 4;  // Fix 10: honest minimum: was hardcoded 6, always passed quality gate
       } else {

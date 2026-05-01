@@ -277,7 +277,7 @@ FusionCore publishes to `/fusion/odom`. Any downstream node that was reading `/o
 | `imu0_relative` | not needed | |
 | `imu0_queue_size` | not needed | |
 | `imu0_remove_gravitational_acceleration` | `imu.remove_gravitational_acceleration` | Logic is inverted: see Step 2 above |
-| `odomN_pose_rejection_threshold`, `odomN_twist_rejection_threshold` | `outlier_threshold_gnss/imu/enc/hdg` | Both have per-sensor thresholds. RL thresholds are arbitrary scalars; FC thresholds are chi-squared critical values calibrated to each sensor's measurement DOF. |
+| `odomN_pose_rejection_threshold`, `odomN_twist_rejection_threshold` | `outlier_threshold_gnss/imu/enc/hdg` | Both use Mahalanobis distance. RL exposes raw scalar thresholds with no guidance on chi-squared calibration per DOF — you set them manually. FC defaults are chi-squared critical values pre-calibrated to each sensor's measurement DOF. |
 | `process_noise_covariance` | `ukf.q_position`, `ukf.q_velocity`, etc. | FC exposes named scalars instead of a 15×15 matrix |
 | `initial_estimate_covariance` | not configurable | FC initializes automatically from first sensor readings |
 | `print_diagnostics` | always on | FC publishes to `/diagnostics` at 1 Hz |
