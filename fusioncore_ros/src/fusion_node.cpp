@@ -99,7 +99,7 @@ public:
     // Topic for dual antenna heading: sensor_msgs/Imu used as heading carrier.
     // The yaw component of orientation is the heading.
     // Set to empty string to disable dual antenna heading.
-    declare_parameter("gnss.heading_topic", "/gnss/heading");
+    declare_parameter("gnss.heading_topic", "");
 
     // Optional second GNSS receiver topic: set to empty string to disable
     declare_parameter("gnss.fix2_topic", "");
@@ -273,6 +273,13 @@ public:
 
     config.ukf.q_position   = get_parameter("ukf.q_position").as_double();
     config.ukf.q_orientation  = get_parameter("ukf.q_orientation").as_double();
+    if (config.ukf.q_orientation > 1e-3) {
+      RCLCPP_ERROR(get_logger(),
+        "ukf.q_orientation=%.2e is too large — quaternion math will corrupt at IMU rates. "
+        "Set to 1.0e-9 or remove the line from your config (default is 1.0e-9).",
+        config.ukf.q_orientation);
+      return CallbackReturn::FAILURE;
+    }
     config.ukf.q_velocity     = get_parameter("ukf.q_velocity").as_double();
     config.ukf.q_angular_vel  = get_parameter("ukf.q_angular_vel").as_double();
     config.ukf.q_acceleration = get_parameter("ukf.q_acceleration").as_double();
