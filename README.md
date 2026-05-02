@@ -6,6 +6,9 @@
 
 **ROS 2 sensor fusion: IMU + wheel encoders + GPS fused via UKF at 100 Hz. 22-state filter with IMU bias estimation, adaptive noise covariance, and chi-squared outlier rejection on every sensor.**
 
+<p align="center">
+  <img width="900" height="500" alt="LinkedIn1-ezgif com-optimize" src="https://github.com/user-attachments/assets/e1e07cfb-74e0-48b9-9bfd-32b68ee5a6ef"/>
+</p>
 ---
 
 ## Why I built this
