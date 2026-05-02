@@ -25,7 +25,7 @@ robot_localization is a solid, well-maintained package used on tens of thousands
 |---|---|---|
 | GPS fusion | navsat_transform node required; ECEF TF frame added in rolling-devel | Filter state runs natively in ECEF: no UTM projection |
 | IMU bias estimation | Not in state vector | Gyro + accel bias as filter states |
-| Outlier rejection | Single global Mahalanobis threshold | Chi-squared gating per sensor |
+| Outlier rejection | Mahalanobis threshold (manual scalars, no DOF guidance) | Mahalanobis chi-squared gate (pre-calibrated to sensor DOF) |
 | Adaptive noise | Fixed config values | Auto from innovation sequence |
 | ZUPT | Not built-in | Auto when stationary |
 | Delay compensation | `smooth_lagged_data` + `history_length` | IMU ring buffer replay |
