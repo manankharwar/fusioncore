@@ -65,3 +65,14 @@ posts/
 outreach/
 tools/gen_architecture_fig.py
 tools/gen_article_docx.py
+tools/fix_paper_figures.py
+tools/gen_fusioncore_arch.py
+
+# Paper source — only the PDF is committed
+paper/*.tex
+paper/*.png
+paper/*.aux
+paper/*.log
+paper/*.out
+paper/*.bbl
+paper/*.blg
