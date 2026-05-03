@@ -3,6 +3,7 @@
 [![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19834991-blue)](https://doi.org/10.5281/zenodo.19834991)
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
+[![Paper](https://img.shields.io/badge/paper-arXiv%20preprint-b31b1b)](paper/fusioncore_arxiv.pdf)
 
 **ROS 2 sensor fusion: IMU + wheel encoders + GPS fused via UKF at 100 Hz. 22-state filter with IMU bias estimation, adaptive noise covariance, and chi-squared outlier rejection on every sensor.**
 
