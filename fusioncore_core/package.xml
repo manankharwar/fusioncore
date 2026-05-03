@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>fusioncore_core</name>
-  <version>0.2.1</version>
+  <version>0.2.2</version>
   <description>Pure C++ UKF sensor fusion library underlying FusionCore. Fuses IMU, wheel encoders and GPS in a 22-state unscented Kalman filter. Includes ECEF GPS conversion, IMU bias estimation, adaptive noise covariance, chi-squared outlier gating, and ZUPT. No ROS dependency, usable standalone.</description>
   <maintainer email="kharwarm@mcmaster.ca">FusionCore</maintainer>
   <license>Apache-2.0</license>
