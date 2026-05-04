@@ -127,6 +127,11 @@ public:
 
   void init(const State& initial_state, double timestamp_seconds);
 
+  // Runtime updater for the IMU lever arm — the ROS wrapper calls this
+  // after auto-resolving base_frame -> imu_frame from TF. Cheap (one
+  // struct copy) and only touches config_.imu.lever_arm.
+  void set_imu_lever_arm(const sensors::ImuLeverArm& lever_arm);
+
   // IMU raw update (gyro + accel)
   void update_imu(
     double timestamp_seconds,

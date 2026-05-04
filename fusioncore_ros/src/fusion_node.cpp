@@ -75,6 +75,15 @@ public:
     // already subtracted gravity, enable this to add gravity back before fusing.
     declare_parameter("imu.remove_gravitational_acceleration", false);
 
+    // IMU lever arm (offset from base_link to IMU sensing point, body frame).
+    // Leave at 0 to auto-resolve from TF (base_frame -> imu_frame translation
+    // via the URDF). Set non-zero to override the TF value — useful when the
+    // URDF translation is missing/wrong or when you want to experiment
+    // without rebuilding robot_state_publisher.
+    declare_parameter("imu.lever_arm_x", 0.0);
+    declare_parameter("imu.lever_arm_y", 0.0);
+    declare_parameter("imu.lever_arm_z", 0.0);
+
     declare_parameter("encoder.vel_noise", 0.05);
     declare_parameter("encoder.yaw_noise", 0.02);
 
@@ -108,10 +117,19 @@ public:
     // Set to empty string to disable (use sensor_msgs/Imu heading instead)
     declare_parameter("gnss.azimuth_topic", "");
 
-    // Antenna lever arm params: primary receiver
+    // Antenna lever arm params: primary receiver.
+    // Leave at 0 to auto-resolve from TF (base_frame -> GNSS msg frame_id
+    // translation, via URDF); set non-zero to override.
     declare_parameter("gnss.lever_arm_x", 0.0);
     declare_parameter("gnss.lever_arm_y", 0.0);
     declare_parameter("gnss.lever_arm_z", 0.0);
+
+    // When true, the GNSS lever arm is applied from the very first fix, not
+    // only after heading_validated_. Let RTK-grade fixes observe yaw directly
+    // through the antenna-offset projection from startup rather than waiting
+    // for the heading_observable_distance integration. Safe with Mahalanobis
+    // gating on.
+    declare_parameter("gnss.apply_lever_arm_pre_heading", false);
 
     // Antenna lever arm params: secondary receiver (gnss.fix2_topic)
     // Leave at 0.0 if second antenna is at the same position as the first,
@@ -192,6 +210,23 @@ public:
     config.imu.accel_noise_z = config.imu.accel_noise_x;
     imu_remove_gravity_ = get_parameter("imu.remove_gravitational_acceleration").as_bool();
     imu_frame_override_ = get_parameter("imu.frame_id").as_string();
+
+    // IMU lever arm: start from explicit params; if all zero, the ROS
+    // wrapper will auto-resolve from TF (base_frame -> imu_frame) on the
+    // first IMU message and call fc_->update_config_imu_lever_arm() with
+    // the translation it extracts from URDF.
+    config.imu.lever_arm.x = get_parameter("imu.lever_arm_x").as_double();
+    config.imu.lever_arm.y = get_parameter("imu.lever_arm_y").as_double();
+    config.imu.lever_arm.z = get_parameter("imu.lever_arm_z").as_double();
+    imu_lever_arm_explicit_ = !config.imu.lever_arm.is_zero();
+    if (imu_lever_arm_explicit_) {
+      RCLCPP_INFO(get_logger(),
+        "IMU lever arm (explicit): x=%.3f y=%.3f z=%.3f m",
+        config.imu.lever_arm.x, config.imu.lever_arm.y, config.imu.lever_arm.z);
+    } else {
+      RCLCPP_INFO(get_logger(),
+        "IMU lever arm: will auto-resolve from TF on first IMU message");
+    }
     RCLCPP_INFO(get_logger(), "IMU gravity removal: %s",
       imu_remove_gravity_ ? "ENABLED" : "disabled");
     if (!imu_frame_override_.empty())
@@ -217,6 +252,14 @@ public:
     gnss_lever_arm_.x = get_parameter("gnss.lever_arm_x").as_double();
     gnss_lever_arm_.y = get_parameter("gnss.lever_arm_y").as_double();
     gnss_lever_arm_.z = get_parameter("gnss.lever_arm_z").as_double();
+    gnss_lever_arm_explicit_ = !gnss_lever_arm_.is_zero();
+    config.gnss.apply_lever_arm_pre_heading =
+      get_parameter("gnss.apply_lever_arm_pre_heading").as_bool();
+    if (config.gnss.apply_lever_arm_pre_heading) {
+      RCLCPP_INFO(get_logger(),
+        "GNSS lever arm will be applied pre-heading-validation "
+        "(gnss.apply_lever_arm_pre_heading=true)");
+    }
 
     gnss_lever_arm2_.x = get_parameter("gnss.lever_arm2_x").as_double();
     gnss_lever_arm2_.y = get_parameter("gnss.lever_arm2_y").as_double();
@@ -730,6 +773,38 @@ private:
       }
     }
 
+    // One-shot auto-resolve of the IMU lever arm from TF. Only runs when
+    // the user did NOT set imu.lever_arm_x/y/z explicitly (all zero).
+    // Picks up the translation from base_frame -> imu_frame published by
+    // robot_state_publisher from the URDF.
+    if (!imu_lever_arm_explicit_ && !imu_lever_arm_tf_resolved_ &&
+        imu_frame != base_frame_) {
+      try {
+        auto tf = tf_buffer_->lookupTransform(
+          base_frame_, imu_frame, tf2::TimePointZero,
+          tf2::durationFromSec(0.2));
+        fusioncore::sensors::ImuLeverArm la;
+        la.x = tf.transform.translation.x;
+        la.y = tf.transform.translation.y;
+        la.z = tf.transform.translation.z;
+        if (!la.is_zero()) {
+          fc_->set_imu_lever_arm(la);
+          RCLCPP_INFO(get_logger(),
+            "IMU lever arm auto-resolved from TF %s -> %s: x=%.3f y=%.3f z=%.3f m",
+            base_frame_.c_str(), imu_frame.c_str(), la.x, la.y, la.z);
+        } else {
+          RCLCPP_INFO(get_logger(),
+            "IMU lever arm auto-resolved to zero (IMU is at base_frame origin)");
+        }
+        imu_lever_arm_tf_resolved_ = true;
+      } catch (const tf2::TransformException &ex) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+          "IMU lever arm auto-resolve failed (%s -> %s): %s. "
+          "Leaving lever arm at zero; set imu.lever_arm_x/y/z explicitly to override.",
+          base_frame_.c_str(), imu_frame.c_str(), ex.what());
+      }
+    }
+
     if (imu_frame == base_frame_) {
       double ax = msg->linear_acceleration.x;
       double ay = msg->linear_acceleration.y;
@@ -946,6 +1021,41 @@ private:
     if (msg->status.status < 0) return;
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
+
+    // One-shot auto-resolve of the GNSS lever arm from TF, primary receiver
+    // only. Uses msg->header.frame_id (typically "gps" or "gnss_link")
+    // looked up against base_frame_. Only runs when the user did not set
+    // gnss.lever_arm_x/y/z explicitly.
+    if (source_id == 0 && !gnss_lever_arm_explicit_ && !gnss_lever_arm_tf_resolved_) {
+      if (!msg->header.frame_id.empty() && msg->header.frame_id != base_frame_) {
+        try {
+          auto tf = tf_buffer_->lookupTransform(
+            base_frame_, msg->header.frame_id, tf2::TimePointZero,
+            tf2::durationFromSec(0.2));
+          gnss_lever_arm_.x = tf.transform.translation.x;
+          gnss_lever_arm_.y = tf.transform.translation.y;
+          gnss_lever_arm_.z = tf.transform.translation.z;
+          if (!gnss_lever_arm_.is_zero()) {
+            RCLCPP_INFO(get_logger(),
+              "GNSS lever arm auto-resolved from TF %s -> %s: x=%.3f y=%.3f z=%.3f m",
+              base_frame_.c_str(), msg->header.frame_id.c_str(),
+              gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z);
+          } else {
+            RCLCPP_INFO(get_logger(),
+              "GNSS lever arm auto-resolved to zero (antenna at base_frame origin)");
+          }
+          gnss_lever_arm_tf_resolved_ = true;
+        } catch (const tf2::TransformException &ex) {
+          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+            "GNSS lever arm auto-resolve failed (%s -> %s): %s. "
+            "Leaving lever arm at zero; set gnss.lever_arm_x/y/z explicitly to override.",
+            base_frame_.c_str(), msg->header.frame_id.c_str(), ex.what());
+        }
+      } else {
+        // Empty frame_id or same as base: nothing to resolve, mark done.
+        gnss_lever_arm_tf_resolved_ = true;
+      }
+    }
 
     fusioncore::sensors::LLAPoint lla;
     lla.lat_rad = msg->latitude  * M_PI / 180.0;
@@ -1548,6 +1658,14 @@ private:
   fusioncore::sensors::GnssFixType  min_fix_type_   = fusioncore::sensors::GnssFixType::GPS_FIX;
   fusioncore::sensors::GnssLeverArm gnss_lever_arm_;    // primary receiver
   fusioncore::sensors::GnssLeverArm gnss_lever_arm2_;   // secondary receiver (fix2_topic)
+
+  // Auto-resolve flags: true means a non-zero value was given in the YAML
+  // and we should NOT overwrite it from TF. Default (all zero) triggers
+  // one-shot TF resolution on the first matching message.
+  bool imu_lever_arm_explicit_    = false;
+  bool gnss_lever_arm_explicit_   = false;
+  bool imu_lever_arm_tf_resolved_  = false;
+  bool gnss_lever_arm_tf_resolved_ = false;
 
   // ZUPT parameters
   bool   zupt_enabled_            = true;

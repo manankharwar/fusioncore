@@ -94,6 +94,10 @@ FusionCore::FusionCore(const FusionCoreConfig& config)
   : config_(config), ukf_(config.ukf)
 {}
 
+void FusionCore::set_imu_lever_arm(const sensors::ImuLeverArm& lever_arm) {
+  config_.imu.lever_arm = lever_arm;
+}
+
 void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   ukf_.init(initial_state);
   last_timestamp_    = timestamp_seconds;
@@ -228,11 +232,18 @@ bool FusionCore::apply_delayed_measurement(
       ukf_.predict(dt);
       last_timestamp_ = imu.timestamp;
 
-      // Re-apply the IMU measurement so the filter sees the real dynamics
+      // Re-apply the IMU measurement so the filter sees the real dynamics.
+      // Pick the same measurement function as update_imu() to keep the
+      // replay consistent with the original update (lever-arm aware when
+      // the IMU is offset from base_link).
       sensors::ImuMeasurement z;
       z[0] = imu.wx; z[1] = imu.wy; z[2] = imu.wz;
       z[3] = imu.ax; z[4] = imu.ay; z[5] = imu.az;
-      ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, imu.R);
+      auto h_imu_replay = !config_.imu.lever_arm.is_zero()
+        ? sensors::imu_measurement_function_with_lever_arm(config_.imu.lever_arm)
+        : std::function<sensors::ImuMeasurement(const StateVector&)>(
+            sensors::imu_measurement_function);
+      ukf_.update<sensors::IMU_DIM>(z, h_imu_replay, imu.R);
       replayed_any = true;
     }
   }
@@ -344,11 +355,22 @@ void FusionCore::update_imu(
   // Use adaptive R if initialized, else config default
   sensors::ImuNoiseMatrix R = adaptive_initialized_ ? R_imu_ : sensors::imu_noise_matrix(config_.imu);
 
+  // Pick the measurement function: plain if IMU is at base_link origin,
+  // else the lever-arm-aware variant that adds ω×(ω×r) centripetal to the
+  // predicted accel. Both produce identical output when lever_arm == 0, so
+  // we could always use the lambda; the explicit fork avoids the lambda
+  // allocation on the hot path when no lever arm is configured.
+  const bool use_imu_lever_arm = !config_.imu.lever_arm.is_zero();
+  auto h_imu = use_imu_lever_arm
+    ? sensors::imu_measurement_function_with_lever_arm(config_.imu.lever_arm)
+    : std::function<sensors::ImuMeasurement(const StateVector&)>(
+        sensors::imu_measurement_function);
+
   // Mahalanobis outlier rejection for IMU
   if (config_.outlier_rejection) {
     sensors::ImuMeasurement innovation_pre;
     sensors::ImuNoiseMatrix S;
-    ukf_.predict_measurement<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R, innovation_pre, S);
+    ukf_.predict_measurement<sensors::IMU_DIM>(z, h_imu, R, innovation_pre, S);
     if (is_outlier<sensors::IMU_DIM>(innovation_pre, S, config_.outlier_threshold_imu)) {
       ++imu_outliers_;
       last_imu_time_ = timestamp_seconds;
@@ -356,7 +378,7 @@ void FusionCore::update_imu(
     }
   }
 
-  auto innovation = ukf_.update<sensors::IMU_DIM>(z, sensors::imu_measurement_function, R);
+  auto innovation = ukf_.update<sensors::IMU_DIM>(z, h_imu, R);
 
   // Track innovation for adaptive noise estimation
   adapt_R<sensors::IMU_DIM>(R_imu_, R_imu_floor_, imu_innovations_, innovation, config_.adaptive_imu);
@@ -645,7 +667,13 @@ bool FusionCore::apply_gnss_update(
       if (R(i,i) < 1e-6) R(i,i) = 1e-6;
   }
 
-  bool use_lever_arm = !fix.lever_arm.is_zero() && heading_validated_;
+  // Apply the antenna lever arm when it is known AND either the heading
+  // has been validated (the safe default) OR the user opted in to applying
+  // the lever arm from the first fix (config_.gnss.apply_lever_arm_pre_heading).
+  // The latter turns GPS into an active yaw observation from startup, which
+  // is safe when Mahalanobis gating is on and fixes are RTK-grade.
+  bool use_lever_arm = !fix.lever_arm.is_zero()
+                       && (heading_validated_ || config_.gnss.apply_lever_arm_pre_heading);
 
   auto h_gnss = use_lever_arm
     ? sensors::gnss_pos_measurement_function_with_lever_arm(fix.lever_arm)
