@@ -169,6 +169,40 @@ Rejection log:
 
 ---
 
+## GPS velocity fusion and wheel slip detection
+
+GPS receivers output two completely independent things: where you are (position) and how fast you are moving (velocity, derived from Doppler shift on satellite signals). FusionCore has always fused GPS position. GPS velocity is a separate measurement with separate accuracy characteristics — and it is now fused independently.
+
+**Why this matters: wheel slip**
+
+Wheel odometry assumes the wheels are in contact with the ground and not slipping. On wet grass, gravel, mud, or any loose surface that assumption breaks down. The wheels report 1.0 m/s but the robot is only actually moving at 0.2 m/s — because the wheels are spinning without traction.
+
+Before GPS velocity fusion, FusionCore had no way to detect this. The filter trusted the wheels and the position estimate drifted in the direction the wheels said.
+
+With GPS velocity fusion, the UKF compares GPS-reported speed against wheel-reported speed on every filter cycle. The innovation (the difference between the two) directly reveals slip. A large innovation means the wheels and GPS disagree — and the Kalman gain automatically down-weights the slipping wheel measurement in proportion to how much they disagree.
+
+**What it adds on top of GPS position**
+
+GPS position updates arrive at 1–10 Hz. GPS velocity from the same receiver is available at the same rate but carries different information — it measures the rate of change of position via Doppler, which is accurate even when positional HDOP is poor. This means:
+
+- Velocity correction keeps working during brief GPS position degradation
+- The velocity state converges faster at startup, before enough position fixes have accumulated to observe speed geometrically
+- On receivers like the F9P (RTK), GPS velocity accuracy is ~0.03 m/s — tighter than wheel odometry on most terrain
+
+**How to enable**
+
+```yaml
+gnss.velocity_topic: "/gnss/velocity"
+```
+
+Expects `nav_msgs/Odometry` with velocity in ENU frame (`twist.linear.x` = east, `twist.linear.y` = north). FusionCore rotates ENU to body frame internally using the current quaternion — no extra node needed. Covariance from the message is used directly when positive; falls back to adaptive encoder noise otherwise.
+
+Works with any receiver that publishes velocity. For u-blox, a small bridge node converts UBX-NAV-PVT to the generic topic format — kept in a separate package so non-u-blox users have zero extra dependencies.
+
+Leave `gnss.velocity_topic` empty (the default) to disable. No behavior change for existing configs.
+
+---
+
 ## Delay compensation
 
 FusionCore stores a ring buffer of 100 IMU messages (1 second at 100 Hz). When a delayed GPS fix arrives, it restores the closest state snapshot before the fix timestamp, re-fuses the fix at the correct time, then replays all buffered IMU messages forward to the present. This eliminates motion-model approximation error for delayed measurements.
