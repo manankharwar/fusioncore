@@ -13,7 +13,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`publish.force_2d` incomplete**: `force_2d: true` zeroed `position.z` in the published odometry and TF but left `twist.linear.z` (vertical velocity) non-zero. For a ground robot, publishing a non-zero VZ is misleading. Both are now zeroed consistently.
 
 ### Added
-- **Troubleshooting page**: covers the most common failure modes — lifecycle not activating, Madgwick filter conflict, zero-timestamp IMU drivers, TF conflicts, outlier gate tuning, and more.
+- **Troubleshooting page**: covers the most common failure modes: lifecycle not activating, Madgwick filter conflict, zero-timestamp IMU drivers, TF conflicts, outlier gate tuning, and more.
 - **RTABMAP + Madgwick separation guide** in `icp-indoor.md`: documents the correct IMU topic split when running FusionCore alongside RTABMAP and `icp_odometry`.
 
 ---

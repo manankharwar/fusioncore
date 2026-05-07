@@ -49,9 +49,9 @@ Then launch without the remap: FusionCore subscribes to `/odom/wheels` natively 
 
 ## Using RTABMAP alongside FusionCore (Madgwick separation)
 
-RTABMAP's `icp_odometry` and the `rtabmap_slam` node both expect IMU data on `/imu/data`. FusionCore also subscribes to `/imu/data` — but it needs **raw** gyro and accelerometer data, not a Madgwick-filtered orientation.
+RTABMAP's `icp_odometry` and the `rtabmap_slam` node both expect IMU data on `/imu/data`. FusionCore also subscribes to `/imu/data`: but it needs **raw** gyro and accelerometer data, not a Madgwick-filtered orientation.
 
-If you run `imu_filter_madgwick` in your stack, do **not** remap FusionCore's IMU input to the Madgwick output. The Madgwick filter bakes in a coordinate frame rotation based on its world-frame orientation estimate. When FusionCore receives that, it tries to fuse an already-rotated orientation as if it were raw rates — the result is the robot appearing to spin or roll when it isn't.
+If you run `imu_filter_madgwick` in your stack, do **not** remap FusionCore's IMU input to the Madgwick output. The Madgwick filter bakes in a coordinate frame rotation based on its world-frame orientation estimate. When FusionCore receives that, it tries to fuse an already-rotated orientation as if it were raw rates: the result is the robot appearing to spin or roll when it isn't.
 
 **Correct setup:**
 

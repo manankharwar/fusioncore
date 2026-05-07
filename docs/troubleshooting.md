@@ -78,7 +78,7 @@ Look at the `Broadcasters` line. There should be exactly one: `fusioncore`. If y
 
 **Most likely: Madgwick filter conflict.**
 
-If `imu_filter_madgwick` is running and FusionCore is receiving its output (on `/imu/data`), the Madgwick orientation quaternion has the IMU's physical mounting rotation baked in. FusionCore interprets this as raw angular velocity and the axes get swapped — the result looks like spinning or rolling.
+If `imu_filter_madgwick` is running and FusionCore is receiving its output (on `/imu/data`), the Madgwick orientation quaternion has the IMU's physical mounting rotation baked in. FusionCore interprets this as raw angular velocity and the axes get swapped: the result looks like spinning or rolling.
 
 **Fix**: remap FusionCore to raw IMU, keep Madgwick running for any other consumers (RTABMAP, ICP):
 
@@ -97,14 +97,14 @@ See [RTABMAP + Madgwick separation](hardware/icp-indoor.md#using-rtabmap-alongsi
 The IMU bias window (`init.stationary_window`) hasn't settled before the robot starts moving, or there's no independent heading source and the gyro integration starts from an arbitrary yaw.
 
 - Keep the robot **completely still** for the duration of `init.stationary_window` after launch
-- For outdoor robots: wait for the first GPS fix — heading self-corrects from motion after 5 m of straight travel
-- For indoor robots with a 9-axis IMU: set `imu.has_magnetometer: true` — the magnetometer provides absolute heading immediately
+- For outdoor robots: wait for the first GPS fix: heading self-corrects from motion after 5 m of straight travel
+- For indoor robots with a 9-axis IMU: set `imu.has_magnetometer: true`: the magnetometer provides absolute heading immediately
 
 ---
 
 ## Camera image not showing in RtabmapViz
 
-This is not a FusionCore issue. FusionCore publishes `/fusion/odom` and `odom → base_link` TF — it has no involvement in the camera pipeline.
+This is not a FusionCore issue. FusionCore publishes `/fusion/odom` and `odom → base_link` TF: it has no involvement in the camera pipeline.
 
 Check that your camera topics are live before RTABMAP starts:
 
@@ -122,7 +122,7 @@ If any are silent, `rgbd_sync` isn't syncing. Check the depthai driver and the t
 
 DDS discovery latency in WSL2 or slow machines. The node is up but hasn't been discovered yet.
 
-Use the launch file's auto-configure instead — it uses timed lifecycle events which are immune to discovery latency. Or wait 2–3 seconds and retry the manual command.
+Use the launch file's auto-configure instead: it uses timed lifecycle events which are immune to discovery latency. Or wait 2–3 seconds and retry the manual command.
 
 ---
 
@@ -136,7 +136,7 @@ Confirm FusionCore is actually publishing:
 ros2 run tf2_ros tf2_echo odom base_link
 ```
 
-If transforms are printing, the error is a race condition at startup — the downstream node started before FusionCore. The `fusioncore_nav2.launch.py` launch file adds a 5-second delay before starting Nav2 to prevent this.
+If transforms are printing, the error is a race condition at startup: the downstream node started before FusionCore. The `fusioncore_nav2.launch.py` launch file adds a 5-second delay before starting Nav2 to prevent this.
 
 ---
 
@@ -152,7 +152,7 @@ If you see high outlier counts for a sensor, the Mahalanobis gate is rejecting i
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| GPS rejections at startup | Filter hasn't converged yet — large position uncertainty | Normal: clears after 30–60 s |
+| GPS rejections at startup | Filter hasn't converged yet: large position uncertainty | Normal: clears after 30–60 s |
 | GPS rejections after outage | Inertial drift exceeded gate | Inertial coast mode will relax the gate automatically |
 | Encoder always rejected | Noise config too tight vs actual speed variance | Loosen `encoder.vel_noise` or enable `adaptive.encoder: true` |
 | IMU always rejected | Driver publishing with wrong scale or units | Check `linear_acceleration.z` at rest: should be ~9.81 or ~0.0 depending on `imu.remove_gravitational_acceleration` |
@@ -177,11 +177,11 @@ If `x` is non-zero at standstill, either fix the driver or set `init.stationary_
 
 ## FusionCore odom drifts more than raw wheel odometry in Gazebo
 
-This is expected in simulation. Gazebo's DiffDrive plugin produces near-perfect wheel velocities with no slip. The simulated IMU injects Gaussian noise. FusionCore fuses both — so the noisy IMU slightly degrades a perfect odometry source. The result: slightly more drift than raw wheel odometry, and larger `map → odom` corrections when SLAM loop-closing fires.
+This is expected in simulation. Gazebo's DiffDrive plugin produces near-perfect wheel velocities with no slip. The simulated IMU injects Gaussian noise. FusionCore fuses both: so the noisy IMU slightly degrades a perfect odometry source. The result: slightly more drift than raw wheel odometry, and larger `map → odom` corrections when SLAM loop-closing fires.
 
 On real hardware this inverts: encoders accumulate slip, terrain variation, and mechanical error while IMU noise is small by comparison. That is where the fusion pays off.
 
-The map quality is unaffected — SLAM corrects the drift. The issue is visual only.
+The map quality is unaffected: SLAM corrects the drift. The issue is visual only.
 
 **If the IMU frame name doesn't match your URDF (common in Gazebo Harmonic TurtleBot3):**
 

@@ -54,4 +54,4 @@ odom → base_link    (always, at publish_rate)
 
 Your URDF provides `base_link → imu_link` and other sensor transforms.
 
-FusionCore does **not** publish `map → odom` under any condition. For navigation with a map frame, a separate SLAM node (slam_toolbox, cartographer) provides `map → odom`. For GPS-only outdoor navigation without SLAM, configure Nav2 with `global_frame: odom` everywhere — see [Nav2 Integration](../nav2.md).
+FusionCore does **not** publish `map → odom` under any condition. For navigation with a map frame, a separate SLAM node (slam_toolbox, cartographer) provides `map → odom`. For GPS-only outdoor navigation without SLAM, configure Nav2 with `global_frame: odom` everywhere: see [Nav2 Integration](../nav2.md).

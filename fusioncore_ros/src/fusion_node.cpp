@@ -283,7 +283,7 @@ public:
     config.ukf.q_orientation  = get_parameter("ukf.q_orientation").as_double();
     if (config.ukf.q_orientation > 1e-3) {
       RCLCPP_ERROR(get_logger(),
-        "ukf.q_orientation=%.2e is too large — quaternion math will corrupt at IMU rates. "
+        "ukf.q_orientation=%.2e is too large: quaternion math will corrupt at IMU rates. "
         "Set to 1.0e-9 or remove the line from your config (default is 1.0e-9).",
         config.ukf.q_orientation);
       return CallbackReturn::FAILURE;
