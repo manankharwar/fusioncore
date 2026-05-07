@@ -86,6 +86,13 @@ public:
     // is used. Leave empty to disable.
     declare_parameter("encoder2.topic", std::string(""));
 
+    // GPS velocity topic: fuses horizontal speed from any receiver that outputs
+    // nav_msgs/Odometry with velocity in the ENU (world) frame.
+    // linear.x = east, linear.y = north. Rotated to body frame internally.
+    // Leave empty to disable. Works with F9P, Septentrio, and any bridge node
+    // that republishes GPS velocity as nav_msgs/Odometry.
+    declare_parameter("gnss.velocity_topic", std::string(""));
+
     declare_parameter("gnss.base_noise_xy",  1.0);
     declare_parameter("gnss.base_noise_z",   2.0);
     declare_parameter("gnss.heading_noise",  0.02);
@@ -201,7 +208,8 @@ public:
     config.encoder.vel_noise_y  = config.encoder.vel_noise_x;
     config.encoder.vel_noise_wz = get_parameter("encoder.yaw_noise").as_double();
 
-    encoder2_topic_ = get_parameter("encoder2.topic").as_string();
+    encoder2_topic_    = get_parameter("encoder2.topic").as_string();
+    gnss_vel_topic_    = get_parameter("gnss.velocity_topic").as_string();
 
     config.gnss.base_noise_xy  = get_parameter("gnss.base_noise_xy").as_double();
     config.gnss.base_noise_z   = get_parameter("gnss.base_noise_z").as_double();
@@ -358,6 +366,17 @@ public:
         "Second encoder-twist source enabled on topic: %s", encoder2_topic_.c_str());
     }
 
+    if (!gnss_vel_topic_.empty()) {
+      gnss_vel_sub_ = create_subscription<nav_msgs::msg::Odometry>(
+        gnss_vel_topic_, 10,
+        [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
+          std::lock_guard<std::mutex> lock(fc_mutex_);
+          gnss_vel_callback(msg);
+        }, sensor_opts);
+      RCLCPP_INFO(get_logger(),
+        "GPS velocity fusion enabled on topic: %s", gnss_vel_topic_.c_str());
+    }
+
     gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
       "/gnss/fix", 10,
       [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
@@ -490,6 +509,7 @@ public:
     imu_sub_.reset();
     encoder_sub_.reset();
     encoder2_sub_.reset();
+    gnss_vel_sub_.reset();
     gnss_sub_.reset();
     gnss2_sub_.reset();
     gnss_heading_sub_.reset();
@@ -935,6 +955,37 @@ private:
     const double wz = msg->twist.twist.angular.z;
 
     fc_->update_encoder(t, vx, vy, wz, var_vx, var_vy, var_wz);
+  }
+
+  // ─── GPS velocity callback ────────────────────────────────────────────────
+  // Fuses horizontal GPS velocity as an independent measurement.
+  // Message twist is expected in ENU (world) frame: linear.x=east, linear.y=north.
+  // Rotated to body frame using the current filter quaternion before fusing,
+  // so the innovation is consistent with the wheel encoder measurement model.
+  // Angular rate is not available from GPS; WZ is passed with large variance
+  // (1e6) so the Kalman gain for WZ is effectively zero.
+
+  void gnss_vel_callback(const nav_msgs::msg::Odometry::SharedPtr msg)
+  {
+    if (!fc_->is_initialized()) return;
+
+    const double t  = rclcpp::Time(msg->header.stamp).seconds();
+    const double ve = msg->twist.twist.linear.x;   // east
+    const double vn = msg->twist.twist.linear.y;   // north
+    const double vu = msg->twist.twist.linear.z;   // up
+
+    // Rotate ENU -> body:  v_body = R(q)^T * v_world
+    const auto& s = fc_->get_state();
+    double R[3][3];
+    fusioncore::quat_to_rotation_matrix(s.quat_w(), s.quat_x(), s.quat_y(), s.quat_z(), R);
+    const double vx = R[0][0]*ve + R[1][0]*vn + R[2][0]*vu;
+    const double vy = R[0][1]*ve + R[1][1]*vn + R[2][1]*vu;
+
+    const auto& cov = msg->twist.covariance;
+    const double var_vx = (cov[0] > 0.0) ? cov[0] : -1.0;
+    const double var_vy = (cov[7] > 0.0) ? cov[7] : -1.0;
+
+    fc_->update_encoder(t, vx, vy, 0.0, var_vx, var_vy, 1e6);
   }
 
   // ─── GNSS position callback ────────────────────────────────────────────────
@@ -1506,6 +1557,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder2_sub_;
+  rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        gnss_vel_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr    gnss_sub_;
   rclcpp::Subscription<sensor_msgs::msg::NavSatFix>::SharedPtr                gnss2_sub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr                       odom_pub_;
@@ -1524,6 +1576,7 @@ private:
   std::string gnss2_topic_;
   std::string azimuth_topic_;
   std::string encoder2_topic_;
+  std::string gnss_vel_topic_;
 
   bool        pending_init_        = false;
 

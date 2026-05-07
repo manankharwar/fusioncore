@@ -11,6 +11,7 @@
 | `gnss.azimuth_topic` | `compass_msgs/Azimuth` | Azimuth heading (optional, preferred) |
 | `gnss.fix2_topic` | `sensor_msgs/NavSatFix` | Second GPS receiver (optional) |
 | `encoder2.topic` | `nav_msgs/Odometry` | Second velocity source: lidar odom, visual odom (optional) |
+| `gnss.velocity_topic` | `nav_msgs/Odometry` | GPS velocity in ENU frame: linear.x=east, linear.y=north (optional) |
 
 Default topic names can be changed with ROS 2 remaps:
 

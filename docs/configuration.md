@@ -72,6 +72,18 @@ fusioncore:
     gnss.lever_arm2_y: 0.0
     gnss.lever_arm2_z: 0.0
 
+    # GPS velocity (optional): fuses horizontal GPS speed as an independent
+    # measurement update, separate from wheel odometry.
+    # Accepts nav_msgs/Odometry with velocity in ENU frame:
+    #   twist.linear.x = east velocity (m/s)
+    #   twist.linear.y = north velocity (m/s)
+    #   twist.covariance[0,7] used when positive; falls back to encoder noise otherwise
+    # FusionCore rotates ENU -> body frame internally using the current quaternion.
+    # Enables slip detection: innovation between GPS velocity and wheel odometry
+    # reveals wheel slip. Works with F9P, Septentrio, or any receiver that
+    # publishes velocity. Leave empty to disable.
+    gnss.velocity_topic: ""
+
     # Heading input: pick one or both
     gnss.heading_topic: ""      # sensor_msgs/Imu (dual antenna heading)
     gnss.azimuth_topic: ""      # compass_msgs/Azimuth (preferred REP-145 standard)
