@@ -87,6 +87,24 @@ Yes. Eigen auto-detects NEON on ARM and AVX on x86. The NCLT benchmark is reprod
 
 ---
 
+## Coming from robot_localization?
+
+If any of these have bitten you, FusionCore was built with them in mind:
+
+| robot_localization issue | What FusionCore does instead |
+|---|---|
+| UKF diverges with NaN on GPS-heavy sequences ([#780](https://github.com/cra-ros-pkg/robot_localization/issues/780), [#777](https://github.com/cra-ros-pkg/robot_localization/issues/777)) | Chi-squared gate on every sensor; covariance bounded at each step. All six NCLT sequences finish without NaN. |
+| navsat_transform crashes or gives wrong position at UTM zone boundaries ([#951](https://github.com/cra-ros-pkg/robot_localization/issues/951), [#904](https://github.com/cra-ros-pkg/robot_localization/issues/904)) | GPS fused directly in ECEF. No UTM projection, no zone boundary. |
+| No non-holonomic constraint for wheeled robots ([#744](https://github.com/cra-ros-pkg/robot_localization/issues/744)) | Built-in NHC: lateral and vertical velocity forced to zero as a virtual measurement on every cycle. |
+| Delayed sensor messages cause missed updates ([#911](https://github.com/cra-ros-pkg/robot_localization/issues/911)) | Rolling IMU buffer with retrodiction. Late GPS fixes replay missed IMU steps automatically (up to 500 ms configurable). |
+| Non-deterministic output across runs ([#957](https://github.com/cra-ros-pkg/robot_localization/issues/957)) | `--ros-args -p replay_mode:=true` freezes the clock and replays bags identically every time. |
+| IMU frame confusion: body vs sensor frame ([#757](https://github.com/cra-ros-pkg/robot_localization/issues/757)) | Single `imu.frame_id` parameter; transform applied once at ingestion, filter runs in body frame throughout. |
+| navsat_transform CPU load scales with fix rate ([#890](https://github.com/cra-ros-pkg/robot_localization/issues/890)) | No navsat_transform node. ECEF conversion is one matrix multiply per GPS message inside the filter. |
+
+Migration guide: [manankharwar.github.io/fusioncore/migration_from_robot_localization](https://manankharwar.github.io/fusioncore/migration_from_robot_localization/)
+
+---
+
 ## Install
 
 Supports **ROS 2 Jazzy** (Ubuntu 24.04) and **Humble** (Ubuntu 22.04).
