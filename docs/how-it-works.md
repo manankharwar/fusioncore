@@ -266,3 +266,133 @@ ros2 service call /fusioncore/reset std_srvs/srv/Trigger
 ```
 
 Re-initializes the UKF state and clears the GPS reference anchor. The robot re-anchors on the next GPS fix. No node restart required. Useful after teleportation in simulation or after a catastrophic GPS jump in the field.
+
+---
+
+## Wait for all sensors before starting
+
+By default FusionCore starts the filter as soon as it receives the first IMU message. That means if GPS and wheel odometry come online 2--3 seconds later (which is normal during system startup), the filter has already drifted purely on IMU integration before any other sensor can anchor it. The result is a small but visible position jump at the moment the encoder and GPS first arrive.
+
+Setting `init.wait_for_all_sensors: true` fixes this. The filter sits in a holding state and does nothing until every sensor you have configured has published at least one message. Then it starts with a full picture from the beginning.
+
+```yaml
+init.wait_for_all_sensors: true
+init.sensor_wait_timeout: 10.0   # give up and start anyway after this many seconds
+```
+
+FusionCore knows which sensors to wait for based on what you have configured:
+
+| Sensor | Waited for when... |
+|---|---|
+| IMU | always |
+| Encoder | always |
+| GNSS | `reference.use_first_fix: true` |
+| GPS velocity | `gnss.velocity_topic` is non-empty |
+| Radar velocity | `radar.velocity_topic` is non-empty |
+| Heading | `gnss.heading_topic` or `gnss.azimuth_topic` is non-empty |
+| Second encoder | `encoder2.topic` is non-empty |
+| Second GNSS | `gnss.fix2_topic` is non-empty |
+
+If a sensor never arrives within `sensor_wait_timeout` seconds, the filter logs a warning listing which sensors were missing and starts anyway. You never get a filter that hangs forever.
+
+During the wait, FusionCore logs which sensors are still missing every 2 seconds:
+
+```
+[INFO] Waiting for sensors (1.4s / 10.0s): missing [GNSS, GPSVel]
+[INFO] All 4 configured sensors ready. Starting filter.
+```
+
+This replaces the `sleep(3)` workaround that appears in virtually every ROS launch file.
+
+---
+
+## Pluggable motion models
+
+The predict step is the core of any UKF: it propagates the state forward in time between measurements using a mathematical model of how the robot moves. FusionCore's motion model is now configurable via YAML.
+
+**Why it matters**
+
+The default model (`ConstantVelocityAcceleration`) assumes the robot can move freely in all directions. It integrates body-frame velocity and acceleration without any platform-specific constraints. This is correct for aerial vehicles and a reasonable approximation for ground robots.
+
+But a differential drive robot *cannot* move sideways. Physics forbids it. The default model does not know this -- it allows lateral velocity (`VY`) to grow between encoder updates via IMU acceleration integration. The measurement model corrects it at every encoder update, but between updates the uncertainty in `VY` accumulates unnecessarily. The position estimate then carries a small lateral smear that the covariance matrix reflects.
+
+The `DifferentialDrive` model enforces the non-holonomic constraint directly in the predict step: `VY` and `AY` are zeroed every time the UKF propagates forward. The filter now *knows* lateral velocity does not grow. The covariance in `VY` stays tight, position integration never accumulates false lateral displacement, and the encoder measurement just confirms what the model already predicted.
+
+**How to enable**
+
+```yaml
+motion_model: "DifferentialDrive"
+```
+
+For Ackermann-steered platforms (forklifts, outdoor vehicles, any front-steered robot):
+
+```yaml
+motion_model: "Ackermann"
+motion_model_params:
+  wheelbase: 0.55    # meters
+```
+
+To keep the original behavior (and for aerial vehicles):
+
+```yaml
+motion_model: "ConstantVelocityAcceleration"   # or just leave the line out
+```
+
+**Available models**
+
+| Model | Lateral constraint | Use for |
+|---|---|---|
+| `ConstantVelocityAcceleration` | None (default) | All platforms, aerial vehicles |
+| `DifferentialDrive` | VY = 0 during prediction | Differential drive, skid-steer, tracked |
+| `Ackermann` | VY = 0 during prediction | Car-like, forklifts, front-steered |
+
+**What the DifferentialDrive model does not do**
+
+It does not break slip detection. If the wheels are actually sliding laterally (ice, mud, ramp), the GPS velocity or radar Doppler measurement will still observe non-zero lateral velocity in the update step and correct the state accordingly. The constraint applies only to the prediction -- the filter can still update away from it when the evidence demands it.
+
+---
+
+## Deterministic replay and state checkpoints
+
+Debugging a sensor fusion filter running live is painful. By the time you notice a bad trajectory, the moment is gone and the only way back is replaying the entire rosbag from scratch.
+
+FusionCore addresses this with two tools: deterministic replay and state checkpoints.
+
+**Deterministic replay**
+
+When replaying a bag with `ros2 bag play --clock` and `use_sim_time: true`, FusionCore uses the bag's message timestamps everywhere -- including the stationary bias initialization window. This means:
+
+- Same bag + same config = identical output every run
+- Tweaking one parameter and diffing trajectories actually works
+- Parameter sensitivity analysis becomes rigorous, not approximate
+
+Previously the bias window used the wall clock, so two replays of the same bag could produce slightly different outputs even with identical config. That made parameter tuning feel like guessing.
+
+No configuration required. Replay behavior is automatic when message timestamps are non-zero (all properly recorded bags). The wall clock fallback is preserved only for drivers that publish zero-stamped messages.
+
+**State checkpoints**
+
+```bash
+ros2 service call /fusioncore/save_checkpoint std_srvs/srv/Trigger
+ros2 service call /fusioncore/load_checkpoint std_srvs/srv/Trigger
+```
+
+`save_checkpoint` serializes the full 22-dimensional state vector and 22×22 covariance matrix to a text file (`/tmp/fusioncore_checkpoint.txt` by default, configurable via `replay.checkpoint_path`).
+
+`load_checkpoint` restores that exact state and resumes the filter from that point.
+
+**The workflow this enables**
+
+Suppose you have a 20-minute bag and the trajectory goes wrong at minute 15. Without checkpoints, every parameter tweak requires a full 20-minute replay. With checkpoints:
+
+1. Replay the bag to minute 14
+2. Call `save_checkpoint`
+3. Call `load_checkpoint` -- the filter is now back at minute 14 in under a second
+4. Let the bag play from minute 14, observe what happens at minute 15
+5. Tweak a parameter, call `load_checkpoint` again, repeat
+
+The checkpoint file is plain text -- human readable, diffable, and editable. You can inspect the state vector directly to understand what the filter believed at the moment of failure.
+
+```yaml
+replay.checkpoint_path: "/tmp/fusioncore_checkpoint.txt"   # default
+```

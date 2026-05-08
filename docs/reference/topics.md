@@ -42,6 +42,8 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 | Service | Type | What it does |
 |---|---|---|
 | `~/reset` | `std_srvs/Trigger` | Re-initializes the filter and clears GPS reference. No restart needed. |
+| `~/save_checkpoint` | `std_srvs/Trigger` | Saves full filter state (22-state + covariance) to `replay.checkpoint_path`. |
+| `~/load_checkpoint` | `std_srvs/Trigger` | Restores filter state from `replay.checkpoint_path`. Resumes from that exact point. |
 
 ---
 

@@ -132,6 +132,42 @@ fusioncore:
     # from ~10cm to under 1cm. Set 2.0 if startup drift is a problem.
     # Falls back to zero-bias automatically if robot moves during window.
 
+    init.wait_for_all_sensors: false
+    # When true: hold filter initialization until every configured sensor has
+    # published at least one message. Prevents the filter from drifting on IMU
+    # alone while GPS and wheel odometry are still coming online at startup.
+    # Replaces the sleep() workaround in launch files.
+    init.sensor_wait_timeout: 10.0
+    # Seconds to wait before starting anyway if a sensor never arrives.
+    # A WARN lists which sensors were missing. Set 0.0 to disable the timeout.
+
+    # ── Motion model ──────────────────────────────────────────────────────────
+    motion_model: "ConstantVelocityAcceleration"
+    # Controls how sigma points are propagated in the UKF predict step.
+    #
+    # "ConstantVelocityAcceleration" (default): no platform constraints.
+    #   VY and AY grow freely between measurements. Correct for aerial vehicles.
+    #   Good baseline for any platform.
+    #
+    # "DifferentialDrive": zeros VY and AY each predict step.
+    #   The filter knows a diff-drive robot cannot slide sideways.
+    #   Tighter lateral covariance, less position smear on straight runs.
+    #   Use for: differential drive, skid-steer, tracked vehicles.
+    #
+    # "Ackermann": same lateral constraint as DifferentialDrive.
+    #   wheelbase stored for future minimum-turning-radius extensions.
+    #   Use for: car-like robots, forklifts, front-steered outdoor platforms.
+    motion_model_params:
+      wheelbase: 0.55    # meters (only used by Ackermann)
+
+    # ── Deterministic replay ──────────────────────────────────────────────────
+    replay.checkpoint_path: "/tmp/fusioncore_checkpoint.txt"
+    # File used by ~/save_checkpoint and ~/load_checkpoint services.
+    # save_checkpoint: writes the full 22-state + 22x22 covariance to this file.
+    # load_checkpoint: restores that state (restarts filter from that point).
+    # Workflow: replay a bag to a known-good point → save → tweak params →
+    #   load (instant, no re-replay) → observe the problem window.
+
     # ── ZUPT ──────────────────────────────────────────────────────────────────
     zupt.enabled: true
     zupt.velocity_threshold: 0.05   # m/s: encoder speed below this → stationary
@@ -147,6 +183,62 @@ fusioncore:
     reference.y: 0.0
     reference.z: 0.0
 ```
+
+---
+
+## Choosing a motion model
+
+Start with the default (`ConstantVelocityAcceleration`) unless you have a specific reason to change it. It works well for all platforms and matches what robot_localization users are used to.
+
+Switch to `DifferentialDrive` if:
+- Your robot is a differential drive, skid-steer, or tracked vehicle
+- You see small lateral position drift on straight runs
+- Your `VY` state doesn't stay near zero between encoder updates
+
+Switch to `Ackermann` if:
+- Your robot has front-wheel steering (car-like, forklift, outdoor field robot)
+- The lateral constraint is the same as `DifferentialDrive`; `wheelbase` is stored for future minimum-turning-radius enforcement
+
+Do not use `DifferentialDrive` or `Ackermann` for:
+- Aerial vehicles (no lateral constraint applies)
+- Holonomic (mecanum) platforms (those can move sideways intentionally)
+
+---
+
+## Wait for all sensors: replacing sleep() in launch files
+
+A common pattern in ROS launch files is `sleep(3)` before starting the navigation stack to give sensors time to come online. This is fragile -- on a slow machine the sensors might need 5 seconds, and on a fast one you waste 3 seconds on every launch.
+
+`init.wait_for_all_sensors: true` replaces this entirely. FusionCore holds initialization until it has seen at least one message from every sensor you configured. Then it starts. No sleep needed.
+
+```yaml
+init.wait_for_all_sensors: true
+init.sensor_wait_timeout: 10.0
+```
+
+The timeout is a safety net: if a sensor fails to start, the filter does not hang forever. It logs which sensors were missing and starts anyway:
+
+```
+[WARN] Sensor wait timed out after 10.0s. Missing: [GNSS]. Starting anyway.
+```
+
+This is especially useful at competition startup, on-site robot power-on, or any deployment where sensor initialization order is not guaranteed.
+
+---
+
+## Deterministic replay: debugging without hardware
+
+See [How It Works -- Deterministic replay](how-it-works.md#deterministic-replay-and-state-checkpoints) for the full workflow. Quick reference:
+
+```bash
+# Save filter state at any point during bag replay
+ros2 service call /fusioncore/save_checkpoint std_srvs/srv/Trigger
+
+# Restore that state instantly (no need to replay from the beginning)
+ros2 service call /fusioncore/load_checkpoint std_srvs/srv/Trigger
+```
+
+The checkpoint file path is set by `replay.checkpoint_path` (default `/tmp/fusioncore_checkpoint.txt`).
 
 ---
 
