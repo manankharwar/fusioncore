@@ -15,6 +15,24 @@ constexpr int IMU_DIM = 6;
 using ImuMeasurement = Eigen::Matrix<double, IMU_DIM, 1>;
 using ImuNoiseMatrix = Eigen::Matrix<double, IMU_DIM, IMU_DIM>;
 
+// ─── IMU lever arm ───────────────────────────────────────────────────────────
+// Offset from base_link origin to the IMU's sensing point, expressed in the
+// body frame (after the rotation between base_link and the IMU chip has been
+// removed). At a non-zero offset, the accelerometer reads
+//   a_imu = a_base + ω × (ω × r) + α × r + g_body
+// The ω×(ω×r) term (centripetal) is exact and function of state; α (angular
+// acceleration) is not in the state, so we drop the tangential term. For
+// typical ground-robot angular velocities (|ω| ≤ 1 rad/s, r ≤ 0.5 m) the
+// centripetal term dominates and is ≤ 0.5 m/s².
+struct ImuLeverArm {
+  double x = 0.0;
+  double y = 0.0;
+  double z = 0.0;
+  bool is_zero() const {
+    return std::abs(x) < 1e-6 && std::abs(y) < 1e-6 && std::abs(z) < 1e-6;
+  }
+};
+
 struct ImuParams {
   double gyro_noise_x  = 0.005;
   double gyro_noise_y  = 0.005;
@@ -22,9 +40,13 @@ struct ImuParams {
   double accel_noise_x = 0.1;
   double accel_noise_y = 0.1;
   double accel_noise_z = 0.1;
+
+  // IMU offset from base_link in body frame. Zero means "IMU at base_link"
+  // and the measurement function stays identical to the pre-lever-arm form.
+  ImuLeverArm lever_arm;
 };
 
-// h(x): state -> expected raw IMU measurement
+// h(x): state -> expected raw IMU measurement (IMU colocated with base_link)
 // Accelerometer reads specific force = body acceleration + gravity in body frame.
 // Gravity world frame (ENU, z-up): g_world = [0, 0, g].
 // Gravity body frame: g_body = R(q)^T * g_world  (third column of R^T = third row of R).
@@ -41,6 +63,41 @@ inline ImuMeasurement imu_measurement_function(const StateVector& x) {
   z[4] = x[AY] + x[B_AY] + 2*(qy*qz + qw*qx) * g;
   z[5] = x[AZ] + x[B_AZ] + (1 - 2*(qx*qx + qy*qy)) * g;
   return z;
+}
+
+// h(x): state -> expected raw IMU measurement accounting for the lever arm
+// between base_link and the IMU sensing point.
+//
+// Gyro is unchanged (angular velocity is position-invariant on a rigid body).
+// Accel adds the centripetal contribution ω × (ω × r), written out as
+//   ω × (ω × r) = (ω · r) ω − (ω · ω) r.
+// The tangential component α × r is dropped because α is not part of the
+// state; it is bounded by |α·r| and absorbed by accel_noise for typical
+// ground-robot controls.
+inline auto imu_measurement_function_with_lever_arm(const ImuLeverArm& lever_arm)
+{
+  return [lever_arm](const StateVector& x) -> ImuMeasurement {
+    ImuMeasurement z;
+    constexpr double g = 9.80665;
+    const double qw = x[QW], qx = x[QX], qy = x[QY], qz = x[QZ];
+    const double wx = x[WX], wy = x[WY], wz = x[WZ];
+    const double rx = lever_arm.x, ry = lever_arm.y, rz = lever_arm.z;
+
+    // Centripetal: ω × (ω × r)  in body frame
+    const double w_dot_r  = wx*rx + wy*ry + wz*rz;
+    const double w_dot_w  = wx*wx + wy*wy + wz*wz;
+    const double cen_x    = w_dot_r * wx - w_dot_w * rx;
+    const double cen_y    = w_dot_r * wy - w_dot_w * ry;
+    const double cen_z    = w_dot_r * wz - w_dot_w * rz;
+
+    z[0] = wx + x[B_GX];
+    z[1] = wy + x[B_GY];
+    z[2] = wz + x[B_GZ];
+    z[3] = x[AX] + x[B_AX] + 2*(qx*qz - qw*qy) * g + cen_x;
+    z[4] = x[AY] + x[B_AY] + 2*(qy*qz + qw*qx) * g + cen_y;
+    z[5] = x[AZ] + x[B_AZ] + (1 - 2*(qx*qx + qy*qy)) * g + cen_z;
+    return z;
+  };
 }
 
 inline ImuNoiseMatrix imu_noise_matrix(const ImuParams& p) {
