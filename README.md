@@ -43,6 +43,31 @@ RL-EKF run with `odom0_twist_rejection_threshold: 4.03` and `odom1_pose_rejectio
 
 ---
 
+## Try it yourself
+
+**No ROS required -- 30 seconds:**
+
+```bash
+git clone https://github.com/manankharwar/fusioncore && cd fusioncore
+pip install numpy matplotlib
+python3 tools/demo_quick.py --open
+```
+
+Generates a side-by-side trajectory comparison from the NCLT benchmark results included in the repository. No datasets to download, no ROS installation needed.
+
+**Live demo with real sensor data -- 5 minutes:**
+
+```bash
+# Build FusionCore, then:
+bash demo/run_demo.sh
+```
+
+Downloads a 5 MB demo bag, runs FusionCore live against 120 seconds of real outdoor robot data (IMU + wheel odometry + GPS), and generates the comparison plot automatically.
+
+See [demo/README.md](demo/README.md) for full instructions, including running on your own robot bag.
+
+---
+
 ## Install
 
 Supports **ROS 2 Jazzy** (Ubuntu 24.04) and **Humble** (Ubuntu 22.04).
