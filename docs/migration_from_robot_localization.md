@@ -217,9 +217,9 @@ velocity_smoother:
 # if you had AMCL and are doing GPS-only outdoor navigation, remove it
 ```
 
-**GPS-only outdoor navigation (no map):** remove AMCL. It has nothing to localize against without a static map, and the Nav2 `global_frame` must be set to `odom` everywhere — see [Nav2 Integration](nav2.md).
+**GPS-only outdoor navigation (no map):** remove AMCL. It has nothing to localize against without a static map, and the Nav2 `global_frame` must be set to `odom` everywhere: see [Nav2 Integration](nav2.md).
 
-**Indoor navigation with a map:** keep AMCL. FusionCore publishes `odom → base_link`. AMCL publishes `map → odom`. These are different TF edges and are fully compatible — there is no conflict.
+**Indoor navigation with a map:** keep AMCL. FusionCore publishes `odom → base_link`. AMCL publishes `map → odom`. These are different TF edges and are fully compatible: there is no conflict.
 
 ---
 

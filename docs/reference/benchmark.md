@@ -3,7 +3,7 @@
 FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan). Same IMU + wheel odometry + GPS inputs, no manual tuning. Six sequences, same pipeline.
 
 <p align="center">
-  <img src="../../figures/fig1_bar_chart.png" alt="ATE RMSE across 6 NCLT sequences" width="500">
+  <img src="../assets/fig1_bar_chart.png" alt="ATE RMSE across 6 NCLT sequences" width="500">
 </p>
 
 | Sequence | FC ATE RMSE | RL-EKF ATE RMSE | RL-UKF |
@@ -24,7 +24,7 @@ FusionCore wins 5 of 6 sequences. RL-UKF diverged with NaN on all six (confirmed
 **Why gating hurts RL on most sequences:** RL takes GPS measurement covariance directly from the NavSatFix message (via navsat\_transform). NCLT's GPS receiver reports covariances that are tighter than actual noise, so innovations that are physically valid look like outliers at chi²(2, 0.999): and get rejected. FusionCore uses a user-specified noise floor (`gnss.base_noise_xy`) which is tuned to match real sensor behavior, giving better-calibrated innovation statistics under the same threshold.
 
 <p align="center">
-  <img src="../../figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
+  <img src="../assets/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="700">
 </p>
 
 ---

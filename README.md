@@ -21,7 +21,7 @@ So I built FusionCore. It's a 22-state UKF that fuses IMU, wheel encoders, GPS p
 GPS velocity fusion (from any receiver that publishes Doppler velocity, like the u-blox F9P) compares GPS-reported speed against wheel-reported speed on every filter cycle. The innovation directly reveals wheel slip: the Kalman gain automatically down-weights a slipping wheel in proportion to how much it disagrees with GPS. Radar Doppler velocity fusion works the same way but using radio wave physics instead of satellites, so it functions indoors, in rain, fog, dust, and complete darkness.
 
 <p align="center">
-  <img src="figures/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="650">
+  <img src="docs/assets/fig2_traj_grid.png" alt="Trajectory overlay: all 6 sequences, SE3-aligned to RTK GPS ground truth" width="650">
 </p>
 
 ---
