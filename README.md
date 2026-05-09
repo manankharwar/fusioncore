@@ -4,6 +4,9 @@
 [![DOI](https://img.shields.io/badge/DOI-10.5281%2Fzenodo.19834991-blue)](https://doi.org/10.5281/zenodo.19834991)
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
 [![Paper](https://img.shields.io/badge/paper-arXiv%20preprint-b31b1b)](paper/fusioncore_arxiv.pdf)
+[![Newsletter](https://img.shields.io/badge/newsletter-subscribe-orange)](https://manankharwar.substack.com)
+
+> **Stay in the loop:** biweekly updates on new features, benchmarks, and real-world robot integrations. [Subscribe →](https://manankharwar.substack.com)
 
 **ROS 2 sensor fusion: IMU + wheel encoders + GPS fused via UKF at 100 Hz. 22-state filter with IMU bias estimation, adaptive noise covariance, chi-squared outlier rejection on every sensor, GPS velocity fusion for wheel slip detection, and radar Doppler ego-velocity fusion.**
 
