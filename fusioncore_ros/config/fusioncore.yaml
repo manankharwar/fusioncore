@@ -11,6 +11,12 @@ fusioncore:
     # Leave false for any robot that actually moves in 3D (drones, arms, boats).
     publish.force_2d: false
 
+    # Broadcast the odom -> base_link TF transform.
+    # Set to false if another node already owns this transform (e.g. a separate
+    # sensor fusion layer, or when running two FusionCore instances where only
+    # one should broadcast TF). FusionCore will still publish /fusion/odom.
+    publish.tf: true
+
     imu.gyro_noise: 0.005
     # Set true if IMU has magnetometer (9-axis). False for 6-axis gyro/accel only.
     imu.has_magnetometer: false

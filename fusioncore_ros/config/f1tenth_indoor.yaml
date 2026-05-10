@@ -1,0 +1,119 @@
+# Hardware config: F1/10 scale car — indoor, Ackermann steering
+#
+# Platform:   F1/10 scale racing platform
+# IMU:        RealSense D435i built-in IMU  (preferred over VESC IMU — lower noise)
+# Encoders:   VESC wheel odometry → /odom/wheels
+# Secondary:  VSLAM odometry or LiDAR scan-matching odometry → encoder2.topic
+# GPS:        Not used (indoor)
+#
+# ── Wheelbase ───────────────────────────────────────────────────────────────
+# Typical F1/10 wheelbase is 0.32m (Traxxas Slash 1:10 base).
+# Verify with: distance between front and rear axle center in metres.
+#
+# ── How to use ───────────────────────────────────────────────────────────────
+#
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/f1tenth_indoor.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/vesc/odom \
+#     -r /imu/data:=/camera/imu
+#
+# If using VSLAM as encoder2 (e.g. ORB-SLAM3 or slam_toolbox):
+#   Uncomment encoder2.topic below and set to your VSLAM odometry topic.
+#
+# If using LiDAR scan-matching odometry (KISS-ICP, lidar_odometry_ros):
+#   Set encoder2.topic: "/kiss/odometry"
+#
+# ── Multiple IMUs ────────────────────────────────────────────────────────────
+# FusionCore fuses one IMU. Use the RealSense D435i — its BMI085 (or equivalent)
+# has lower noise than the VESC's onboard IMU. Remap /imu/data at launch.
+# If you need both, run imu_filter_madgwick or imu_tools to merge them first.
+#
+# ── SLAM integration ─────────────────────────────────────────────────────────
+# FusionCore publishes odom → base_link. Your SLAM stack publishes map → odom.
+# They do not conflict. Launch both independently.
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: true             # indoor flat floor
+    publish.tf: true                   # set false on a second instance to avoid TF conflicts
+
+    motion_model: "Ackermann"
+    motion_model_params.wheelbase: 0.32   # metres — verify against your chassis
+
+    # ── IMU (RealSense D435i) ─────────────────────────────────────────────────
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.005              # rad/s
+    imu.accel_noise: 0.05             # m/s² — D435i is lower noise than typical MEMS
+    imu.remove_gravitational_acceleration: false
+    imu.frame_id: "camera_imu_optical_frame"
+
+    # ── Primary odometry (VESC wheel encoder) ────────────────────────────────
+    # FusionCore auto-detects zero covariance from VESC and falls back to these
+    # values — no need to patch the VESC driver.
+    encoder.vel_noise: 0.05            # m/s
+    encoder.yaw_noise: 0.05            # rad/s — Ackermann: yaw from steering angle
+
+    # ── Secondary odometry (VSLAM or LiDAR ICP) ──────────────────────────────
+    # Uncomment and set your visual/scan-matching odometry topic.
+    # Must publish nav_msgs/Odometry with twist.linear.x and twist.angular.z.
+    # encoder2.topic: "/slam_toolbox/pose_estimate"  # slam_toolbox
+    # encoder2.topic: "/kiss/odometry"               # KISS-ICP
+    # encoder2.topic: "/camera/odom/sample"          # RealSense T265
+    encoder2.vel_noise: 0.03
+    encoder2.yaw_noise: 0.01
+
+    # ── GPS: disabled ─────────────────────────────────────────────────────────
+    gnss.base_noise_xy: 2.5
+    gnss.base_noise_z: 5.0
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
+    gnss.min_fix_type: 1
+    gnss.fix2_topic: ""
+    gnss.heading_topic: ""
+    gnss.azimuth_topic: ""
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+    outlier_threshold_imu: 15.09
+    outlier_threshold_enc: 11.34
+    outlier_threshold_hdg: 10.83
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: false
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── ZUPT ──────────────────────────────────────────────────────────────────
+    # Aggressive threshold: F1/10 at racing speeds has distinct stop/go phases.
+    zupt.enabled: true
+    zupt.velocity_threshold: 0.05     # m/s
+    zupt.angular_threshold: 0.05      # rad/s
+    zupt.noise_sigma: 0.01
+
+    # ── Startup bias init ─────────────────────────────────────────────────────
+    init.stationary_window: 2.0
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+
+    # ── No GPS coordinate system needed ───────────────────────────────────────
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: false
+    reference.x: 0.0
+    reference.y: 0.0
+    reference.z: 0.0

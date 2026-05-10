@@ -1,0 +1,112 @@
+# Hardware config: full-size van — outdoor, Ackermann, GPS + ZED 2i
+#
+# Platform:   Full-size van or large ground vehicle
+# IMU:        ZED 2i built-in IMU  (via /zed/zed_node/imu/data)
+# Primary:    Wheel encoder or by-wire odometry → /odom/wheels
+# Secondary:  ZED 2i visual odometry → encoder2.topic
+# GPS:        Any NavSatFix-compatible receiver → /gnss/fix
+# LiDAR:      Not required for FusionCore (360 LiDAR goes to your SLAM stack)
+#
+# ── Wheelbase ────────────────────────────────────────────────────────────────
+# Measure front-to-rear axle centre distance in metres.
+# Typical full-size vans: Ford Transit ~3.5m, Sprinter ~3.7m, Transit Connect ~2.7m
+#
+# ── How to use ───────────────────────────────────────────────────────────────
+#
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/van_outdoor_gps.yaml \
+#     --ros-args \
+#     -r /odom/wheels:=/your/wheel/odom \
+#     -r /imu/data:=/zed/zed_node/imu/data \
+#     -r /gnss/fix:=/your/gps/fix
+#
+# If no wheel encoder is available, remap /odom/wheels to the ZED visual odom
+# and set encoder2.topic: "" (ZED odom as sole velocity source).
+#
+# ── LiDAR ────────────────────────────────────────────────────────────────────
+# FusionCore does not consume raw LiDAR. If you want LiDAR odometry fused:
+#   encoder2.topic: "/kiss/odometry"   # KISS-ICP on your 360 LiDAR
+# This is optional — ZED visual odom as encoder2 is usually sufficient.
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: false            # van may traverse ramps/slopes
+    publish.tf: true
+
+    motion_model: "Ackermann"
+    motion_model_params.wheelbase: 3.5   # metres — verify against your vehicle spec
+
+    # ── IMU (ZED 2i) ──────────────────────────────────────────────────────────
+    # ZED 2i publishes gravity-free linear acceleration by default.
+    # Set remove_gravitational_acceleration: true so FusionCore does not
+    # double-subtract gravity.
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.005              # rad/s
+    imu.accel_noise: 0.05             # m/s²
+    imu.remove_gravitational_acceleration: true   # ZED driver subtracts gravity
+    imu.frame_id: "zed_imu_link"
+
+    # ── Primary odometry (wheel encoder or by-wire) ───────────────────────────
+    # Covariance fallback: if your by-wire odometry publishes zero covariance,
+    # FusionCore uses these values automatically.
+    encoder.vel_noise: 0.1             # m/s — looser for van-scale vehicles
+    encoder.yaw_noise: 0.05            # rad/s
+
+    # ── Secondary odometry (ZED 2i visual odometry) ───────────────────────────
+    encoder2.topic: "/zed/zed_node/odom"
+    encoder2.vel_noise: 0.05
+    encoder2.yaw_noise: 0.02
+
+    # ── GPS ───────────────────────────────────────────────────────────────────
+    gnss.base_noise_xy: 1.0
+    gnss.base_noise_z: 2.0
+    gnss.max_hdop: 2.5
+    gnss.min_satellites: 6
+    gnss.min_fix_type: 1
+    gnss.fix2_topic: ""
+    gnss.heading_topic: ""
+    gnss.azimuth_topic: ""
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+    outlier_threshold_imu: 15.09
+    outlier_threshold_enc: 11.34
+    outlier_threshold_hdg: 10.83
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── ZUPT ──────────────────────────────────────────────────────────────────
+    zupt.enabled: true
+    zupt.velocity_threshold: 0.05
+    zupt.angular_threshold: 0.03
+    zupt.noise_sigma: 0.01
+
+    # ── Startup bias init ─────────────────────────────────────────────────────
+    init.stationary_window: 2.0
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+
+    # ── GPS coordinate system ─────────────────────────────────────────────────
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true

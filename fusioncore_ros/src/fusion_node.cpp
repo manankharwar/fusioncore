@@ -61,6 +61,10 @@ public:
     // or IMU-Z drift from moving the costmap rolling window out of the
     // 2D navigation plane. Orientation (roll/pitch) is untouched.
     declare_parameter("publish.force_2d", false);
+    // Set to false when another node owns the odom->base_link TF
+    // (e.g. a separate sensor fusion layer). FusionCore will still
+    // publish /fusion/odom; only the TF broadcast is suppressed.
+    declare_parameter("publish.tf", true);
 
     declare_parameter("imu.gyro_noise",  0.005);
     // Set to true if IMU has a magnetometer (9-axis: BNO08x, VectorNav, Xsens)
@@ -218,6 +222,7 @@ public:
     odom_frame_   = get_parameter("odom_frame").as_string();
     publish_rate_ = get_parameter("publish_rate").as_double();
     force_2d_     = get_parameter("publish.force_2d").as_bool();
+    publish_tf_   = get_parameter("publish.tf").as_bool();
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
     gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
     azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
@@ -1577,7 +1582,7 @@ private:
     tf.transform.rotation.z = s.x[fusioncore::QZ];
     tf.transform.rotation.w = s.x[fusioncore::QW];
 
-    tf_broadcaster_->sendTransform(tf);
+    if (publish_tf_) tf_broadcaster_->sendTransform(tf);
   }
 
   // ─── Diagnostics ─────────────────────────────────────────────────────────
@@ -1813,7 +1818,8 @@ private:
   std::string base_frame_;
   std::string odom_frame_;
   double      publish_rate_;
-  bool        force_2d_ = false;
+  bool        force_2d_    = false;
+  bool        publish_tf_  = true;
   std::string heading_topic_;
   std::string gnss2_topic_;
   std::string azimuth_topic_;
