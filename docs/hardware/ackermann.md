@@ -1,6 +1,6 @@
 # Ackermann / car-like robots
 
-For robots that steer like a car: F1/10 racers, full-size vans, golf carts, agricultural vehicles, anything with front-wheel steering. Unlike differential drive robots, these can't spin in place — they turn by angling the front wheels, which means the geometry of how the robot moves is different.
+For robots that steer like a car: F1/10 racers, full-size vans, golf carts, agricultural vehicles, anything with front-wheel steering. Unlike differential drive robots, these can't spin in place. They turn by angling the front wheels, which means the geometry of how the robot moves is different.
 
 FusionCore has a built-in Ackermann motion model that accounts for this. It applies the same non-holonomic constraint as the DifferentialDrive model (the robot can't slide sideways) but is parameterized for car-like steering.
 
@@ -40,13 +40,15 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
   -r /imu/data:=/camera/imu
 ```
 
-If you're using VSLAM or KISS-ICP as a second velocity source, uncomment `encoder2.topic` in `f1tenth_indoor.yaml`:
+If you're using KISS-ICP or RealSense T265 visual odometry as a second velocity source, uncomment `encoder2.topic` in `f1tenth_indoor.yaml`:
 
 ```yaml
-encoder2.topic: "/kiss/odometry"        # KISS-ICP on LiDAR
+encoder2.topic: "/kiss/odometry"         # KISS-ICP on LiDAR
 # or
-encoder2.topic: "/slam_toolbox/pose_estimate"   # slam_toolbox visual odom
+encoder2.topic: "/camera/odom/sample"    # RealSense T265 visual odometry
 ```
+
+Note: `encoder2` requires a `nav_msgs/Odometry` topic with velocity in the `twist` field. slam_toolbox publishes a pose topic, not an odometry topic, so it won't work here directly.
 
 The full config is at [`config/f1tenth_indoor.yaml`](https://github.com/manankharwar/fusioncore/blob/main/fusioncore_ros/config/f1tenth_indoor.yaml).
 
@@ -79,7 +81,7 @@ The full config is at [`config/van_outdoor_gps.yaml`](https://github.com/manankh
 
 ## VESC gives zero covariance. Is that a problem?
 
-No. FusionCore checks the covariance in every incoming odometry message. If it's zero or negative — which is what VESC outputs by default — FusionCore silently ignores the message covariance and uses the `encoder.vel_noise` and `encoder.yaw_noise` values from your config instead. You don't need to patch the VESC driver.
+No. FusionCore checks the covariance in every incoming odometry message. If it's zero or negative (which is what VESC outputs by default), FusionCore silently ignores the message covariance and uses the `encoder.vel_noise` and `encoder.yaw_noise` values from your config instead. You don't need to patch the VESC driver.
 
 ---
 
@@ -87,7 +89,7 @@ No. FusionCore checks the covariance in every incoming odometry message. If it's
 
 FusionCore fuses one IMU per instance. If your platform has multiple (for example, both a VESC built-in IMU and a RealSense D435i), pick the better one and remap to it.
 
-For most F1/10 setups: use the **RealSense D435i IMU**. The BMI085 inside the D435i has a lower noise floor than the IMU in most VESC-based motor controllers, and its axes are more stable during the high angular rate turns that F1/10 racing involves.
+For most F1/10 setups: use the **RealSense D435i IMU**. It has a lower noise floor than the IMU in most VESC-based motor controllers, and its axes are more stable during the high angular rate turns that F1/10 racing involves.
 
 ```bash
 -r /imu/data:=/camera/imu   # use D435i, not VESC
@@ -105,7 +107,7 @@ The ZED SDK subtracts gravity from the IMU before publishing, which most IMU dri
 imu.remove_gravitational_acceleration: true
 ```
 
-Without this, FusionCore will assume the IMU is publishing raw specific force (gravity included) and will try to handle gravity internally — but since it's already been removed, the filter ends up double-correcting and the state estimate goes wrong.
+Without this, FusionCore will assume the IMU is publishing raw specific force (gravity included) and will try to handle gravity internally. Since it's already been removed by the ZED SDK, the filter ends up double-correcting and the state estimate goes wrong.
 
 Quick check: look at `linear_acceleration.z` when the vehicle is stationary on flat ground. If it reads ~9.8 m/s², leave the flag false. If it reads ~0.0 m/s², set it true.
 
@@ -113,13 +115,13 @@ Quick check: look at `linear_acceleration.z` when the vehicle is stationary on f
 
 ## Disabling TF broadcasting
 
-By default FusionCore broadcasts the `odom → base_link` transform. If another node already owns that transform, or you're running two FusionCore instances and only one should broadcast TF, set:
+By default FusionCore broadcasts the `odom -> base_link` transform. If another node already owns that transform, or you're running two FusionCore instances and only one should broadcast TF, set:
 
 ```yaml
 publish.tf: false
 ```
 
-`/fusion/odom` keeps publishing normally — only the TF broadcast is suppressed.
+`/fusion/odom` keeps publishing normally. Only the TF broadcast is suppressed.
 
 ---
 

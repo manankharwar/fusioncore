@@ -60,9 +60,8 @@ fusioncore:
     # ── Secondary odometry (VSLAM or LiDAR ICP) ──────────────────────────────
     # Uncomment and set your visual/scan-matching odometry topic.
     # Must publish nav_msgs/Odometry with twist.linear.x and twist.angular.z.
-    # encoder2.topic: "/slam_toolbox/pose_estimate"  # slam_toolbox
-    # encoder2.topic: "/kiss/odometry"               # KISS-ICP
-    # encoder2.topic: "/camera/odom/sample"          # RealSense T265
+    # encoder2.topic: "/kiss/odometry"               # KISS-ICP on LiDAR
+    # encoder2.topic: "/camera/odom/sample"          # RealSense T265 visual odometry
     encoder2.vel_noise: 0.03
     encoder2.yaw_noise: 0.01
 
