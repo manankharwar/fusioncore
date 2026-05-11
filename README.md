@@ -63,7 +63,14 @@ pip install numpy matplotlib
 python3 tools/demo_quick.py --open
 ```
 
-Generates a side-by-side trajectory comparison from included NCLT benchmark results. No datasets to download.
+Shows two things from pre-baked NCLT benchmark data included in the repo:
+
+- **GPS spike rejection:** a 707 m corrupted GPS fix is injected at t=120 s. FusionCore's chi-squared gate blocks it (position moves 1 m). robot_localization EKF accepts it and deviates 50+ m before recovering.
+- **Overall accuracy:** FusionCore 5.6 m ATE vs RL-EKF 13.0 m ATE over a 600 s campus drive. RL-UKF diverges with NaN at t=31 s.
+
+<p align="center">
+  <img src="docs/assets/fig_spike_demo.png" alt="FusionCore GPS spike rejection demo: trajectory and error timeline" width="750">
+</p>
 
 **Live demo with real sensor data:**
 

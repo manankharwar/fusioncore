@@ -52,6 +52,22 @@ Most sensor fusion tutorials assume clean data. Real robots don't have clean dat
 
 ---
 
+## See it before you install
+
+**No ROS, no robot, 30 seconds:**
+
+```bash
+git clone https://github.com/manankharwar/fusioncore && cd fusioncore
+pip install numpy matplotlib
+python3 tools/demo_quick.py --open
+```
+
+Shows GPS spike rejection and overall accuracy from pre-baked NCLT data included in the repo. A 707 m corrupted GPS fix is injected at t=120 s. FusionCore's chi-squared gate rejects it (position changes 1 m). RL-EKF accepts it and deviates 50+ m before recovering. RL-UKF diverges with NaN before the spike even fires.
+
+![FusionCore GPS spike rejection demo](assets/fig_spike_demo.png)
+
+---
+
 ## How FusionCore differs from robot_localization
 
 robot_localization is a solid, well-maintained package used on tens of thousands of robots. FusionCore makes different architectural choices:
