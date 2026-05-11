@@ -1,22 +1,21 @@
 FROM ros:jazzy-ros-base AS builder
 
-# Install build dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3-colcon-common-extensions \
-    python3-rosdep \
-    && rm -rf /var/lib/apt/lists/*
-
 WORKDIR /fusioncore_ws/src/fusioncore
 COPY . .
 
 # Skip Gazebo (pulls in hundreds of MB of GUI deps not needed in a container)
-RUN touch /fusioncore_ws/src/fusioncore/fusioncore_gazebo/COLCON_IGNORE
+RUN touch fusioncore_gazebo/COLCON_IGNORE
 
-# Resolve and install ROS deps
-RUN . /opt/ros/jazzy/setup.sh \
+# apt-get update, colcon, rosdep deps all in one layer so package lists are
+# fresh when rosdep calls apt-get install internally
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends python3-colcon-common-extensions \
+    && . /opt/ros/jazzy/setup.sh \
     && cd /fusioncore_ws \
+    && rosdep init 2>/dev/null || true \
     && rosdep update --rosdistro jazzy \
-    && rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy
+    && rosdep install --from-paths src --ignore-src -r -y --rosdistro jazzy \
+    && rm -rf /var/lib/apt/lists/*
 
 # Build (core + ROS wrapper only, no Gazebo)
 RUN . /opt/ros/jazzy/setup.sh \

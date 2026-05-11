@@ -6,7 +6,7 @@ The technical detail behind FusionCore's design decisions.
 
 ## Verified behavior
 
-Each robustness claim below has a corresponding test with a hard pass threshold. These are not assertions — they are measured outcomes.
+Each robustness claim below has a corresponding test with a hard pass threshold. These are not assertions: they are measured outcomes.
 
 | Claim | How it is tested | Verified result |
 |---|---|---|
