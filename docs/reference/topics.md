@@ -14,6 +14,7 @@
 | `encoder2.topic` | `nav_msgs/Odometry` | Second velocity source: lidar odom, visual odom (optional) |
 | `gnss.velocity_topic` | `nav_msgs/Odometry` | GPS velocity in ENU frame: linear.x=east, linear.y=north (optional) |
 | `radar.velocity_topic` | `nav_msgs/Odometry` | Radar Doppler ego-velocity in body frame: linear.x=forward, linear.y=lateral (optional) |
+| `vslam.topic` | `nav_msgs/Odometry` | VSLAM 6-DOF pose: pose.pose + pose.covariance used; twist ignored (optional) |
 
 Default topic names can be changed with ROS 2 remaps:
 

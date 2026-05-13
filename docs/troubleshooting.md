@@ -201,6 +201,43 @@ This tells FusionCore to ignore the frame stamped on incoming IMU messages and u
 
 ---
 
+## VSLAM pose updates not being fused
+
+**Check 1: Is the topic set and correct?**
+
+```bash
+ros2 param get /fusioncore vslam.topic
+ros2 topic hz /vslam/odometry   # replace with your actual topic
+```
+
+If `vslam.topic` returns an empty string, FusionCore is not subscribed. Set it in your YAML:
+
+```yaml
+vslam.topic: "/vslam/odometry"
+```
+
+**Check 2: Is the covariance filled?**
+
+```bash
+ros2 topic echo /vslam/odometry --field pose.covariance --once
+```
+
+If all 36 values are zero, FusionCore falls back to `vslam.position_noise` and `vslam.orientation_noise`. This is fine but means you're not using ORB-SLAM3's quality estimate.
+
+**Check 3: Are updates being rejected as outliers?**
+
+```bash
+ros2 topic echo /diagnostics --once
+```
+
+If `vslam_outliers` is climbing, the Mahalanobis gate is rejecting measurements. Most likely cause: ORB-SLAM3 reinitialized and jumped by meters. Check `outlier_threshold_vslam` (default 22.46). Increase it if your system reinitializes frequently during normal operation.
+
+**Check 4: VSLAM health shows STALE**
+
+VSLAM is marked STALE when no message arrives for more than `stale_timeout` seconds (default 1 s). Check that ORB-SLAM3 is tracking: when tracking is lost, many forks stop publishing or publish with zero covariance.
+
+---
+
 ## `/fusion/odom` publishing at wrong rate
 
 `publish_rate` defaults to `100.0` Hz. The actual rate is limited by your system load and the timer precision on WSL2/Raspberry Pi.

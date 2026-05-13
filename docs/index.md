@@ -49,6 +49,7 @@ Most sensor fusion tutorials assume clean data. Real robots don't have clean dat
 | **Two IMUs on the platform** | Set `imu2.topic` to fuse a second IMU as an independent measurement. No pre-merging with `imu_filter_madgwick` needed. |
 | **GPS drops out in tunnels or canopy** | Inertial coast mode maintains position integrity during sustained GPS dropout. Outlier gate relaxes automatically to reacquire when GPS returns. |
 | **Robot sits still for minutes** | ZUPT (zero velocity update) fuses a zero-velocity pseudo-measurement when encoder speed and angular rate are both below threshold. Prevents IMU noise from integrating into position drift during idle periods. |
+| **No GPS, no wheels: visual SLAM only** | Set `vslam.topic` to fuse 6-DOF pose from ORB-SLAM3, RTAB-Map, Kimera, or any VSLAM that publishes `nav_msgs/Odometry`. Mahalanobis gate rejects reinitializations and tracking jumps automatically. Runs on IMU + VSLAM alone, indoors, GPS-denied. |
 
 ---
 
@@ -85,6 +86,7 @@ robot_localization is a solid, well-maintained package used on tens of thousands
 | Inertial coast mode | Not built-in | Auto on sustained GPS dropout |
 | GPS velocity fusion (wheel slip detection) | Not built-in | Yes: Doppler vs wheel innovation reveals slip |
 | Radar Doppler velocity fusion | Not built-in | Yes: works indoors, all weather, slip detection |
+| VSLAM pose fusion | Not built-in | Yes: `vslam.topic` fuses 6-DOF pose from ORB-SLAM3, RTAB-Map, Kimera, etc. |
 | Dual IMU | Not built-in | Yes: `imu2.topic` fuses a second IMU as an independent measurement |
 | ROS 2 Jazzy / Humble | Ported from ROS 1 | Native, from scratch |
 
