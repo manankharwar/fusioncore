@@ -43,7 +43,6 @@ def generate_launch_description():
     pkg = get_package_share_directory('fusioncore_datasets')
     fc_config  = os.path.join(pkg, 'config', 'nclt_fusioncore.yaml')
     rl_config  = os.path.join(pkg, 'config', 'rl_ekf.yaml')
-    rl_ukf_cfg = os.path.join(pkg, 'config', 'rl_ukf.yaml')
     nav_config = os.path.join(pkg, 'config', 'navsat_transform.yaml')
 
     data_dir     = LaunchConfiguration('data_dir')
@@ -54,6 +53,7 @@ def generate_launch_description():
     spike_mag    = LaunchConfiguration('gps_spike_magnitude_m')
     outage_start = LaunchConfiguration('gps_outage_start_s')
     outage_dur   = LaunchConfiguration('gps_outage_duration_s')
+    nav_datum_yaml = LaunchConfiguration('navsat_datum_yaml')
 
     # ── args ──────────────────────────────────────────────────────────────────
     args = [
@@ -72,6 +72,8 @@ def generate_launch_description():
                               description='Sim-time seconds to begin GPS outage (-1 = off)'),
         DeclareLaunchArgument('gps_outage_duration_s', default_value='45.0',
                               description='GPS outage duration in seconds'),
+        DeclareLaunchArgument('navsat_datum_yaml', default_value=nav_config,
+                              description='Per-sequence YAML with datum lat/lon/alt for navsat_transform'),
     ]
 
     # ── NCLT data player ──────────────────────────────────────────────────────
@@ -154,16 +156,6 @@ def generate_launch_description():
         parameters=[rl_config, {'use_sim_time': True}],
     )
 
-    # ── robot_localization UKF ────────────────────────────────────────────────
-    rl_ukf = Node(
-        package='robot_localization',
-        executable='ukf_node',
-        name='rl_ukf',
-        output='screen',
-        remappings=[('odometry/filtered', '/rl_ukf/odometry')],
-        parameters=[rl_ukf_cfg, {'use_sim_time': True}],
-    )
-
     navsat = Node(
         package='robot_localization',
         executable='navsat_transform_node',
@@ -176,7 +168,7 @@ def generate_launch_description():
             ('gps/filtered',      '/rl/gps/filtered'),
             ('odometry/gps',      '/gps/odometry'),
         ],
-        parameters=[nav_config, {'use_sim_time': True}],
+        parameters=[nav_config, nav_datum_yaml, {'use_sim_time': True}],
     )
 
     # ── bag recorder ─────────────────────────────────────────────────────────
@@ -189,7 +181,6 @@ def generate_launch_description():
                     '-o', output_bag,
                     '/fusion/odom',
                     '/rl/odometry',
-                    '/rl_ukf/odometry',
                     '/gnss/fix',
                     '/clock',
                 ],
@@ -207,7 +198,6 @@ def generate_launch_description():
         configure_fc,
         activate_fc,
         rl_ekf,
-        rl_ukf,
         navsat,
         recorder,
     ])

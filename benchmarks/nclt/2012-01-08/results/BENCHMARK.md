@@ -1,25 +1,11 @@
 # Benchmark Results: NCLT Sequence 2012-01-08
 
-## Absolute Trajectory Error (ATE, SE3-aligned)
+## Metrics (SE3-aligned to RTK ground truth)
 
-| Filter | RMSE (m) | Mean (m) | Max (m) | Rot RMSE (°) |
-|--------|----------|----------|---------|---------------|
-| FusionCore | 9.089 | 7.813 | 40.670 | 115.583 |
-| RL-EKF | 61.099 | 54.283 | 139.572 | 115.726 |
-
-## Pose Accuracy Distribution
-
-| Filter | Within 5 m | Within 10 m | Path Length Ratio | Drift (m/km) |
-|--------|------------|-------------|-------------------|---------------|
-| FusionCore | 26.6% | 77.2% | 0.9649 | 1.02 |
-| RL-EKF | 0.0% | 0.4% | 0.9237 | 6.87 |
-
-## Relative Pose Error (RPE)
-
-| Filter | RPE@10m RMSE | RPE@50m RMSE | RPE@100m RMSE |
-|--------|-------------|-------------|---------------|
-| FusionCore | 15.336 m | 65.374 m | 115.158 m |
-| RL-EKF | 15.772 m | 71.784 m | 121.431 m |
+| Filter | ATE RMSE (m) | Within 5 m | Within 10 m | Path Length Ratio | Drift (m/km) | RPE@10m RMSE (m) |
+|--------|-------------|------------|-------------|-------------------|--------------|------------------|
+| FusionCore | 5.506 | 65.3% | 95.9% | 0.9396 | 6.47 | 17.243 |
+| RL-EKF | 4.398 | 86.9% | 97.2% | 0.9221 | 5.16 | 17.634 |
 
 ## Methodology
 
@@ -27,5 +13,8 @@
 - Sequence: 2012-01-08
 - Ground truth: RTK GPS (gps_rtk.csv) projected to local ENU
 - Evaluation: [evo](https://github.com/MichaelGrupp/evo), SE(3) alignment
-- Motion model: DifferentialDrive
-- Sensor inputs: identical for all filters (IMU + wheel odom + GPS)
+- All filters consume identical sensor streams: same IMU, wheel odometry, and GPS topics
+- FusionCore: full 3D UKF, adaptive noise, ZUPT, IMU bias estimation
+- RL-EKF: two_d_mode=true (flat-terrain Segway RMP), GPS via navsat_transform
+- RL-UKF excluded: robot_localization UKF diverges under high-rate sim time playback
+  (rapid timer catchup causes near-zero dt between predictions, Cholesky failure, immediate NaN)
