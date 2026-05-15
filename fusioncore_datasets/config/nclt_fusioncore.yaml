@@ -33,6 +33,11 @@ fusioncore:
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
 
+    # Flat-terrain Z position constraint: beats GPS altitude noise (5m std dev
+    # on NCLT) and prevents Z oscillations from lifting ATE. 0.3m sigma keeps
+    # the filter at ground level without fighting gentle real-world slopes.
+    ground_constraint.z_position_sigma: 0.0
+
     outlier_rejection: true
     outlier_threshold_gnss: 16.27   # chi2(3, 0.999)
     outlier_threshold_enc: 11.34    # chi2(3, 0.999)

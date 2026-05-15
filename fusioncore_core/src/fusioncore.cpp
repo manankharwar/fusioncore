@@ -560,6 +560,24 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
     return m;
   };
   ukf_.update<1>(z_az, h_az, R_az);
+
+  // ── Z position = 0: flat-terrain pseudo-measurement ─────────────────────
+  // When enabled, tells the filter the robot's altitude above its starting
+  // reference is ~0. Sigma of 0.3m beats GPS altitude noise (5m std dev on
+  // NCLT) and prevents GPS-altitude oscillations from accumulating. Only
+  // enable when terrain is genuinely flat (campus, parking lots, warehouses).
+  if (config_.ground_z_position_sigma > 0.0) {
+    Eigen::Matrix<double, 1, 1> z_pos;
+    z_pos[0] = 0.0;
+    Eigen::Matrix<double, 1, 1> R_zpos;
+    R_zpos(0,0) = config_.ground_z_position_sigma * config_.ground_z_position_sigma;
+    auto h_zpos = [](const StateVector& x) -> Eigen::Matrix<double, 1, 1> {
+      Eigen::Matrix<double, 1, 1> m;
+      m[0] = x[Z];
+      return m;
+    };
+    ukf_.update<1>(z_pos, h_zpos, R_zpos);
+  }
 }
 
 void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {

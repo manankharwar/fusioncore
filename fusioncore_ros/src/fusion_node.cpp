@@ -178,6 +178,11 @@ public:
     declare_parameter("zupt.angular_threshold",  0.05);  // rad/s
     declare_parameter("zupt.noise_sigma",        0.01);  // m/s: tight
 
+    // Flat-terrain Z position constraint. 0.0 = disabled (default).
+    // Set to ~0.3 for campus/parking-lot/warehouse deployments where
+    // GPS altitude noise would otherwise cause Z oscillations.
+    declare_parameter("ground_constraint.z_position_sigma", 0.0);
+
     // Static bias initialization window (seconds, default 0 = disabled).
     // When > 0, the filter collects IMU data for this duration before starting.
     // Gyro and accel biases are estimated from the mean readings, eliminating
@@ -334,6 +339,8 @@ public:
     zupt_velocity_threshold_ = get_parameter("zupt.velocity_threshold").as_double();
     zupt_angular_threshold_  = get_parameter("zupt.angular_threshold").as_double();
     zupt_noise_sigma_        = get_parameter("zupt.noise_sigma").as_double();
+
+    config.ground_z_position_sigma = get_parameter("ground_constraint.z_position_sigma").as_double();
 
     init_window_duration_    = get_parameter("init.stationary_window").as_double();
     wait_for_all_sensors_    = get_parameter("init.wait_for_all_sensors").as_bool();

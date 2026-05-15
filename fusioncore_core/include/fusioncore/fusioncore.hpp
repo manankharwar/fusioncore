@@ -81,6 +81,13 @@ struct FusionCoreConfig {
   //         Lever arm will not activate from IMU orientation alone.
   bool imu_has_magnetometer = false;
 
+  // Position-level ground constraint: fuses Z=0 as a pseudo-measurement each
+  // encoder callback. Tighter than GPS altitude noise (5m std dev on NCLT),
+  // so it dominates and keeps the filter at ground level on flat terrain.
+  // 0.0 = disabled (default: GPS altitude drives Z normally).
+  // ~0.3m sigma = flat terrain mode (campus, parking lot, warehouse floor).
+  double ground_z_position_sigma = 0.0;
+
   // Inertial coast mode: after this many consecutive GNSS rejections, inflate
   // Q_position so P grows and the Mahalanobis gate naturally relaxes.
   // This prevents cascade failure when the filter drifts during a GPS gap
