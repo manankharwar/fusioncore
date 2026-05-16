@@ -714,13 +714,36 @@ bool FusionCore::apply_gnss_update(
     }
   }
 
-  // GPS accepted: exit coast and recovery modes, reset counter
+  // GPS accepted: exit coast mode and reset counter
   if (gnss_in_coast_) {
-    gnss_in_coast_    = false;
-    gnss_in_recovery_ = false;
+    gnss_in_coast_ = false;
     ukf_.set_position_noise_scale(1.0);
   }
   gnss_consecutive_rejects_ = 0;
+
+  if (gnss_in_recovery_) {
+    // Direct position injection: a Kalman update with >100m innovation corrupts
+    // velocity via P cross-terms built up during coast mode Q inflation.
+    // Instead, snap position directly to the GPS fix and reset position
+    // uncertainty to GPS noise. Other states (orientation, velocity, biases)
+    // are left intact. The filter re-builds position cross-covariances naturally
+    // within a few GPS/encoder cycles.
+    gnss_in_recovery_ = false;
+    State s = ukf_.state();
+    s.x[X] = fix.x;
+    s.x[Y] = fix.y;
+    s.x[Z] = fix.z;
+    for (int i = 0; i < STATE_DIM; ++i) {
+      s.P(X, i) = s.P(i, X) = 0.0;
+      s.P(Y, i) = s.P(i, Y) = 0.0;
+      s.P(Z, i) = s.P(i, Z) = 0.0;
+    }
+    s.P(X, X) = R(0, 0);
+    s.P(Y, Y) = R(1, 1);
+    s.P(Z, Z) = R(2, 2);
+    ukf_.init(s);
+    return true;
+  }
 
   Eigen::Matrix<double, sensors::GNSS_POS_DIM, 1> innovation =
     ukf_.update<sensors::GNSS_POS_DIM>(z, h_gnss, R);
