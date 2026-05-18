@@ -6,8 +6,8 @@
 fusioncore/
 ├── fusioncore_core/              # Pure C++17 math library. Zero ROS dependency.
 │   ├── include/fusioncore/
-│   │   ├── ukf.hpp               # Unscented Kalman Filter: 45 sigma points
-│   │   ├── state.hpp             # 22-dimensional state vector (quaternion orientation)
+│   │   ├── ukf.hpp               # Unscented Kalman Filter: 47 sigma points
+│   │   ├── state.hpp             # 23-dimensional state vector (quaternion orientation)
 │   │   ├── fusioncore.hpp        # Public API: FusionCore, FusionCoreConfig
 │   │   └── sensors/
 │   │       ├── imu.hpp           # Raw IMU + orientation measurement models
@@ -39,8 +39,8 @@ The core library (`fusioncore_core`) has zero ROS dependency. It can be used in 
 
 | Property | Value |
 |---|---|
-| Filter | Unscented Kalman Filter, 45 sigma points |
-| State vector | 22-dimensional: position (x,y,z), orientation (qw,qx,qy,qz), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z) |
+| Filter | Unscented Kalman Filter, 47 sigma points |
+| State vector | 23-dimensional: position (x,y,z), orientation (qw,qx,qy,qz), linear velocity, angular velocity, linear acceleration, gyroscope bias (x,y,z), accelerometer bias (x,y,z), encoder WZ bias |
 | GPS coordinate system | Configurable via PROJ. Default: ECEF (EPSG:4978, globally valid). Supports any PROJ-compatible CRS including UTM zones. |
 | Bias estimation | Continuous online estimation, no calibration required |
 | GPS noise scaling | Covariance scaled by HDOP/VDOP, or full 3×3 message covariance when available |
