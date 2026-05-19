@@ -5,6 +5,7 @@ find_package(ament_cmake REQUIRED)
 
 install(PROGRAMS
   scripts/nclt_player.py
+  scripts/gps_cov_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
