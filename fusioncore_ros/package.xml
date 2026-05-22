@@ -3,7 +3,7 @@
 <package format="3">
   <name>fusioncore_ros</name>
   <version>0.2.5</version>
-  <description>ROS 2 UKF sensor fusion for IMU, wheel encoders, GPS, and visual SLAM pose. 22-state filter with ECEF-native GPS handling, automatic IMU bias estimation, adaptive noise covariance, chi-squared outlier rejection on every sensor, and map reinitialization recovery for GPS-denied operation. Drop-in robot_localization alternative. Native ROS 2 Jazzy, benchmarked on 6 NCLT public dataset sequences.</description>
+  <description>ROS 2 UKF sensor fusion for IMU, wheel encoders, GPS, and visual SLAM pose. 23-state filter with ECEF-native GPS handling, online gyro/accel/encoder bias estimation, adaptive noise covariance, chi-squared outlier rejection on every sensor, and map reinitialization recovery for GPS-denied operation. Drop-in robot_localization alternative. Benchmarked on 12 full-length NCLT sequences: wins 10 of 12 vs robot_localization EKF.</description>
   <maintainer email="manan.kharwar@ansys.com">Manan Kharwar</maintainer>
   <license>Apache-2.0</license>
   <url type="website">https://github.com/manankharwar/fusioncore</url>
