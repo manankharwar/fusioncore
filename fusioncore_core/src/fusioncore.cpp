@@ -49,18 +49,25 @@ void FusionCore::init_adaptive_R() {
   R_imu_orient_  = sensors::imu_orientation_noise_matrix(sensors::ImuOrientationParams{});
   R_vslam_       = sensors::vslam_pose_noise_matrix(config_.vslam, sensors::VslamPose{});
 
+  R_vz_(0,0) = config_.ground_constraint_vz_sigma * config_.ground_constraint_vz_sigma;
+  R_az_(0,0) = config_.ground_constraint_az_sigma * config_.ground_constraint_az_sigma;
+
   // Save floors: adaptive R must never drop below the initially configured sensor noise.
   R_imu_floor_        = R_imu_;
   R_encoder_floor_    = R_encoder_;
   R_gnss_floor_       = R_gnss_;
   R_imu_orient_floor_ = R_imu_orient_;
   R_vslam_floor_      = R_vslam_;
+  R_vz_floor_         = R_vz_;
+  R_az_floor_         = R_az_;
 
   imu_innovations_.max_size         = config_.adaptive_window;
   encoder_innovations_.max_size     = config_.adaptive_window;
   gnss_innovations_.max_size        = config_.adaptive_window;
   imu_orient_innovations_.max_size  = config_.adaptive_window;
   vslam_innovations_.max_size       = config_.adaptive_window;
+  vz_innovations_.max_size          = config_.adaptive_window;
+  az_innovations_.max_size          = config_.adaptive_window;
 
   adaptive_initialized_ = true;
 }
@@ -576,9 +583,18 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
   sensors::GroundConstraintMeasurement z;
   z[0] = 0.0;
 
-  sensors::GroundConstraintNoiseMatrix R = sensors::ground_constraint_noise_matrix();
-  ukf_.update<sensors::GROUND_CONSTRAINT_DIM>(
-    z, sensors::ground_constraint_measurement_function, R);
+  // Use adaptive R if initialized, else fall back to config value.
+  // On rough terrain, VZ innovations grow and R_vz_ inflates automatically.
+  // On flat ground, it relaxes back to the floor (config value) over ~1 second.
+  Eigen::Matrix<double, 1, 1> R_vz;
+  R_vz(0,0) = adaptive_initialized_
+    ? R_vz_(0,0)
+    : (config_.ground_constraint_vz_sigma * config_.ground_constraint_vz_sigma);
+
+  auto vz_innovation = ukf_.update<sensors::GROUND_CONSTRAINT_DIM>(
+    z, sensors::ground_constraint_measurement_function, R_vz);
+  adapt_R<1>(R_vz_, R_vz_floor_, vz_innovations_, vz_innovation,
+             config_.adaptive_ground_constraint);
 
   // ── AZ = 0: body-frame vertical acceleration must be zero for ground robots.
   // Without this, a mismatch between the IMU's local gravity and the WGS84
@@ -590,14 +606,20 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
   // Constraining AZ directly eliminates the source of the leak.
   Eigen::Matrix<double, 1, 1> z_az;
   z_az[0] = 0.0;
+
   Eigen::Matrix<double, 1, 1> R_az;
-  R_az(0,0) = 0.25;  // 0.5 m/s² sigma: loose enough for bumps and ramps
+  R_az(0,0) = adaptive_initialized_
+    ? R_az_(0,0)
+    : (config_.ground_constraint_az_sigma * config_.ground_constraint_az_sigma);
+
   auto h_az = [](const StateVector& x) -> Eigen::Matrix<double, 1, 1> {
     Eigen::Matrix<double, 1, 1> m;
     m[0] = x[AZ];
     return m;
   };
-  ukf_.update<1>(z_az, h_az, R_az);
+  auto az_innovation = ukf_.update<1>(z_az, h_az, R_az);
+  adapt_R<1>(R_az_, R_az_floor_, az_innovations_, az_innovation,
+             config_.adaptive_ground_constraint);
 
   // ── Z position = 0: flat-terrain pseudo-measurement ─────────────────────
   // When enabled, tells the filter the robot's altitude above its starting

@@ -75,12 +75,13 @@ inline GroundConstraintMeasurement ground_constraint_measurement_function(const 
   return z;
 }
 
-// Noise: 0.1 m/s: loose enough to stay numerically stable when applied
-// back-to-back with the encoder update (no intermediate predict step),
-// tight enough to suppress altitude drift over time.
-inline GroundConstraintNoiseMatrix ground_constraint_noise_matrix() {
+// sigma: body-frame vertical velocity uncertainty (m/s).
+// Default 0.1 m/s: loose enough to stay numerically stable when applied
+// back-to-back with the encoder update, tight enough to suppress altitude drift.
+// Increase for rough terrain or obstacle traversal (0.3-1.0 m/s range).
+inline GroundConstraintNoiseMatrix ground_constraint_noise_matrix(double sigma = 0.1) {
   GroundConstraintNoiseMatrix R = GroundConstraintNoiseMatrix::Zero();
-  R(0,0) = 0.1 * 0.1;
+  R(0,0) = sigma * sigma;
   return R;
 }
 

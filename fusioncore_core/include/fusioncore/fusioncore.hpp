@@ -60,6 +60,11 @@ struct FusionCoreConfig {
   bool adaptive_encoder = true;
   bool adaptive_gnss    = true;
 
+  // Whether to enable adaptive R for ground constraint pseudo-measurements (VZ=0, AZ=0).
+  // When true, VZ and AZ noise automatically inflates on rough terrain as innovations grow,
+  // then relaxes back when terrain is smooth. No config changes needed across environments.
+  bool adaptive_ground_constraint = true;
+
   // Sliding window size for innovation tracking (number of updates)
   int adaptive_window = 50;
 
@@ -94,6 +99,28 @@ struct FusionCoreConfig {
   //         Orientation update validates roll/pitch ONLY, not heading.
   //         Lever arm will not activate from IMU orientation alone.
   bool imu_has_magnetometer = false;
+
+  // Non-holonomic constraint: lateral velocity (VY) tightness.
+  // For differential drive robots, VY should be zero (robot can't move sideways).
+  // This is the sigma on that assertion (m/s): lower = harder constraint.
+  // Default 0.05 m/s matches encoder.vel_noise (previous hardcoded behavior).
+  // Increase to 10.0+ to effectively disable for mecanum/omnidirectional robots.
+  // Increase to 0.3-1.0 for Ackermann robots on slippery surfaces with lateral slip.
+  double encoder_nhc_vy_sigma = 0.05;
+
+  // Non-holonomic constraint: body-frame vertical velocity (VZ) tightness.
+  // For ground robots, VZ should be zero during steady locomotion.
+  // Default 0.1 m/s: fine for flat ground and mild terrain.
+  // Increase to 0.3-1.0 for robots traversing obstacles, curbs, or rough terrain
+  // where the chassis genuinely has transient vertical motion during transitions.
+  double ground_constraint_vz_sigma = 0.1;
+
+  // Non-holonomic constraint: body-frame vertical acceleration (AZ) tightness.
+  // Constraining AZ prevents gravity-constant mismatch (WGS84 vs local g) from
+  // leaking into AZ and integrating into VZ drift via the motion model.
+  // Default 0.5 m/s²: loose enough for bumps and ramps, tight enough to stop drift.
+  // Increase to 2.0+ for aggressive terrain where vertical accelerations are real.
+  double ground_constraint_az_sigma = 0.5;
 
   // Position-level ground constraint: fuses Z=0 as a pseudo-measurement each
   // encoder callback. Tighter than GPS altitude noise (5m std dev on NCLT),
@@ -322,6 +349,8 @@ private:
   InnovationWindow<sensors::GNSS_POS_DIM>         gnss_innovations_;
   InnovationWindow<sensors::IMU_ORIENTATION_DIM>  imu_orient_innovations_;
   InnovationWindow<sensors::VSLAM_POSE_DIM>       vslam_innovations_;
+  InnovationWindow<1>                             vz_innovations_;
+  InnovationWindow<1>                             az_innovations_;
 
   // Current adaptive R estimates: start at config values, drift toward truth
   sensors::ImuNoiseMatrix             R_imu_;
@@ -329,9 +358,11 @@ private:
   sensors::GnssPosNoiseMatrix         R_gnss_;
   sensors::ImuOrientationNoiseMatrix  R_imu_orient_;
   sensors::VslamPoseNoiseMatrix       R_vslam_;
+  Eigen::Matrix<double, 1, 1>         R_vz_;   // body-frame vertical velocity constraint
+  Eigen::Matrix<double, 1, 1>         R_az_;   // body-frame vertical accel constraint
 
   // Minimum R floors: adaptive R must never drop below the initially configured value.
-  // A constant innovation bias (e.g. sim gravity ≠ WGS84 gravity) has zero variance
+  // A constant innovation bias (e.g. sim gravity != WGS84 gravity) has zero variance
   // after mean-subtraction and would otherwise drive R toward 1e-9, causing
   // K[position, accel] to explode and Z to drift at m/s rates.
   sensors::ImuNoiseMatrix             R_imu_floor_;
@@ -339,6 +370,8 @@ private:
   sensors::GnssPosNoiseMatrix         R_gnss_floor_;
   sensors::ImuOrientationNoiseMatrix  R_imu_orient_floor_;
   sensors::VslamPoseNoiseMatrix       R_vslam_floor_;
+  Eigen::Matrix<double, 1, 1>         R_vz_floor_;
+  Eigen::Matrix<double, 1, 1>         R_az_floor_;
 
   bool adaptive_initialized_ = false;
 

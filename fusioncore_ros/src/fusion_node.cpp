@@ -211,11 +211,12 @@ public:
     declare_parameter("gnss.track_heading_min_dist",  5.0);
     declare_parameter("gnss.track_heading_max_sigma", 0.4);
 
-    declare_parameter("adaptive.imu",     true);
-    declare_parameter("adaptive.encoder", true);
-    declare_parameter("adaptive.gnss",    true);
-    declare_parameter("adaptive.window",  50);
-    declare_parameter("adaptive.alpha",   0.01);
+    declare_parameter("adaptive.imu",               true);
+    declare_parameter("adaptive.encoder",           true);
+    declare_parameter("adaptive.gnss",              true);
+    declare_parameter("adaptive.ground_constraint", true);
+    declare_parameter("adaptive.window",            50);
+    declare_parameter("adaptive.alpha",             0.01);
 
     // Zero-velocity update (ZUPT)
     // When encoder velocity and IMU angular rate are both below threshold,
@@ -224,6 +225,29 @@ public:
     declare_parameter("zupt.velocity_threshold", 0.05);  // m/s
     declare_parameter("zupt.angular_threshold",  0.05);  // rad/s
     declare_parameter("zupt.noise_sigma",        0.01);  // m/s: tight
+
+    // Lateral velocity NHC: how strongly to enforce VY=0 (m/s sigma).
+    // 0.05 (default): standard differential drive on good surface.
+    // 10.0+: effectively disabled, use for mecanum/omnidirectional robots.
+    // 0.3-1.0: Ackermann robots or slippery surfaces with real lateral slip.
+    declare_parameter("encoder.nhc_vy_sigma", 0.05);
+
+    // Auto-detect holonomic (mecanum/omnidirectional) robots at runtime.
+    // When true, FusionCore watches the encoder VY field. If VY is consistently
+    // non-zero, the robot is identified as holonomic and the VY=0 NHC is
+    // disabled automatically within ~0.1s of the first lateral motion.
+    // No config change needed. Set to false only if auto-detect causes problems.
+    declare_parameter("encoder.nhc_auto_detect", true);
+
+    // Body-frame vertical velocity constraint (VZ=0) tightness (m/s sigma).
+    // 0.1 (default): fine for flat floors and mild terrain.
+    // 0.3-1.0: robots traversing curbs, obstacles, or rough outdoor terrain.
+    declare_parameter("ground_constraint.vz_sigma", 0.1);
+
+    // Body-frame vertical acceleration constraint (AZ=0) tightness (m/s² sigma).
+    // 0.5 (default): loose enough for bumps and ramps.
+    // 2.0+: aggressive terrain where real vertical accelerations occur.
+    declare_parameter("ground_constraint.az_sigma", 0.5);
 
     // Flat-terrain Z position constraint. 0.0 = disabled (default).
     // Set to ~0.3 for campus/parking-lot/warehouse deployments where
@@ -299,8 +323,10 @@ public:
     imu2_remove_gravity_ = get_parameter("imu2.remove_gravitational_acceleration").as_bool();
 
     config.encoder.vel_noise_x  = get_parameter("encoder.vel_noise").as_double();
-    config.encoder.vel_noise_y  = config.encoder.vel_noise_x;
+    config.encoder.vel_noise_y  = get_parameter("encoder.nhc_vy_sigma").as_double();
     config.encoder.vel_noise_wz = get_parameter("encoder.yaw_noise").as_double();
+    nhc_auto_detect_    = get_parameter("encoder.nhc_auto_detect").as_bool();
+    nhc_vy_auto_noise_  = config.encoder.vel_noise_x;  // VY noise proxy for holonomic robots
 
     encoder2_topic_     = get_parameter("encoder2.topic").as_string();
     enc2_vel_noise_     = get_parameter("encoder2.vel_noise").as_double();
@@ -388,11 +414,12 @@ public:
     config.gps_track_heading_min_dist  = get_parameter("gnss.track_heading_min_dist").as_double();
     config.gps_track_heading_max_sigma = get_parameter("gnss.track_heading_max_sigma").as_double();
 
-    config.adaptive_imu     = get_parameter("adaptive.imu").as_bool();
-    config.adaptive_encoder = get_parameter("adaptive.encoder").as_bool();
-    config.adaptive_gnss    = get_parameter("adaptive.gnss").as_bool();
-    config.adaptive_window  = get_parameter("adaptive.window").as_int();
-    config.adaptive_alpha   = get_parameter("adaptive.alpha").as_double();
+    config.adaptive_imu               = get_parameter("adaptive.imu").as_bool();
+    config.adaptive_encoder           = get_parameter("adaptive.encoder").as_bool();
+    config.adaptive_gnss              = get_parameter("adaptive.gnss").as_bool();
+    config.adaptive_ground_constraint = get_parameter("adaptive.ground_constraint").as_bool();
+    config.adaptive_window            = get_parameter("adaptive.window").as_int();
+    config.adaptive_alpha             = get_parameter("adaptive.alpha").as_double();
 
     config.ukf.q_position   = get_parameter("ukf.q_position").as_double();
     config.ukf.q_orientation  = get_parameter("ukf.q_orientation").as_double();
@@ -415,7 +442,10 @@ public:
     zupt_angular_threshold_  = get_parameter("zupt.angular_threshold").as_double();
     zupt_noise_sigma_        = get_parameter("zupt.noise_sigma").as_double();
 
-    config.ground_z_position_sigma = get_parameter("ground_constraint.z_position_sigma").as_double();
+    config.encoder_nhc_vy_sigma        = get_parameter("encoder.nhc_vy_sigma").as_double();
+    config.ground_constraint_vz_sigma  = get_parameter("ground_constraint.vz_sigma").as_double();
+    config.ground_constraint_az_sigma  = get_parameter("ground_constraint.az_sigma").as_double();
+    config.ground_z_position_sigma     = get_parameter("ground_constraint.z_position_sigma").as_double();
 
     init_window_duration_    = get_parameter("init.stationary_window").as_double();
     wait_for_all_sensors_    = get_parameter("init.wait_for_all_sensors").as_bool();
@@ -1324,6 +1354,35 @@ private:
     const double vx = msg->twist.twist.linear.x;
     const double vy = msg->twist.twist.linear.y;
     const double wz = msg->twist.twist.angular.z;
+
+    // Auto-detect holonomic (mecanum/omnidirectional) robots.
+    // The outlier gate cannot distinguish "large VY innovation from a wrong NHC"
+    // from "genuine encoder spike": it rejects valid lateral motion and leaves
+    // the filter uncorrected during every sideways move.
+    // Detection: watch the raw encoder VY. If it is consistently non-zero,
+    // the robot genuinely moves laterally and the VY=0 NHC must not apply.
+    // This runs before update_encoder so var_vy is correct before the gate fires.
+    if (nhc_auto_detect_) {
+      if (std::abs(vy) > kNhcDetectVyThreshold_) {
+        ++nhc_nonzero_vy_count_;
+        if (!nhc_holonomic_detected_ && nhc_nonzero_vy_count_ >= kNhcDetectN_) {
+          nhc_holonomic_detected_ = true;
+          RCLCPP_INFO(get_logger(),
+            "NHC auto-detect: lateral motion detected (VY=%.3f m/s). "
+            "Disabling VY=0 constraint. Robot identified as holonomic.", vy);
+        }
+      } else {
+        nhc_nonzero_vy_count_ = 0;
+      }
+    }
+
+    // When holonomic and no message covariance for VY: inject VX noise as the
+    // VY variance so the encoder update passes the outlier gate. Without this,
+    // a 0.5 m/s lateral move with nhc_vy_sigma=0.05 is a 10-sigma deviation:
+    // the gate rejects the whole update and position goes uncorrected.
+    if (nhc_holonomic_detected_ && var_vy <= 0.0) {
+      var_vy = nhc_vy_auto_noise_ * nhc_vy_auto_noise_;
+    }
 
     fc_->update_encoder(t, vx, vy, wz, var_vx, var_vy, var_wz);
 
@@ -2358,6 +2417,16 @@ private:
   double zupt_velocity_threshold_ = 0.05;
   double zupt_angular_threshold_  = 0.05;
   double zupt_noise_sigma_        = 0.01;
+
+  // NHC holonomic auto-detection
+  // |VY| must exceed this to count as real lateral motion (filters vibration/noise)
+  static constexpr double kNhcDetectVyThreshold_ = 0.02;  // m/s
+  // Consecutive messages above threshold before holonomic flag is set (~0.1s at 50Hz)
+  static constexpr int    kNhcDetectN_            = 5;
+  bool   nhc_auto_detect_        = true;
+  bool   nhc_holonomic_detected_ = false;
+  int    nhc_nonzero_vy_count_   = 0;
+  double nhc_vy_auto_noise_      = 0.05;  // VX noise cached at configure time
 
   // Callback groups: sensor callbacks are mutually exclusive (protect UKF state);
   // publish timer runs in its own group so it never waits on a sensor callback.

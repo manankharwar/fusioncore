@@ -59,6 +59,17 @@ fusioncore:
 
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
+    # Lateral velocity non-holonomic constraint (m/s sigma).
+    # Controls how strongly the filter asserts VY=0 (robot can't move sideways).
+    # 0.05 (default): standard differential drive.
+    # 10.0+: disable for mecanum/omnidirectional robots that genuinely move laterally.
+    # 0.3-1.0: Ackermann robots or slippery surfaces with real lateral slip.
+    encoder.nhc_vy_sigma: 0.05
+    # Auto-detect mecanum/omnidirectional robots at runtime (default: true).
+    # FusionCore watches the encoder VY field. After 5 consecutive messages with
+    # |VY| > 0.02 m/s, it identifies the robot as holonomic and disables the
+    # VY=0 NHC automatically. No config needed for mecanum users.
+    encoder.nhc_auto_detect: true
 
     # Optional second encoder-twist source (e.g. KISS-ICP LiDAR odometry).
     # Must publish nav_msgs/Odometry with velocity in the twist field.
@@ -131,6 +142,20 @@ fusioncore:
     # No benefit if you already have GPS (position corrections override bias drift).
     init.stationary_window: 0.0
 
+    # Non-holonomic ground constraints
+    # These control how tightly the filter enforces physical constraints on ground robots.
+    # Loosen for rough terrain, obstacle traversal, or aggressive motion profiles.
+
+    # Body-frame vertical velocity constraint (VZ=0) sigma (m/s).
+    # 0.1 (default): flat floors and mild terrain.
+    # 0.3-1.0: robots traversing curbs, rocks, or rough outdoor paths.
+    ground_constraint.vz_sigma: 0.1
+
+    # Body-frame vertical acceleration constraint (AZ=0) sigma (m/s²).
+    # 0.5 (default): loose enough for bumps, tight enough to stop gravity-constant drift.
+    # 2.0+: aggressive terrain where real vertical accelerations occur regularly.
+    ground_constraint.az_sigma: 0.5
+
     # Flat-terrain Z position constraint
     # Fuses Z=0 as a position pseudo-measurement on every encoder callback.
     # 0.0 = disabled (default, correct for 3D outdoor operation).
@@ -153,6 +178,12 @@ fusioncore:
     adaptive.imu: true
     adaptive.encoder: true
     adaptive.gnss: true
+    # When true, the VZ=0 and AZ=0 ground constraint noise adapts automatically.
+    # On rough terrain or when traversing obstacles, innovations grow and the
+    # constraints loosen within ~1 second. On flat ground they tighten back to
+    # the floor values (ground_constraint.vz_sigma / az_sigma).
+    # This means you never need to tune these per terrain type.
+    adaptive.ground_constraint: true
     adaptive.window: 50       # number of updates to track (50 = ~0.5s at 100Hz)
     adaptive.alpha: 0.01      # learning rate (0.01 = slow, stable)
 
