@@ -120,9 +120,34 @@ The two FC losses are driven by a GPS data quality issue on 2012-08-20 (105 corr
 
 ---
 
-## Used by
+## Used on real hardware
 
-FusionCore is being tested or deployed on real hardware by members of the community. If you are using it on your robot, open an issue or leave a comment in [Discussions](https://github.com/manankharwar/fusioncore/discussions) and I will add you here.
+Real engineers, real robots, real sensor data. Not demos.
+
+> "The system was stable on real robot data and was relatively easy to configure. I was able to get reasonable behavior without spending excessive time on parameter tuning. The overall experience felt more deployment-oriented than research-demo-oriented."
+>
+> **Michał Bednarek** ([@mbed92](https://github.com/mbed92)), Robotics PhD
+> Factory differential-drive robot, ROS 2 Humble: Cartographer (point-cloud localization, no preloaded map) + wheel odometry + IMU
+
+<br>
+
+> "Having a go at using FusionCore in an agricultural field robot. Hopefully will have a robot moving in a month or two."
+>
+> **Sam** ([@samuk](https://github.com/samuk)), [Agroecology Lab](https://github.com/Agroecology-Lab/feldfreund_devkit_ros)
+> Outdoor agricultural robot, integration in progress
+
+> **Russ Hall**, Andino robot (Raspberry Pi)
+> OAK-D (visual odometry + IMU) + Velodyne VLP-16 + rtabmap: indoor mapping and autonomous outdoor navigation
+
+Running FusionCore on your robot? Drop a note in [Discussions #22](https://github.com/manankharwar/fusioncore/discussions/22) and I will add you here.
+
+---
+
+## In the ecosystem
+
+**rtabmap_ros (merged):** FusionCore is included as a named demo in the official [rtabmap_ros](https://github.com/introlab/rtabmap_ros) repository, maintained by @matlabbe. The demo ("Turtlebot3 Nav2, 2D LiDAR SLAM with FusionCore") shows FusionCore and icp_odometry running in a feedback loop: FusionCore's stable odom frame seeds scan matching via `guess_frame_id`, and the ICP result feeds back into FusionCore as a second velocity source. [View the demo](https://github.com/introlab/rtabmap_ros/tree/ros2/rtabmap_demos)
+
+**Stereolabs community:** FusionCore + ZED integration guide posted on the Stereolabs developer forum, acknowledged by Stereolabs support. Under active evaluation by [@privvyledge](https://github.com/privvyledge) comparing FusionCore against Wolf, TIER IV EagleEye, and robot_localization on two platforms: an F1/10 scale car (indoor, VESC + RealSense D435i) and a full-size autonomous van (GPS + ZED 2i + 360 LiDAR).
 
 ---
 
