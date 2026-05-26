@@ -51,6 +51,20 @@ struct FusionCoreConfig {
   // is being incorrectly validated during tight turns (parking lot maneuvers).
   double gps_track_heading_min_speed    = 0.2;   // m/s
   double gps_track_heading_max_yaw_rate = 0.3;   // rad/s (~17 deg/s)
+  double gps_track_heading_max_yaw_delta = 0.15; // radians across the track window
+
+  // GPS rotation heading fusion: when a single GNSS antenna is offset from
+  // base_link, an in-place rotation makes the antenna trace a small arc. The
+  // observed GNSS displacement, relative yaw from odometry/gyro, and known
+  // lever arm make absolute yaw observable without a magnetometer.
+  bool   gps_rotation_heading_enabled = true;
+  double gps_rotation_heading_min_yaw_delta = 1.0;          // radians
+  double gps_rotation_heading_min_arc_baseline = 0.25;      // meters
+  double gps_rotation_heading_max_base_translation = 0.20;  // meters
+  double gps_rotation_heading_max_sigma = 0.4;              // radians
+  double gps_rotation_heading_sigma_floor = 0.05;           // radians
+  double gps_rotation_heading_delta_yaw_sigma = 0.03;       // radians
+  double gps_rotation_heading_max_window_s = 10.0;          // seconds
 
   // Lever arm correction is only applied when heading uncertainty is below this threshold.
   // When heading_sigma exceeds this value (e.g. during prolonged turns with no GPS track
@@ -208,6 +222,7 @@ enum class HeadingSource {
   DUAL_ANTENNA   = 1,  // dual GNSS antenna heading received
   IMU_ORIENTATION = 2, // AHRS/IMU published full orientation
   GPS_TRACK      = 3,  // robot moved enough for heading to be geometric
+  GPS_ROTATION   = 4,  // GNSS antenna lever-arm arc during rotation
 };
 
 // Why a GNSS fix was rejected (or ACCEPTED if it passed)
@@ -259,7 +274,8 @@ struct FusionCoreStatus {
   // Heading observability
   bool          heading_validated   = false;
   HeadingSource heading_source      = HeadingSource::NONE;
-  double        distance_traveled   = 0.0;
+  double        distance_traveled   = 0.0;  // meters since init
+  double        last_heading_sigma  = 0.0;  // radians, last fused heading pseudo-measurement
 
   // Outlier rejection counters: cumulative since init()
   int gnss_outliers  = 0;
@@ -536,6 +552,21 @@ private:
   // Returns heading 1-sigma in radians computed from P via quaternion-to-yaw Jacobian.
   double compute_heading_sigma_rad() const;
 
+  struct GpsRotationHeadingWindow {
+    bool set = false;
+    double timestamp = 0.0;
+    double fix_x = 0.0;
+    double fix_y = 0.0;
+    Eigen::Matrix2d fix_cov = Eigen::Matrix2d::Identity();
+    double yaw = 0.0;
+    double encoder_distance = 0.0;
+  };
+
+  GpsRotationHeadingWindow gps_rotation_hdg_window_;
+  bool   gps_rotation_hdg_fused_ = false;
+  double encoder_distance_       = 0.0;
+  double last_heading_sigma_     = 0.0;
+
   void predict_to(double timestamp_seconds);
   bool apply_gnss_update(double timestamp_seconds, const sensors::GnssFix& fix);
   void save_snapshot();
@@ -544,6 +575,16 @@ private:
     const std::function<void()>& apply_fn
   );
   void update_distance_traveled(double x, double y, double pre_update_speed = -1.0);
+  bool try_fuse_gps_rotation_heading(
+    double timestamp_seconds,
+    const sensors::GnssFix& fix,
+    const sensors::GnssPosNoiseMatrix& R_meas
+  );
+  void reset_gps_rotation_heading_window(
+    double timestamp_seconds,
+    const sensors::GnssFix& fix,
+    const sensors::GnssPosNoiseMatrix& R_meas
+  );
 };
 
 } // namespace fusioncore

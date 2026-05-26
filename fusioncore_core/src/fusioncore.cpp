@@ -5,6 +5,17 @@
 
 namespace fusioncore {
 
+namespace {
+
+double normalize_angle(double angle)
+{
+  angle = std::fmod(angle + M_PI, 2.0 * M_PI);
+  if (angle < 0.0) angle += 2.0 * M_PI;
+  return angle - M_PI;
+}
+
+}  // namespace
+
 // ─── Adaptive noise covariance implementation ─────────────────────────────
 
 // ─── Mahalanobis outlier rejection ────────────────────────────────────────
@@ -128,6 +139,10 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_hdg_fix_x_       = 0.0;
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
+  gps_rotation_hdg_window_ = GpsRotationHeadingWindow{};
+  gps_rotation_hdg_fused_  = false;
+  encoder_distance_        = 0.0;
+  last_heading_sigma_      = 0.0;
 
   // Reset snapshot buffer
   snapshot_buffer_.clear();
@@ -166,6 +181,10 @@ void FusionCore::reset() {
   last_hdg_fix_x_       = 0.0;
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
+  gps_rotation_hdg_window_ = GpsRotationHeadingWindow{};
+  gps_rotation_hdg_fused_  = false;
+  encoder_distance_        = 0.0;
+  last_heading_sigma_      = 0.0;
   snapshot_buffer_.clear();
   imu_buffer_.clear();
   gnss_consecutive_rejects_ = 0;
@@ -382,7 +401,7 @@ void FusionCore::update_distance_traveled(double x, double y, double pre_update_
   double yaw_rate = std::abs(ukf_.state().x[WZ]);
 
   bool motion_is_valid = (state_speed >= config_.gps_track_heading_min_speed) &&
-                         (yaw_rate    <= config_.gps_track_heading_max_yaw_rate);
+                          (yaw_rate    <= config_.gps_track_heading_max_yaw_rate);
 
   if (motion_is_valid) {
     distance_traveled_ += dist;
@@ -598,6 +617,13 @@ void FusionCore::update_encoder(
     adapt_R<sensors::ENCODER_DIM>(R_encoder_, R_encoder_floor_, encoder_innovations_, innovation, config_.adaptive_encoder);
   }
 
+  if (last_encoder_time_ >= 0.0) {
+    const double dt = timestamp_seconds - last_encoder_time_;
+    if (dt > config_.min_dt && dt < config_.max_dt) {
+      encoder_distance_ += std::sqrt(vx * vx + vy * vy) * dt;
+    }
+  }
+
   last_encoder_time_ = timestamp_seconds;
   ++update_count_;
 }
@@ -764,6 +790,131 @@ bool FusionCore::update_gnss(
   return true;
 }
 
+void FusionCore::reset_gps_rotation_heading_window(
+  double timestamp_seconds,
+  const sensors::GnssFix& fix,
+  const sensors::GnssPosNoiseMatrix& R_meas)
+{
+  gps_rotation_hdg_window_.set = true;
+  gps_rotation_hdg_window_.timestamp = timestamp_seconds;
+  gps_rotation_hdg_window_.fix_x = fix.x;
+  gps_rotation_hdg_window_.fix_y = fix.y;
+  gps_rotation_hdg_window_.fix_cov = R_meas.topLeftCorner<2, 2>();
+  gps_rotation_hdg_window_.yaw = ukf_.state().yaw();
+  gps_rotation_hdg_window_.encoder_distance = encoder_distance_;
+}
+
+bool FusionCore::try_fuse_gps_rotation_heading(
+  double timestamp_seconds,
+  const sensors::GnssFix& fix,
+  const sensors::GnssPosNoiseMatrix& R_meas)
+{
+  if (!config_.gps_rotation_heading_enabled || fix.lever_arm.is_zero()) return false;
+
+  if (heading_validated_ &&
+      heading_source_ != HeadingSource::GPS_TRACK &&
+      heading_source_ != HeadingSource::GPS_ROTATION) {
+    return false;
+  }
+
+  const Eigen::Vector2d lever(fix.lever_arm.x, fix.lever_arm.y);
+  if (lever.norm() < 1e-6) return false;
+
+  if (!gps_rotation_hdg_window_.set) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  if (config_.gps_rotation_heading_max_window_s > 0.0 &&
+      timestamp_seconds - gps_rotation_hdg_window_.timestamp >
+        config_.gps_rotation_heading_max_window_s) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  const double base_translation = encoder_distance_ - gps_rotation_hdg_window_.encoder_distance;
+  if (base_translation > config_.gps_rotation_heading_max_base_translation) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  const double current_yaw = ukf_.state().yaw();
+  const double delta_yaw = normalize_angle(current_yaw - gps_rotation_hdg_window_.yaw);
+  if (std::abs(delta_yaw) < config_.gps_rotation_heading_min_yaw_delta) return false;
+
+  const double c = std::cos(delta_yaw);
+  const double s = std::sin(delta_yaw);
+  const Eigen::Vector2d arc_body(
+    (c - 1.0) * lever.x() - s * lever.y(),
+    s * lever.x() + (c - 1.0) * lever.y());
+  const double arc_len = arc_body.norm();
+  if (arc_len < config_.gps_rotation_heading_min_arc_baseline) return false;
+
+  const Eigen::Vector2d observed(
+    fix.x - gps_rotation_hdg_window_.fix_x,
+    fix.y - gps_rotation_hdg_window_.fix_y);
+  const double observed_len = observed.norm();
+  if (observed_len < 1e-6) return false;
+
+  const Eigen::Matrix2d C_delta = gps_rotation_hdg_window_.fix_cov + R_meas.topLeftCorner<2, 2>();
+  const Eigen::Vector2d u_perp(-observed.y() / observed_len, observed.x() / observed_len);
+  const double lateral_var = std::max(0.0, (u_perp.transpose() * C_delta * u_perp)(0, 0));
+  const double sigma_floor = config_.gps_rotation_heading_sigma_floor;
+  const double delta_yaw_sigma = config_.gps_rotation_heading_delta_yaw_sigma;
+  const double sigma_hdg = std::sqrt(
+    lateral_var / (arc_len * arc_len) +
+    delta_yaw_sigma * delta_yaw_sigma +
+    sigma_floor * sigma_floor);
+
+  if (!std::isfinite(sigma_hdg) || sigma_hdg > config_.gps_rotation_heading_max_sigma) {
+    return false;
+  }
+
+  const double yaw_start_est =
+    std::atan2(observed.y(), observed.x()) - std::atan2(arc_body.y(), arc_body.x());
+  const double yaw_current_est = normalize_angle(yaw_start_est + delta_yaw);
+
+  sensors::GnssHdgMeasurement z_hdg;
+  z_hdg[0] = yaw_current_est;
+
+  sensors::GnssHdgNoiseMatrix R_hdg;
+  R_hdg(0,0) = sigma_hdg * sigma_hdg;
+
+  constexpr unsigned int HDG_ANGLE_DIMS = 0b1;
+
+  bool fuse = true;
+  if (config_.outlier_rejection && gps_rotation_hdg_fused_) {
+    sensors::GnssHdgMeasurement innov_pre;
+    sensors::GnssHdgNoiseMatrix S_pre;
+    ukf_.predict_measurement<sensors::GNSS_HDG_DIM>(
+      z_hdg, sensors::gnss_hdg_measurement_function, R_hdg,
+      innov_pre, S_pre, HDG_ANGLE_DIMS);
+    fuse = !is_outlier<sensors::GNSS_HDG_DIM>(innov_pre, S_pre, config_.outlier_threshold_hdg);
+  }
+
+  if (!fuse) {
+    ++hdg_outliers_;
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  ukf_.update<sensors::GNSS_HDG_DIM>(
+    z_hdg, sensors::gnss_hdg_measurement_function, R_hdg, HDG_ANGLE_DIMS);
+
+  gps_rotation_hdg_fused_ = true;
+  last_heading_sigma_ = sigma_hdg;
+
+  if (!heading_validated_ ||
+      heading_source_ == HeadingSource::GPS_TRACK ||
+      heading_source_ == HeadingSource::GPS_ROTATION) {
+    heading_validated_ = true;
+    heading_source_ = HeadingSource::GPS_ROTATION;
+  }
+
+  reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+  return true;
+}
+
 bool FusionCore::apply_gnss_update(
   double timestamp_seconds,
   const sensors::GnssFix& fix)
@@ -867,6 +1018,8 @@ bool FusionCore::apply_gnss_update(
   // Track innovation for adaptive GNSS noise estimation
   adapt_R<sensors::GNSS_POS_DIM>(R_gnss_, R_gnss_floor_, gnss_innovations_, innovation, config_.adaptive_gnss);
 
+  try_fuse_gps_rotation_heading(timestamp_seconds, fix, R_meas);
+
   // GPS track heading fusion: fuse the displacement bearing as a yaw update.
   // This is the same mechanism navsat_transform uses for RL-EKF and directly
   // corrects heading from GPS geometry rather than relying on gyro bias estimation.
@@ -916,6 +1069,7 @@ bool FusionCore::apply_gnss_update(
             ukf_.update<sensors::GNSS_HDG_DIM>(
               z_hdg, sensors::gnss_hdg_measurement_function, R_hdg, HDG_ANGLE_DIMS);
             gps_track_hdg_fused_ = true;
+            last_heading_sigma_ = sigma_hdg;
 
             if (!heading_validated_) {
               heading_validated_ = true;
@@ -973,6 +1127,7 @@ bool FusionCore::update_gnss_heading(
 
   ukf_.update<sensors::GNSS_HDG_DIM>(
     z, sensors::gnss_hdg_measurement_function, R, HDG_ANGLE_DIMS);
+  last_heading_sigma_ = std::sqrt(R(0,0));
 
   // Dual antenna heading is the strongest possible heading validation
   // Override any weaker source
@@ -1019,6 +1174,7 @@ FusionCoreStatus FusionCore::get_status() const {
   status.heading_validated = heading_validated_;
   status.heading_source    = heading_source_;
   status.distance_traveled = distance_traveled_;
+  status.last_heading_sigma = last_heading_sigma_;
 
   status.vslam_health =
     last_vslam_time_ < 0.0 ? SensorHealth::NOT_INIT :

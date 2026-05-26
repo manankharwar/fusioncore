@@ -11,7 +11,7 @@
 #include <gps_msgs/msg/gps_fix.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
-#include <tf2_ros/transform_broadcaster.hpp>
+#include <tf2_ros/transform_broadcaster.h>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <tf2/LinearMath/Quaternion.h>
@@ -214,7 +214,17 @@ public:
     declare_parameter("gnss.track_heading_max_sigma", 0.4);
     declare_parameter("gnss.track_heading_min_speed",    0.2);
     declare_parameter("gnss.track_heading_max_yaw_rate", 0.3);
+    declare_parameter("gnss.track_heading_max_yaw_delta", 0.15);
     declare_parameter("gnss.lever_arm_max_heading_sigma_deg", 20.0);
+    declare_parameter("gnss.heading_observable_distance", 5.0);
+    declare_parameter("gnss.rotation_heading_enabled", true);
+    declare_parameter("gnss.rotation_heading_min_yaw_delta", 1.0);
+    declare_parameter("gnss.rotation_heading_min_arc_baseline", 0.25);
+    declare_parameter("gnss.rotation_heading_max_base_translation", 0.20);
+    declare_parameter("gnss.rotation_heading_max_sigma", 0.4);
+    declare_parameter("gnss.rotation_heading_sigma_floor", 0.05);
+    declare_parameter("gnss.rotation_heading_delta_yaw_sigma", 0.03);
+    declare_parameter("gnss.rotation_heading_max_window_s", 10.0);
 
     declare_parameter("adaptive.imu",               true);
     declare_parameter("adaptive.encoder",           true);
@@ -420,8 +430,26 @@ public:
     config.gps_track_heading_max_sigma     = get_parameter("gnss.track_heading_max_sigma").as_double();
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
     config.gps_track_heading_max_yaw_rate  = get_parameter("gnss.track_heading_max_yaw_rate").as_double();
+    config.gps_track_heading_max_yaw_delta = get_parameter("gnss.track_heading_max_yaw_delta").as_double();
     config.gnss_lever_arm_max_heading_sigma_deg =
       get_parameter("gnss.lever_arm_max_heading_sigma_deg").as_double();
+    config.heading_observable_distance =
+      get_parameter("gnss.heading_observable_distance").as_double();
+    config.gps_rotation_heading_enabled = get_parameter("gnss.rotation_heading_enabled").as_bool();
+    config.gps_rotation_heading_min_yaw_delta =
+      get_parameter("gnss.rotation_heading_min_yaw_delta").as_double();
+    config.gps_rotation_heading_min_arc_baseline =
+      get_parameter("gnss.rotation_heading_min_arc_baseline").as_double();
+    config.gps_rotation_heading_max_base_translation =
+      get_parameter("gnss.rotation_heading_max_base_translation").as_double();
+    config.gps_rotation_heading_max_sigma =
+      get_parameter("gnss.rotation_heading_max_sigma").as_double();
+    config.gps_rotation_heading_sigma_floor =
+      get_parameter("gnss.rotation_heading_sigma_floor").as_double();
+    config.gps_rotation_heading_delta_yaw_sigma =
+      get_parameter("gnss.rotation_heading_delta_yaw_sigma").as_double();
+    config.gps_rotation_heading_max_window_s =
+      get_parameter("gnss.rotation_heading_max_window_s").as_double();
 
     config.adaptive_imu               = get_parameter("adaptive.imu").as_bool();
     config.adaptive_encoder           = get_parameter("adaptive.encoder").as_bool();
@@ -1822,14 +1850,14 @@ private:
     fix.source_id = source_id;
     fix.lever_arm = (source_id == 0) ? gnss_lever_arm_ : gnss_lever_arm2_;
 
-    // gps_msgs/GPSStatus constants:
-    //   STATUS_NO_FIX=-1, STATUS_FIX=0, STATUS_SBAS_FIX=1, STATUS_GBAS_FIX=2
-    //   STATUS_DGPS_FIX=18, STATUS_RTK_FIX=19, STATUS_RTK_FLOAT=20
+    // RTK constants are not available in all gps_msgs releases.
+    constexpr int16_t kStatusRtkFix = 19;
+    constexpr int16_t kStatusRtkFloat = 20;
     using S = gps_msgs::msg::GPSStatus;
     switch (msg->status.status) {
-      case S::STATUS_RTK_FIX:
+      case kStatusRtkFix:
         fix.fix_type = fusioncore::sensors::GnssFixType::RTK_FIXED; break;
-      case S::STATUS_RTK_FLOAT:
+      case kStatusRtkFloat:
         fix.fix_type = fusioncore::sensors::GnssFixType::RTK_FLOAT; break;
       case S::STATUS_GBAS_FIX:
         fix.fix_type = fusioncore::sensors::GnssFixType::RTK_FIXED; break;
@@ -2386,6 +2414,7 @@ private:
         case fusioncore::HeadingSource::DUAL_ANTENNA:    return "DUAL_ANTENNA";
         case fusioncore::HeadingSource::IMU_ORIENTATION: return "IMU_ORIENTATION (9-axis)";
         case fusioncore::HeadingSource::GPS_TRACK:       return "GPS_TRACK";
+        case fusioncore::HeadingSource::GPS_ROTATION:    return "GPS_ROTATION";
       }
       return "Unknown";
     };
@@ -2401,6 +2430,7 @@ private:
       filter_level, filter_msg,
       {{"heading_source",        heading_src_str(status.heading_source)},
        {"heading_validated",     status.heading_validated ? "true" : "false"},
+       {"last_heading_sigma_rad", std::to_string(status.last_heading_sigma)},
        {"distance_traveled_m",   std::to_string(status.distance_traveled)},
        {"position_uncertainty_m", std::to_string(std::sqrt(status.position_uncertainty))},
        {"update_count",          std::to_string(status.update_count)}}));

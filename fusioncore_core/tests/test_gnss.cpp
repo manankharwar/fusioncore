@@ -251,6 +251,64 @@ TEST(GNSSTest, StefanConfigurationFullFusion) {
   EXPECT_GT(status.update_count,   0);
 }
 
+TEST(GNSSTest, RotationHeadingValidatesFromLeverArmArc) {
+  FusionCoreConfig config;
+  config.outlier_rejection = false;
+  config.adaptive_gnss = false;
+  config.gps_track_heading_enabled = false;
+  config.gps_rotation_heading_enabled = true;
+  config.gps_rotation_heading_min_yaw_delta = 0.8;
+  config.gps_rotation_heading_min_arc_baseline = 0.20;
+  config.gps_rotation_heading_max_base_translation = 0.05;
+  config.gps_rotation_heading_max_sigma = 0.4;
+  config.gps_rotation_heading_sigma_floor = 0.02;
+  config.gps_rotation_heading_delta_yaw_sigma = 0.01;
+
+  FusionCore fc(config);
+
+  State initial;
+  initial.P = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  auto make_fix = [](double yaw) {
+    constexpr double lever_x = 0.32;
+    GnssFix fix;
+    fix.fix_type = GnssFixType::GPS_FIX;
+    fix.satellites = 8;
+    fix.hdop = 1.0;
+    fix.vdop = 1.0;
+    fix.lever_arm.x = lever_x;
+    fix.x = std::cos(yaw) * lever_x;
+    fix.y = std::sin(yaw) * lever_x;
+    fix.z = 0.0;
+    fix.has_full_covariance = true;
+    fix.full_covariance = Eigen::Matrix3d::Zero();
+    fix.full_covariance(0,0) = 0.05 * 0.05;
+    fix.full_covariance(1,1) = 0.05 * 0.05;
+    fix.full_covariance(2,2) = 0.10 * 0.10;
+    return fix;
+  };
+
+  ASSERT_TRUE(fc.update_gnss(0.1, make_fix(0.0)));
+
+  constexpr double wz = 0.6;
+  double t = 0.1;
+  for (int i = 1; i <= 180; ++i) {
+    t = 0.1 + i * 0.01;
+    fc.update_encoder(t, 0.0, 0.0, wz, 1e-4, 1e-4, 1e-4);
+  }
+
+  const double yaw = fc.get_state().yaw();
+  ASSERT_GT(std::abs(yaw), config.gps_rotation_heading_min_yaw_delta);
+  ASSERT_TRUE(fc.update_gnss(t, make_fix(yaw)));
+
+  const auto status = fc.get_status();
+  EXPECT_TRUE(status.heading_validated);
+  EXPECT_EQ(status.heading_source, HeadingSource::GPS_ROTATION);
+  EXPECT_GT(status.last_heading_sigma, 0.0);
+  EXPECT_LT(status.last_heading_sigma, config.gps_rotation_heading_max_sigma);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
