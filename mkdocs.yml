@@ -66,6 +66,7 @@ nav:
     - Environment Presets: hardware/environment-presets.md
   - Nav2 Integration: nav2.md
   - Simulation: simulation.md
+  - FusionCore vs robot_localization: vs-robot-localization.md
   - Migrating from robot_localization: migration_from_robot_localization.md
   - How It Works: how-it-works.md
   - Troubleshooting: troubleshooting.md

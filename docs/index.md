@@ -159,6 +159,13 @@ Running FusionCore on your robot? Drop a note in [Discussions #22](https://githu
 - **Configuring your robot** → [Configuration](configuration.md)
 - **Pick a config for your hardware** → [Hardware Configs](hardware/index.md)
 - **Using with Nav2** → [Nav2 Integration](nav2.md)
+- **FusionCore vs robot_localization** → [Technical Comparison](vs-robot-localization.md)
 - **Coming from robot_localization** → [Migration Guide](migration_from_robot_localization.md)
 - **Simulation / testing without hardware** → [Simulation](simulation.md)
 - **How the filter actually works** → [How It Works](how-it-works.md)
+
+---
+
+## Running FusionCore on real hardware?
+
+If localization is blocking your robot and you want help getting it working, open a [GitHub Discussion](https://github.com/manankharwar/fusioncore/discussions/22) or email [manan.kharwar@outlook.com](mailto:manan.kharwar@outlook.com) directly. Fixed scope, fixed price, guaranteed result.
