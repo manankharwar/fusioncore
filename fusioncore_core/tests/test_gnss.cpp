@@ -1,30 +1,33 @@
-#include <gtest/gtest.h>
-#include "fusioncore/ukf.hpp"
-#include "fusioncore/state.hpp"
-#include "fusioncore/sensors/gnss.hpp"
 #include "fusioncore/fusioncore.hpp"
+#include "fusioncore/sensors/gnss.hpp"
+#include "fusioncore/state.hpp"
+#include "fusioncore/ukf.hpp"
+
+#include <gtest/gtest.h>
 
 using namespace fusioncore;
 using namespace fusioncore::sensors;
 
 // ─── Test 1: Position measurement function maps state ────────────────────────
 
-TEST(GNSSTest, PosMeasurementFunctionMapsState) {
+TEST(GNSSTest, PosMeasurementFunctionMapsState)
+{
   StateVector x = StateVector::Zero();
   x[X] = 10.0;
   x[Y] = 20.0;
-  x[Z] =  5.0;
+  x[Z] = 5.0;
 
   GnssPosMeasurement z = gnss_pos_measurement_function(x);
 
   EXPECT_DOUBLE_EQ(z[0], 10.0);
   EXPECT_DOUBLE_EQ(z[1], 20.0);
-  EXPECT_DOUBLE_EQ(z[2],  5.0);
+  EXPECT_DOUBLE_EQ(z[2], 5.0);
 }
 
 // ─── Test 2: Heading measurement function maps yaw ───────────────────────────
 
-TEST(GNSSTest, HdgMeasurementFunctionMapsYaw) {
+TEST(GNSSTest, HdgMeasurementFunctionMapsYaw)
+{
   StateVector x = StateVector::Zero();
   // yaw = π/2 → quaternion [cos(π/4), 0, 0, sin(π/4)]
   x[QW] = std::cos(M_PI / 4.0);
@@ -38,40 +41,42 @@ TEST(GNSSTest, HdgMeasurementFunctionMapsYaw) {
 
 // ─── Test 3: Quality-aware noise scales with HDOP ────────────────────────────
 
-TEST(GNSSTest, NoiseScalesWithHDOP) {
+TEST(GNSSTest, NoiseScalesWithHDOP)
+{
   GnssParams params;
   params.base_noise_xy = 1.0;
 
   GnssFix good_fix;
-  good_fix.fix_type   = GnssFixType::GPS_FIX;
+  good_fix.fix_type = GnssFixType::GPS_FIX;
   good_fix.satellites = 8;
-  good_fix.hdop       = 1.0;
-  good_fix.vdop       = 1.5;
+  good_fix.hdop = 1.0;
+  good_fix.vdop = 1.5;
 
   GnssFix poor_fix;
-  poor_fix.fix_type   = GnssFixType::GPS_FIX;
+  poor_fix.fix_type = GnssFixType::GPS_FIX;
   poor_fix.satellites = 5;
-  poor_fix.hdop       = 3.5;
-  poor_fix.vdop       = 5.0;
+  poor_fix.hdop = 3.5;
+  poor_fix.vdop = 5.0;
 
   GnssPosNoiseMatrix R_good = gnss_pos_noise_matrix(params, good_fix);
   GnssPosNoiseMatrix R_poor = gnss_pos_noise_matrix(params, poor_fix);
 
   // Poor fix should have larger noise
-  EXPECT_GT(R_poor(0,0), R_good(0,0));
-  EXPECT_GT(R_poor(2,2), R_good(2,2));
+  EXPECT_GT(R_poor(0, 0), R_good(0, 0));
+  EXPECT_GT(R_poor(2, 2), R_good(2, 2));
 }
 
 // ─── Test 4: Fix validity check works ────────────────────────────────────────
 
-TEST(GNSSTest, FixValidityCheck) {
+TEST(GNSSTest, FixValidityCheck)
+{
   GnssParams params;
 
   GnssFix valid_fix;
-  valid_fix.fix_type   = GnssFixType::GPS_FIX;
+  valid_fix.fix_type = GnssFixType::GPS_FIX;
   valid_fix.satellites = 6;
-  valid_fix.hdop       = 1.5;
-  valid_fix.vdop       = 2.0;
+  valid_fix.hdop = 1.5;
+  valid_fix.vdop = 2.0;
   EXPECT_TRUE(valid_fix.is_valid(params));
 
   GnssFix no_fix;
@@ -79,63 +84,65 @@ TEST(GNSSTest, FixValidityCheck) {
   EXPECT_FALSE(no_fix.is_valid(params));
 
   GnssFix poor_hdop;
-  poor_hdop.fix_type   = GnssFixType::GPS_FIX;
+  poor_hdop.fix_type = GnssFixType::GPS_FIX;
   poor_hdop.satellites = 6;
-  poor_hdop.hdop       = 5.0;  // exceeds max_hdop=4.0
-  poor_hdop.vdop       = 2.0;
+  poor_hdop.hdop = 5.0;  // exceeds max_hdop=4.0
+  poor_hdop.vdop = 2.0;
   EXPECT_FALSE(poor_hdop.is_valid(params));
 
   GnssFix few_sats;
-  few_sats.fix_type   = GnssFixType::GPS_FIX;
-  few_sats.satellites = 3;     // below min_satellites=4
-  few_sats.hdop       = 1.5;
-  few_sats.vdop       = 2.0;
+  few_sats.fix_type = GnssFixType::GPS_FIX;
+  few_sats.satellites = 3;  // below min_satellites=4
+  few_sats.hdop = 1.5;
+  few_sats.vdop = 2.0;
   EXPECT_FALSE(few_sats.is_valid(params));
 }
 
 // ─── Test 4b: min_fix_type gating ───────────────────────────────────────────
 
-TEST(GNSSTest, MinFixTypeGating) {
+TEST(GNSSTest, MinFixTypeGating)
+{
   GnssParams params;
   params.min_fix_type = GnssFixType::RTK_FLOAT;
 
   GnssFix gps_fix;
-  gps_fix.fix_type   = GnssFixType::GPS_FIX;
+  gps_fix.fix_type = GnssFixType::GPS_FIX;
   gps_fix.satellites = 8;
-  gps_fix.hdop       = 1.0;
-  gps_fix.vdop       = 1.5;
+  gps_fix.hdop = 1.0;
+  gps_fix.vdop = 1.5;
   EXPECT_FALSE(gps_fix.is_valid(params));  // GPS_FIX < RTK_FLOAT
 
   GnssFix dgps_fix;
-  dgps_fix.fix_type   = GnssFixType::DGPS_FIX;
+  dgps_fix.fix_type = GnssFixType::DGPS_FIX;
   dgps_fix.satellites = 8;
-  dgps_fix.hdop       = 1.0;
-  dgps_fix.vdop       = 1.5;
+  dgps_fix.hdop = 1.0;
+  dgps_fix.vdop = 1.5;
   EXPECT_FALSE(dgps_fix.is_valid(params));  // DGPS < RTK_FLOAT
 
   GnssFix rtk_float;
-  rtk_float.fix_type   = GnssFixType::RTK_FLOAT;
+  rtk_float.fix_type = GnssFixType::RTK_FLOAT;
   rtk_float.satellites = 8;
-  rtk_float.hdop       = 1.0;
-  rtk_float.vdop       = 1.5;
+  rtk_float.hdop = 1.0;
+  rtk_float.vdop = 1.5;
   EXPECT_TRUE(rtk_float.is_valid(params));  // RTK_FLOAT == min
 
   GnssFix rtk_fixed;
-  rtk_fixed.fix_type   = GnssFixType::RTK_FIXED;
+  rtk_fixed.fix_type = GnssFixType::RTK_FIXED;
   rtk_fixed.satellites = 8;
-  rtk_fixed.hdop       = 1.0;
-  rtk_fixed.vdop       = 1.5;
+  rtk_fixed.hdop = 1.0;
+  rtk_fixed.vdop = 1.5;
   EXPECT_TRUE(rtk_fixed.is_valid(params));  // RTK_FIXED > min
 }
 
 // ─── Test 5: ECEF to ENU conversion ─────────────────────────────────────────
 
-TEST(GNSSTest, ECEFtoENUAtOriginIsZero) {
+TEST(GNSSTest, ECEFtoENUAtOriginIsZero)
+{
   // Reference point: somewhere in Hamilton Ontario
   LLAPoint ref_lla;
   ref_lla.lat_rad = 43.25 * M_PI / 180.0;
   ref_lla.lon_rad = -79.87 * M_PI / 180.0;
-  ref_lla.alt_m   = 100.0;
+  ref_lla.alt_m = 100.0;
 
   ECEFPoint ref;
   ref.x = 918151.0;
@@ -152,27 +159,30 @@ TEST(GNSSTest, ECEFtoENUAtOriginIsZero) {
 
 // ─── Test 6: GNSS position update corrects drifted position ──────────────────
 
-TEST(GNSSTest, GNSSUpdateCorrectedDriftedPosition) {
+TEST(GNSSTest, GNSSUpdateCorrectedDriftedPosition)
+{
   UKF ukf;
 
   State initial;
-  initial.x     = StateVector::Zero();
-  initial.x[X]  = 50.0;   // drifted far from truth
-  initial.x[Y]  = 30.0;
-  initial.P     = StateMatrix::Identity() * 10.0;
+  initial.x = StateVector::Zero();
+  initial.x[X] = 50.0;  // drifted far from truth
+  initial.x[Y] = 30.0;
+  initial.P = StateMatrix::Identity() * 10.0;
 
   ukf.init(initial);
 
   // GNSS says: actually at (1, 1, 0)
   GnssPosMeasurement z;
-  z[0] = 1.0; z[1] = 1.0; z[2] = 0.0;
+  z[0] = 1.0;
+  z[1] = 1.0;
+  z[2] = 0.0;
 
   GnssParams params;
   GnssFix fix;
-  fix.fix_type   = GnssFixType::GPS_FIX;
+  fix.fix_type = GnssFixType::GPS_FIX;
   fix.satellites = 8;
-  fix.hdop       = 1.0;
-  fix.vdop       = 1.5;
+  fix.hdop = 1.0;
+  fix.vdop = 1.5;
 
   GnssPosNoiseMatrix R = gnss_pos_noise_matrix(params, fix);
 
@@ -188,15 +198,16 @@ TEST(GNSSTest, GNSSUpdateCorrectedDriftedPosition) {
 // Outdoor wheeled robot, GNSS + IMU + encoders
 // This is the exact use case Stefan posted on ROS Discourse Dec 2024
 
-TEST(GNSSTest, StefanConfigurationFullFusion) {
+TEST(GNSSTest, StefanConfigurationFullFusion)
+{
   FusionCoreConfig config;
-  config.ukf.q_position    = 1e-4;
-  config.ukf.q_velocity    = 1e-4;
+  config.ukf.q_position = 1e-4;
+  config.ukf.q_velocity = 1e-4;
   config.ukf.q_orientation = 1e-4;
   config.ukf.q_angular_vel = 1e-4;
-  config.ukf.q_acceleration= 1e-4;
-  config.ukf.q_gyro_bias   = 1e-6;
-  config.ukf.q_accel_bias  = 1e-6;
+  config.ukf.q_acceleration = 1e-4;
+  config.ukf.q_gyro_bias = 1e-6;
+  config.ukf.q_accel_bias = 1e-6;
 
   FusionCore fc(config);
 
@@ -207,10 +218,10 @@ TEST(GNSSTest, StefanConfigurationFullFusion) {
 
   GnssParams gnss_params;
   GnssFix fix;
-  fix.fix_type   = GnssFixType::GPS_FIX;
+  fix.fix_type = GnssFixType::GPS_FIX;
   fix.satellites = 8;
-  fix.hdop       = 1.2;
-  fix.vdop       = 1.8;
+  fix.hdop = 1.2;
+  fix.vdop = 1.8;
 
   // Simulate 5 seconds: robot drives forward 5 meters
   // IMU @ 100Hz, encoder @ 50Hz, GNSS @ 1Hz
@@ -218,7 +229,7 @@ TEST(GNSSTest, StefanConfigurationFullFusion) {
     double t = i * 0.01;
 
     // IMU
-    fc.update_imu(t, 0,0,0, 0,0,0);
+    fc.update_imu(t, 0, 0, 0, 0, 0, 0);
 
     // Encoder @ 50Hz
     if (i % 2 == 0) {
@@ -246,12 +257,94 @@ TEST(GNSSTest, StefanConfigurationFullFusion) {
   // This test proves stability of the full pipeline
   auto status = fc.get_status();
   EXPECT_TRUE(status.initialized);
-  EXPECT_EQ(status.imu_health,     SensorHealth::OK);
+  EXPECT_EQ(status.imu_health, SensorHealth::OK);
   EXPECT_EQ(status.encoder_health, SensorHealth::OK);
-  EXPECT_GT(status.update_count,   0);
+  EXPECT_GT(status.update_count, 0);
 }
 
-TEST(GNSSTest, RotationHeadingValidatesFromLeverArmArc) {
+static GnssFix makePreciseTrackFix(double x, double y)
+{
+  GnssFix fix;
+  fix.fix_type = GnssFixType::GPS_FIX;
+  fix.satellites = 8;
+  fix.hdop = 1.0;
+  fix.vdop = 1.0;
+  fix.x = x;
+  fix.y = y;
+  fix.z = 0.0;
+  fix.has_full_covariance = true;
+  fix.full_covariance = Eigen::Matrix3d::Zero();
+  fix.full_covariance(0, 0) = 0.02 * 0.02;
+  fix.full_covariance(1, 1) = 0.02 * 0.02;
+  fix.full_covariance(2, 2) = 0.05 * 0.05;
+  return fix;
+}
+
+TEST(GNSSTest, TrackHeadingValidatesDuringStraightForwardMotion)
+{
+  FusionCoreConfig config;
+  config.outlier_rejection = false;
+  config.adaptive_gnss = false;
+  config.gps_track_heading_enabled = true;
+  config.gps_rotation_heading_enabled = false;
+  config.heading_observable_distance = 1000.0;
+  config.gps_track_heading_min_dist = 1.0;
+  config.gps_track_heading_min_speed = 0.1;
+  config.gps_track_heading_max_yaw_rate = 0.05;
+  config.gps_track_heading_max_yaw_delta = 0.1;
+
+  FusionCore fc(config);
+  State initial;
+  initial.P = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  ASSERT_TRUE(fc.update_gnss(0.1, makePreciseTrackFix(0.0, 0.0)));
+  fc.update_encoder(0.2, 0.5, 0.0, 0.0, 1e-4, 1e-4, 1e-4);
+  ASSERT_TRUE(fc.update_gnss(1.0, makePreciseTrackFix(2.0, 0.0)));
+
+  const auto status = fc.get_status();
+  EXPECT_TRUE(status.heading_validated);
+  EXPECT_EQ(status.heading_source, HeadingSource::GPS_TRACK);
+  EXPECT_GT(status.last_heading_sigma, 0.0);
+}
+
+TEST(GNSSTest, TrackHeadingSkipsCurvedTrackWindow)
+{
+  FusionCoreConfig config;
+  config.outlier_rejection = false;
+  config.adaptive_gnss = false;
+  config.gps_track_heading_enabled = true;
+  config.gps_rotation_heading_enabled = false;
+  config.heading_observable_distance = 1000.0;
+  config.gps_track_heading_min_dist = 1.0;
+  config.gps_track_heading_min_speed = 0.1;
+  config.gps_track_heading_max_yaw_rate = 10.0;
+  config.gps_track_heading_max_yaw_delta = 0.1;
+
+  FusionCore fc(config);
+  State initial;
+  initial.P = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  ASSERT_TRUE(fc.update_gnss(0.1, makePreciseTrackFix(0.0, 0.0)));
+
+  double t = 0.1;
+  for (int i = 1; i <= 20; ++i) {
+    t = 0.1 + i * 0.1;
+    fc.update_encoder(t, 0.5, 0.0, 0.2, 1e-4, 1e-4, 1e-4);
+  }
+  ASSERT_GT(std::abs(fc.get_state().yaw()), config.gps_track_heading_max_yaw_delta);
+
+  ASSERT_TRUE(fc.update_gnss(t + 0.1, makePreciseTrackFix(2.0, 0.0)));
+
+  const auto status = fc.get_status();
+  EXPECT_FALSE(status.heading_validated);
+  EXPECT_EQ(status.heading_source, HeadingSource::NONE);
+  EXPECT_DOUBLE_EQ(status.last_heading_sigma, 0.0);
+}
+
+TEST(GNSSTest, RotationHeadingValidatesFromLeverArmArc)
+{
   FusionCoreConfig config;
   config.outlier_rejection = false;
   config.adaptive_gnss = false;
@@ -283,9 +376,9 @@ TEST(GNSSTest, RotationHeadingValidatesFromLeverArmArc) {
     fix.z = 0.0;
     fix.has_full_covariance = true;
     fix.full_covariance = Eigen::Matrix3d::Zero();
-    fix.full_covariance(0,0) = 0.05 * 0.05;
-    fix.full_covariance(1,1) = 0.05 * 0.05;
-    fix.full_covariance(2,2) = 0.10 * 0.10;
+    fix.full_covariance(0, 0) = 0.05 * 0.05;
+    fix.full_covariance(1, 1) = 0.05 * 0.05;
+    fix.full_covariance(2, 2) = 0.10 * 0.10;
     return fix;
   };
 
@@ -309,7 +402,8 @@ TEST(GNSSTest, RotationHeadingValidatesFromLeverArmArc) {
   EXPECT_LT(status.last_heading_sigma, config.gps_rotation_heading_max_sigma);
 }
 
-int main(int argc, char** argv) {
+int main(int argc, char ** argv)
+{
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
