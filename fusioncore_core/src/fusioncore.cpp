@@ -1042,8 +1042,7 @@ bool FusionCore::apply_gnss_update(double timestamp_seconds, const sensors::Gnss
   // so the baseline is large enough and the bearing represents robot heading.
   if (
     config_.gps_track_heading_enabled &&
-    (!heading_validated_ || heading_source_ == HeadingSource::GPS_TRACK ||
-     heading_source_ == HeadingSource::GPS_ROTATION)) {
+    (!heading_validated_ || heading_source_ == HeadingSource::GPS_TRACK)) {
     if (!hdg_fix_set_) {
       // Initialize reference on first accepted fix; no heading yet.
       reset_gps_track_heading_reference(fix);
