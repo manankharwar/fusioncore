@@ -6,6 +6,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.0]: 2026-06-04
+
+### Added
+- **GNSS observability topics**: every GPS fix now publishes a structured message on `/fusion/debug/gnss_status` with the exact rejection reason (`ACCEPTED`, `CHI2_FAILED`, `HDOP_HIGH`, `MIN_SATS`, `FIX_TYPE_LOW`, `DELAY_TOO_LARGE`), Mahalanobis distance squared vs the chi2 threshold, fix metadata, and current coast mode state. Replaces the generic warning log line with auditable per-fix data.
+- **Filter health topic**: `/fusion/debug/filter_health` publishes at 1 Hz with innovation norms per sensor, position and heading 1-sigma uncertainty (meters and degrees), heading source, GPS coast mode state, and cumulative outlier counts. All fields are plain `float64` — plottable directly in Foxglove, PlotJuggler, or rqt without a custom panel.
+- **Two new message types**: `fusioncore_ros/msg/GnssStatus` and `fusioncore_ros/msg/FilterHealth`. No external dependencies added.
+- **Lever arm sigma gating**: lever arm correction now requires heading uncertainty below `gnss.lever_arm_max_heading_sigma_deg` (default 20°) in addition to `heading_validated`. During prolonged turns where heading degrades, the lever arm is silently disabled until heading tightens. `lever_arm_used` and `heading_sigma_deg` published on `/fusion/debug/gnss_status` for every fix.
+- **Configurable heading motion thresholds**: `gnss.track_heading_min_speed` and `gnss.track_heading_max_yaw_rate` were previously hardcoded at 0.2 m/s and 0.3 rad/s. Now exposed as YAML parameters so platforms with different motion profiles can tune when GPS displacement counts toward heading observability.
+- **Complete config YAML**: `fusioncore.yaml` rewritten to document all 87 parameters with inline explanations. Every hardware YAML updated with missing params (`q_encoder_wz_bias`, `outlier_threshold_vslam`, `adaptive.ground_constraint`, correct motion models).
+
+### Fixed
+- **Mahalanobis distance computed once per GPS fix**: previously `predict_measurement` ran twice for GNSS updates (once in `is_outlier`, once implicitly). Now computed inline with a single LDLT factorization that is also stored for observability.
+- **`configuration.md` had a non-existent param**: `gnss.degraded_noise_multiplier` was documented but never implemented. Removed. Also removed a duplicate coast mode section.
+- **Husky config missing motion model**: `clearpath_husky.yaml` had no `motion_model` set. Added `DifferentialDrive` — Husky is a differential drive robot and the config should reflect that.
+- **CITATION.cff stale**: was at 0.2.3 while code was at 0.2.4. Synced.
+
+### Changed
+- Rejection log messages now include structured fields: `GNSS fix rejected: CHI2_FAILED (hdop=1.20, d2=847.3, threshold=16.27)` instead of the previous generic message.
+
+---
+
 ## [0.2.4]: 2026-05-19
 
 ### Added
