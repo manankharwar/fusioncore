@@ -10,7 +10,10 @@ from nav_msgs.msg import Odometry, Path
 from geometry_msgs.msg import PoseStamped
 from tf2_msgs.msg import TFMessage
 
-MAX_POSES = 10000   # prevent unbounded growth on long runs
+MAX_POSES  = 10000   # prevent unbounded growth on long runs
+# Offset the robot_localization path in Y so it sits beside the FusionCore
+# path rather than on top of it. Makes both trails readable before the spike.
+RL_Y_OFFSET = 8.0   # metres
 
 
 class PathRecorder(Node):
@@ -58,7 +61,11 @@ class PathRecorder(Node):
         self.fc_pub.publish(self._fc_path)
 
     def _rl_cb(self, msg):
-        self._append(self._rl_path, msg)
+        # Apply Y offset so the RL trail sits beside the FusionCore trail
+        import copy
+        shifted = copy.deepcopy(msg)
+        shifted.pose.pose.position.y += RL_Y_OFFSET
+        self._append(self._rl_path, shifted)
         self.rl_pub.publish(self._rl_path)
 
     def _gt_cb(self, tf_msg):

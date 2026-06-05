@@ -92,6 +92,17 @@ def generate_launch_description():
                    "--roll", "0", "--pitch", "0", "--yaw", "0",
                    "--frame-id", "base_link", "--child-frame-id", "gnss_link"]
     )
+    # navsat_transform needs rl_odom -> base_link to compute the GPS->odom
+    # transform. With publish_tf: false on the EKF (to avoid dual-parent
+    # TF conflict on base_link), we add a static rl_odom -> odom identity
+    # so TF can resolve the chain: rl_odom -> odom -> base_link.
+    # Both estimators start at the same origin so this is valid at t=0.
+    rl_odom_tf = Node(
+        package="tf2_ros", executable="static_transform_publisher", name="rl_odom_tf",
+        arguments=["--x", "0", "--y", "0", "--z", "0",
+                   "--roll", "0", "--pitch", "0", "--yaw", "0",
+                   "--frame-id", "odom", "--child-frame-id", "rl_odom"]
+    )
 
     # 4: GPS publisher (with outlier injection at t=60s)
     gps_pub = Node(
@@ -163,7 +174,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         gazebo, bridge,
-        imu_tf, imu_tf_gz, odom_tf, gnss_tf,
+        imu_tf, imu_tf_gz, odom_tf, gnss_tf, rl_odom_tf,
         gps_pub,
         fusioncore_node, configure_cmd, activate_cmd,
         rl_ekf, rl_navsat,
