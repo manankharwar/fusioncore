@@ -1,0 +1,51 @@
+# Clearpath robot.yaml for Husky A200 running FusionCore sensor fusion.
+#
+# Hardware:
+#   IMU: Microstrain 3DM-GX5-25 (USB, /dev/microstrain_main)
+#   GPS: u-blox F9P in NMEA mode (USB serial, default /dev/ttyACM0)
+#
+# Replace a200-0000 with your robot's serial number. Dashes become underscores
+# in the namespace (a200-0000 -> a200_0000).
+#
+# Topics FusionCore subscribes to (all resolved under the robot namespace):
+#   sensors/imu_0/data  -> imu/data
+#   platform/odom       -> odom/wheels
+#   sensors/gps_0/fix   -> gnss/fix
+
+serial_number: a200-0000
+version: 0
+system:
+  hosts:
+    - hostname: cpr-a200-0000
+      ip: 192.168.131.1
+  ros2:
+    namespace: a200_0000
+    domain_id: 0
+    middleware:
+      implementation: rmw_fastrtps_cpp
+platform:
+  controller: ps4
+  attachments: []
+sensors:
+  imu:
+    - model: microstrain_imu
+      urdf_enabled: true
+      launch_enabled: true
+      parent: base_link
+      xyz: [0.0, 0.0, 0.0]
+      rpy: [0.0, 0.0, 0.0]
+      ros_parameters:
+        port: /dev/microstrain_main
+        frame_id: imu_link
+        use_enu_frame: true
+        imu_data_rate: 100
+  gps:
+    - model: garmin_18x
+      urdf_enabled: true
+      launch_enabled: true
+      parent: base_link
+      xyz: [0.0, 0.0, 0.0]
+      rpy: [0.0, 0.0, 0.0]
+      ros_parameters:
+        port: /dev/ttyACM0
+        baud: 38400
