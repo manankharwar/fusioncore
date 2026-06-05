@@ -1,0 +1,120 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Alpha: 1
+      Class: rviz_default_plugins/Grid
+      Color: 160; 160; 164
+      Enabled: true
+      Name: Grid
+      Normal Cell Count: 0
+      Offset: {X: 0, Y: 0, Z: 0}
+      Plane: XY
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Value: true
+
+    - Class: rviz_default_plugins/Path
+      Color: 255; 255; 255
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.05
+      Name: Ground Truth
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /demo/ground_truth_path
+      Value: true
+
+    - Class: rviz_default_plugins/Path
+      Color: 0; 200; 50
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.05
+      Name: FusionCore
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /demo/fusioncore_path
+      Value: true
+
+    - Class: rviz_default_plugins/Path
+      Color: 220; 40; 40
+      Enabled: true
+      Line Style: Lines
+      Line Width: 0.05
+      Name: robot_localization
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /demo/rl_path
+      Value: true
+
+    - Class: rviz_default_plugins/Odometry
+      Angle Tolerance: 0.1
+      Axes Length: 0.3
+      Axes Radius: 0.02
+      Covariance:
+        Enabled: false
+      Enabled: true
+      Keep: 1
+      Name: FusionCore Pose
+      Position Tolerance: 0.1
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /fusion/odom
+      Value: true
+
+  Enabled: true
+  Fixed Frame: odom
+  Global Options:
+    Background Color: 20; 20; 25
+    Fixed Frame: odom
+    Frame Rate: 30
+  Name: root
+  Tools:
+    - Class: rviz_default_plugins/Interact
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Value: true
+  Views:
+    Current:
+      Class: rviz_default_plugins/TopDownOrtho
+      Enable Stereo Rendering:
+        Stereo Eye Separation: 0.06
+        Stereo Focal Distance: 1
+        Swap Stereo Eyes: false
+        Value: false
+      Invert Z Axis: false
+      Name: Current View
+      Near Clip Distance: 0.01
+      Scale: 50
+      Target Frame: <Fixed Frame>
+      Value: TopDownOrtho (rviz_default_plugins)
+      X: 0
+      Y: 0
+    Saved: ~
+Window Geometry:
+  Displays:
+    collapsed: false
+  Height: 900
+  Width: 1400
+  X: 0
+  Y: 0

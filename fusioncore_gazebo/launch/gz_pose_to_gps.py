@@ -14,6 +14,12 @@ E2 = 0.00669437999014
 NOISE_H = 0.5   # 1-sigma horizontal GPS noise (m)
 NOISE_V = 0.3   # 1-sigma vertical GPS noise (m)
 
+# Outlier injection: at t=OUTLIER_START_S, inject a OUTLIER_MAG_M spike for OUTLIER_DUR_S.
+# This simulates multipath from a building. robot_localization follows it; FusionCore gates it.
+OUTLIER_START_S = 60.0
+OUTLIER_DUR_S   = 5.0
+OUTLIER_MAG_M   = 20.0   # metres, in the +x direction
+
 def enu_to_lla(x, y, z):
     lat0 = math.radians(ORIGIN_LAT)
     lon0 = math.radians(ORIGIN_LON)
@@ -58,6 +64,7 @@ class GzPoseToGps(Node):
         # fusion_node captures an accurate altitude reference.  All
         # subsequent publishes add NOISE_V to model realistic GPS error.
         self.ref_published = False
+        self._start_time = None
         self.get_logger().info(f"GPS publisher ready. Origin: {ORIGIN_LAT}, {ORIGIN_LON}")
 
     def _find_body(self, msg):
@@ -107,7 +114,21 @@ class GzPoseToGps(Node):
         if best is None:
             return
 
-        x = best.x + random.gauss(0, NOISE_H)
+        now = self.get_clock().now().nanoseconds * 1e-9
+        if self._start_time is None:
+            self._start_time = now
+        elapsed = now - self._start_time
+
+        # Periodic outlier: simulates GPS multipath from a nearby building.
+        # Fires once at OUTLIER_START_S and lasts OUTLIER_DUR_S seconds.
+        in_outlier = OUTLIER_START_S <= elapsed < (OUTLIER_START_S + OUTLIER_DUR_S)
+        outlier_x = OUTLIER_MAG_M if in_outlier else 0.0
+        if in_outlier and not getattr(self, "_outlier_logged", False):
+            self.get_logger().warn(
+                f"[t={elapsed:.1f}s] Injecting {OUTLIER_MAG_M}m GPS outlier spike")
+            self._outlier_logged = True
+
+        x = best.x + outlier_x + random.gauss(0, NOISE_H)
         y = best.y + random.gauss(0, NOISE_H)
         # First publish: use exact z so fusion_node's altitude reference has no bias.
         # Without this, a random noise_first spike permanently offsets every ENU z

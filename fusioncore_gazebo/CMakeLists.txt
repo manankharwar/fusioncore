@@ -3,7 +3,7 @@ project(fusioncore_gazebo)
 
 find_package(ament_cmake REQUIRED)
 
-install(DIRECTORY worlds models launch config
+install(DIRECTORY worlds models launch config scripts
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -17,6 +17,18 @@ install(PROGRAMS
   launch/integration_test.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME integration_test
+)
+
+install(PROGRAMS
+  scripts/path_recorder.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME path_recorder
+)
+
+install(PROGRAMS
+  scripts/drive_circle.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME drive_circle
 )
 
 ament_package()
