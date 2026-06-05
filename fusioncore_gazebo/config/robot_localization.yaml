@@ -11,7 +11,7 @@
     frequency: 15.0
     sensor_timeout: 0.1
     two_d_mode: false
-    publish_tf: false
+    publish_tf: true
     map_frame: map
     odom_frame: rl_odom
     base_link_frame: base_link

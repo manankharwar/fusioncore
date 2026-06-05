@@ -42,8 +42,12 @@ class PathRecorder(Node):
 
     def _append(self, path, odom_msg):
         ps = PoseStamped()
-        ps.header = odom_msg.header
-        ps.pose   = odom_msg.pose.pose
+        # Force the pose into the path's declared frame so RViz2 can display
+        # all three trails under the same Fixed Frame regardless of which
+        # odom_frame each estimator uses internally (odom vs rl_odom).
+        ps.header.stamp    = odom_msg.header.stamp
+        ps.header.frame_id = path.header.frame_id
+        ps.pose            = odom_msg.pose.pose
         path.poses.append(ps)
         if len(path.poses) > MAX_POSES:
             path.poses.pop(0)
