@@ -16,9 +16,9 @@ NOISE_V = 0.3   # 1-sigma vertical GPS noise (m)
 
 # Outlier injection: at t=OUTLIER_START_S, inject a OUTLIER_MAG_M spike for OUTLIER_DUR_S.
 # This simulates multipath from a building. robot_localization follows it; FusionCore gates it.
-OUTLIER_START_S = 60.0
-OUTLIER_DUR_S   = 5.0
-OUTLIER_MAG_M   = 20.0   # metres, in the +x direction
+OUTLIER_START_S = 120.0   # wait for FusionCore to complete 2+ clean circles first
+OUTLIER_DUR_S   = 8.0
+OUTLIER_MAG_M   = 30.0    # metres - larger spike makes red divergence unambiguous
 
 def enu_to_lla(x, y, z):
     lat0 = math.radians(ORIGIN_LAT)

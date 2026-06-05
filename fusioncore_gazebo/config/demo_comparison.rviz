@@ -8,7 +8,7 @@ Visualization Manager:
   Displays:
     - Alpha: 1
       Class: rviz_default_plugins/Grid
-      Color: 160; 160; 164
+      Color: 60; 60; 64
       Enabled: true
       Name: Grid
       Normal Cell Count: 0
@@ -19,25 +19,10 @@ Visualization Manager:
       Value: true
 
     - Class: rviz_default_plugins/Path
-      Color: 255; 255; 255
-      Enabled: true
-      Line Style: Lines
-      Line Width: 0.05
-      Name: Ground Truth
-      Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        Filter size: 10
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /demo/ground_truth_path
-      Value: true
-
-    - Class: rviz_default_plugins/Path
       Color: 0; 200; 50
       Enabled: true
       Line Style: Lines
-      Line Width: 0.05
+      Line Width: 0.08
       Name: FusionCore
       Topic:
         Depth: 5
@@ -52,7 +37,7 @@ Visualization Manager:
       Color: 220; 40; 40
       Enabled: true
       Line Style: Lines
-      Line Width: 0.05
+      Line Width: 0.08
       Name: robot_localization
       Topic:
         Depth: 5
