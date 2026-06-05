@@ -82,6 +82,16 @@ def generate_launch_description():
                    "--roll", "0", "--pitch", "0", "--yaw", "0",
                    "--frame-id", "odom", "--child-frame-id", "base_link"]
     )
+    # navsat_transform looks for base_link -> gnss_link to correct for antenna
+    # offset. The simulated GPS is published at the robot center, so this is
+    # an identity transform. Without it navsat_transform prints an error every
+    # 5 seconds (non-blocking but noisy).
+    gnss_tf = Node(
+        package="tf2_ros", executable="static_transform_publisher", name="gnss_tf",
+        arguments=["--x", "0", "--y", "0", "--z", "0",
+                   "--roll", "0", "--pitch", "0", "--yaw", "0",
+                   "--frame-id", "base_link", "--child-frame-id", "gnss_link"]
+    )
 
     # 4: GPS publisher (with outlier injection at t=60s)
     gps_pub = Node(
@@ -153,7 +163,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         gazebo, bridge,
-        imu_tf, imu_tf_gz, odom_tf,
+        imu_tf, imu_tf_gz, odom_tf, gnss_tf,
         gps_pub,
         fusioncore_node, configure_cmd, activate_cmd,
         rl_ekf, rl_navsat,
