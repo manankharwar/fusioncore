@@ -830,6 +830,11 @@ bool FusionCore::try_fuse_gps_rotation_heading(
     heading_source_ != HeadingSource::GPS_ROTATION) {
     return false;
   }
+  if (
+    heading_validated_ && heading_source_ == HeadingSource::GPS_ROTATION &&
+    gps_rotation_hdg_fused_) {
+    return false;
+  }
 
   const Eigen::Vector2d lever(fix.lever_arm.x, fix.lever_arm.y);
   if (lever.norm() < 1e-6) return false;
@@ -933,6 +938,33 @@ bool FusionCore::apply_gnss_update(double timestamp_seconds, const sensors::Gnss
   z[1] = fix.y;
   z[2] = fix.z;
 
+  double heading_sigma_rad = compute_heading_sigma_rad();
+  double heading_sigma_deg = heading_sigma_rad * 180.0 / M_PI;
+  gnss_debug_.heading_sigma_deg = heading_sigma_deg;
+
+  bool heading_reliable = heading_validated_ &&
+    (heading_sigma_deg <= config_.gnss_lever_arm_max_heading_sigma_deg);
+  bool use_lever_arm = !fix.lever_arm.is_zero() && heading_reliable;
+  gnss_debug_.lever_arm_used = use_lever_arm;
+
+  // Convert antenna position to base_link position without letting a plain
+  // GNSS position update act as another yaw measurement through the lever arm.
+  if (use_lever_arm) {
+    const auto & state = ukf_.state().x;
+    double R_body_to_world[3][3];
+    quat_to_rotation_matrix(
+      state[QW], state[QX], state[QY], state[QZ], R_body_to_world);
+    z[0] -= R_body_to_world[0][0] * fix.lever_arm.x +
+            R_body_to_world[0][1] * fix.lever_arm.y +
+            R_body_to_world[0][2] * fix.lever_arm.z;
+    z[1] -= R_body_to_world[1][0] * fix.lever_arm.x +
+            R_body_to_world[1][1] * fix.lever_arm.y +
+            R_body_to_world[1][2] * fix.lever_arm.z;
+    z[2] -= R_body_to_world[2][0] * fix.lever_arm.x +
+            R_body_to_world[2][1] * fix.lever_arm.y +
+            R_body_to_world[2][2] * fix.lever_arm.z;
+  }
+
   // Start with message covariance or HDOP-based estimate
   sensors::GnssPosNoiseMatrix R = sensors::gnss_pos_noise_matrix(config_.gnss, fix);
 
@@ -957,18 +989,8 @@ bool FusionCore::apply_gnss_update(double timestamp_seconds, const sensors::Gnss
     for (int i = 0; i < 3; ++i) R(i, i) = std::max(R(i, i), R_gnss_(i, i));
   }
 
-  double heading_sigma_rad = compute_heading_sigma_rad();
-  double heading_sigma_deg = heading_sigma_rad * 180.0 / M_PI;
-  gnss_debug_.heading_sigma_deg = heading_sigma_deg;
-
-  bool heading_reliable = heading_validated_ &&
-    (heading_sigma_deg <= config_.gnss_lever_arm_max_heading_sigma_deg);
-  bool use_lever_arm = !fix.lever_arm.is_zero() && heading_reliable;
-  gnss_debug_.lever_arm_used = use_lever_arm;
-
-  auto h_gnss = use_lever_arm ? sensors::gnss_pos_measurement_function_with_lever_arm(fix.lever_arm)
-                              : std::function<sensors::GnssPosMeasurement(const StateVector &)>(
-                                  sensors::gnss_pos_measurement_function);
+  std::function<sensors::GnssPosMeasurement(const StateVector &)> h_gnss =
+    sensors::gnss_pos_measurement_function;
 
   if (config_.outlier_rejection) {
     sensors::GnssPosMeasurement innovation_pre;
@@ -1019,8 +1041,25 @@ bool FusionCore::apply_gnss_update(double timestamp_seconds, const sensors::Gnss
   }
   gnss_consecutive_rejects_ = 0;
 
-  Eigen::Matrix<double, sensors::GNSS_POS_DIM, 1> innovation =
-    ukf_.update<sensors::GNSS_POS_DIM>(z, h_gnss, R);
+  Eigen::Matrix<double, sensors::GNSS_POS_DIM, 1> innovation;
+  if (heading_validated_) {
+    std::array<bool, STATE_DIM> state_update_mask;
+    state_update_mask.fill(true);
+    state_update_mask[QW] = false;
+    state_update_mask[QX] = false;
+    state_update_mask[QY] = false;
+    state_update_mask[QZ] = false;
+    state_update_mask[WX] = false;
+    state_update_mask[WY] = false;
+    state_update_mask[WZ] = false;
+    state_update_mask[B_GX] = false;
+    state_update_mask[B_GY] = false;
+    state_update_mask[B_GZ] = false;
+    state_update_mask[B_EWZ] = false;
+    innovation = ukf_.update_masked<sensors::GNSS_POS_DIM>(z, h_gnss, R, state_update_mask);
+  } else {
+    innovation = ukf_.update<sensors::GNSS_POS_DIM>(z, h_gnss, R);
+  }
 
   // Update observability state for accepted fix
   gnss_debug_.accepted           = true;

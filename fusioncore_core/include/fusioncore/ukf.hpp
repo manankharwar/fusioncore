@@ -3,6 +3,7 @@
 #include "fusioncore/state.hpp"
 #include "fusioncore/motion_model.hpp"
 #include <Eigen/Dense>
+#include <array>
 #include <functional>
 #include <memory>
 
@@ -51,6 +52,17 @@ public:
     const Eigen::Matrix<double, z_dim, 1>& z,
     const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
     const Eigen::Matrix<double, z_dim, z_dim>& R,
+    unsigned int angle_dims = 0
+  );
+
+  // Update step with selected state rows blocked from the Kalman correction.
+  // Mask value true = state element may be corrected; false = leave it unchanged.
+  template <int z_dim>
+  Eigen::Matrix<double, z_dim, 1> update_masked(
+    const Eigen::Matrix<double, z_dim, 1>& z,
+    const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
+    const Eigen::Matrix<double, z_dim, z_dim>& R,
+    const std::array<bool, STATE_DIM>& state_update_mask,
     unsigned int angle_dims = 0
   );
 

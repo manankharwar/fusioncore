@@ -217,6 +217,67 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
 }
 
 template <int z_dim>
+Eigen::Matrix<double, z_dim, 1> UKF::update_masked(
+  const Eigen::Matrix<double, z_dim, 1>& z,
+  const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
+  const Eigen::Matrix<double, z_dim, z_dim>& R,
+  const std::array<bool, STATE_DIM>& state_update_mask,
+  unsigned int angle_dims
+) {
+  if (!initialized_)
+    throw std::runtime_error("FusionCore: update_masked() called before init()");
+
+  using ZVector   = Eigen::Matrix<double, z_dim, 1>;
+  using ZMatrix   = Eigen::Matrix<double, z_dim, z_dim>;
+  using PxzMatrix = Eigen::Matrix<double, STATE_DIM, z_dim>;
+
+  Eigen::MatrixXd sigma = generate_sigma_points();
+  int n_sigma = 2 * n_aug_ + 1;
+
+  Eigen::Matrix<double, z_dim, Eigen::Dynamic> sigma_z(z_dim, n_sigma);
+  for (int i = 0; i < n_sigma; ++i)
+    sigma_z.col(i) = h(sigma.col(i));
+
+  ZVector z_pred = ZVector::Zero();
+  for (int i = 0; i < n_sigma; ++i)
+    z_pred += Wm_[i] * sigma_z.col(i);
+
+  ZMatrix   S   = R;
+  PxzMatrix Pxz = PxzMatrix::Zero();
+  for (int i = 0; i < n_sigma; ++i) {
+    ZVector z_diff = sigma_z.col(i) - z_pred;
+    for (int d = 0; d < z_dim; ++d)
+      if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
+    StateVector x_diff = sigma.col(i) - state_.x;
+    S   += Wc_[i] * z_diff * z_diff.transpose();
+    Pxz += Wc_[i] * x_diff * z_diff.transpose();
+  }
+
+  ZVector innovation = z - z_pred;
+  for (int d = 0; d < z_dim; ++d)
+    if (angle_dims & (1u << d)) innovation[d] = normalize_angle(innovation[d]);
+
+  auto S_ldlt = S.ldlt();
+  PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
+  for (int i = 0; i < STATE_DIM; ++i) {
+    if (!state_update_mask[i]) K.row(i).setZero();
+  }
+
+  state_.x = normalize_state(state_.x + K * innovation);
+  state_.P -= K * S * K.transpose();
+  state_.P = (state_.P + state_.P.transpose()) * 0.5;
+  for (int i = 0; i < STATE_DIM; ++i) {
+    if (state_update_mask[i]) continue;
+    for (int j = 0; j < STATE_DIM; ++j) {
+      if (!state_update_mask[j]) continue;
+      state_.P(i, j) = 0.0;
+      state_.P(j, i) = 0.0;
+    }
+  }
+  return innovation;
+}
+
+template <int z_dim>
 void UKF::predict_measurement(
   const Eigen::Matrix<double, z_dim, 1>& z,
   const std::function<Eigen::Matrix<double, z_dim, 1>(const StateVector&)>& h,
@@ -333,6 +394,35 @@ template Eigen::Matrix<double, 6, 1> UKF::update<6>(
   const Eigen::Matrix<double, 6, 1>&,
   const std::function<Eigen::Matrix<double, 6, 1>(const StateVector&)>&,
   const Eigen::Matrix<double, 6, 6>&,
+  unsigned int
+);
+
+template Eigen::Matrix<double, 2, 1> UKF::update_masked<2>(
+  const Eigen::Matrix<double, 2, 1>&,
+  const std::function<Eigen::Matrix<double, 2, 1>(const StateVector&)>&,
+  const Eigen::Matrix<double, 2, 2>&,
+  const std::array<bool, STATE_DIM>&,
+  unsigned int
+);
+template Eigen::Matrix<double, 1, 1> UKF::update_masked<1>(
+  const Eigen::Matrix<double, 1, 1>&,
+  const std::function<Eigen::Matrix<double, 1, 1>(const StateVector&)>&,
+  const Eigen::Matrix<double, 1, 1>&,
+  const std::array<bool, STATE_DIM>&,
+  unsigned int
+);
+template Eigen::Matrix<double, 3, 1> UKF::update_masked<3>(
+  const Eigen::Matrix<double, 3, 1>&,
+  const std::function<Eigen::Matrix<double, 3, 1>(const StateVector&)>&,
+  const Eigen::Matrix<double, 3, 3>&,
+  const std::array<bool, STATE_DIM>&,
+  unsigned int
+);
+template Eigen::Matrix<double, 6, 1> UKF::update_masked<6>(
+  const Eigen::Matrix<double, 6, 1>&,
+  const std::function<Eigen::Matrix<double, 6, 1>(const StateVector&)>&,
+  const Eigen::Matrix<double, 6, 6>&,
+  const std::array<bool, STATE_DIM>&,
   unsigned int
 );
 
