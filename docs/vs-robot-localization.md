@@ -13,7 +13,7 @@ Paper: [arXiv:2605.25239](https://arxiv.org/abs/2605.25239)
 | GPS fusion | navsat_transform node, UTM projection | Native ECEF, no projection node |
 | IMU bias | Not in state vector | Gyro + accel bias as filter states |
 | Outlier rejection | Scalar Mahalanobis threshold | Chi-squared gate per sensor DOF |
-| Noise covariance | Fixed at config time | Adapts from innovation sequence |
+| GPS noise estimation | Uses sensor-reported covariance as-is | Adapts from 50-sample innovation window |
 | ZUPT | Not built-in | Auto when stationary |
 | Delay compensation | `smooth_lagged_data` + `history_length` | IMU ring-buffer replay |
 | GPS fix quality gating | Not built-in | HDOP, satellite count, fix type |
