@@ -146,21 +146,21 @@ Running FusionCore on your robot? Drop a note in [Discussions #22](https://githu
 
 ---
 
-## Coming from robot_localization?
+## Switching from robot_localization?
 
-If any of these have bitten you, FusionCore was built with them in mind:
+FusionCore is a drop-in replacement for the robot_localization + navsat_transform stack. The migration guide covers the YAML and launch file changes: [manankharwar.github.io/fusioncore/migration_from_robot_localization](https://manankharwar.github.io/fusioncore/migration_from_robot_localization/)
 
-| robot_localization issue | What FusionCore does instead |
+The architectural differences that matter in practice:
+
+| Problem | How FusionCore handles it |
 |---|---|
-| UKF diverges with NaN on GPS-heavy sequences ([#780](https://github.com/cra-ros-pkg/robot_localization/issues/780), [#777](https://github.com/cra-ros-pkg/robot_localization/issues/777)) | Chi-squared gate on every sensor; covariance bounded at each step. All twelve NCLT sequences finish without NaN. |
-| navsat_transform crashes at UTM zone boundaries ([#951](https://github.com/cra-ros-pkg/robot_localization/issues/951), [#904](https://github.com/cra-ros-pkg/robot_localization/issues/904)) | GPS fused directly in ECEF. No UTM projection, no zone boundary. |
-| No non-holonomic constraint for wheeled robots ([#744](https://github.com/cra-ros-pkg/robot_localization/issues/744)) | Built-in NHC: lateral and vertical velocity zeroed as a virtual measurement on every encoder update. |
-| Delayed sensor messages cause missed updates ([#911](https://github.com/cra-ros-pkg/robot_localization/issues/911)) | Rolling IMU buffer with retrodiction. Late GPS fixes replay missed IMU steps automatically (up to 500 ms). |
-| Non-deterministic output across bag replays ([#957](https://github.com/cra-ros-pkg/robot_localization/issues/957)) | Message timestamps drive everything under `use_sim_time:true`. Same bag + same config = identical output. |
-| IMU frame confusion: body vs sensor frame ([#757](https://github.com/cra-ros-pkg/robot_localization/issues/757)) | TF lookup on every message. `imu.frame_id` override for broken driver frame names. |
-| navsat_transform CPU load scales with fix rate ([#890](https://github.com/cra-ros-pkg/robot_localization/issues/890)) | No navsat_transform node. ECEF conversion is one matrix multiply per GPS message inside the filter. |
-
-Migration guide: [manankharwar.github.io/fusioncore/migration_from_robot_localization](https://manankharwar.github.io/fusioncore/migration_from_robot_localization/)
+| GPS outliers corrupt the state | Chi-squared gate per sensor DOF rejects bad fixes before they reach the filter. Covariance bounded at every step — no NaN divergence. |
+| UTM zone boundary near the operating area | GPS fused directly in ECEF. No UTM projection, no zone boundary edge case. |
+| Wheeled robot drifts laterally without GPS | Non-holonomic constraint (NHC) zeros lateral and vertical velocity as a virtual measurement on every encoder update. |
+| GPS fixes arrive 50–200 ms late | IMU ring buffer with retrodiction. Late fixes replay missed IMU steps and reconstruct the exact filter state at the GPS timestamp. |
+| Bag replay gives different results each run | Message timestamps drive all updates under `use_sim_time: true`. Same bag, same config, identical output. |
+| IMU mounted off-axis or with a broken frame name | TF lookup on every message. `imu.frame_id` override for drivers that publish wrong frame names. |
+| navsat_transform node adds CPU load and startup ordering complexity | No navsat_transform node. ECEF conversion is one matrix multiply per GPS fix inside the filter. |
 
 ---
 
