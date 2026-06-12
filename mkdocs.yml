@@ -2,6 +2,11 @@ site_name: FusionCore
 site_url: https://manankharwar.github.io/fusioncore/
 site_description: ROS 2 UKF sensor fusion. IMU + wheel encoders + GPS → one position estimate.
 site_author: Manan Kharwar
+
+extra:
+  meta:
+    - name: google-site-verification
+      content: QMnu3j8_n9RZsFuif9fuM_N5bm5mKNRRk3PivRVtgWw
 repo_url: https://github.com/manankharwar/fusioncore
 repo_name: manankharwar/fusioncore
 edit_uri: edit/main/docs/
