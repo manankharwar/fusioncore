@@ -50,7 +50,7 @@ For teams running FusionCore on deployed hardware.
 
 ## Get started
 
-Email [manan.kharwar@outlook.com](mailto:manan.kharwar@outlook.com) with:
+[Book a 30-minute call](https://calendly.com/manan-kharwar/new-meeting) or email [manan.kharwar@outlook.com](mailto:manan.kharwar@outlook.com) with:
 
 - What robot you're building
 - Your sensor setup (IMU model, GPS model, ROS distro)
