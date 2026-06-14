@@ -562,9 +562,14 @@ public:
 
     rclcpp::SubscriptionOptions sensor_opts;
     sensor_opts.callback_group = sensor_cb_group_;
+    // BEST_EFFORT QoS: compatible with both BEST_EFFORT and RELIABLE publishers.
+    // Most hardware drivers (ublox, Septentrio, Microstrain, etc.) publish sensor
+    // data as BEST_EFFORT. Using RELIABLE here silently drops all messages from
+    // those drivers because the QoS policies are incompatible in ROS 2.
+    auto sensor_qos = rclcpp::SensorDataQoS();
 
     imu_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-      imu_topic_, 100,
+      imu_topic_, sensor_qos,
       [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(fc_mutex_);
         imu_callback(msg);
@@ -573,7 +578,7 @@ public:
 
     if (!imu2_topic_.empty()) {
       imu2_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-        imu2_topic_, 100,
+        imu2_topic_, sensor_qos,
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           imu2_callback(msg);
@@ -583,7 +588,7 @@ public:
     }
 
     encoder_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-      "/odom/wheels", 50,
+      "/odom/wheels", sensor_qos,
       [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(fc_mutex_);
         encoder_callback(msg);
@@ -594,7 +599,7 @@ public:
     // behavior identical to a single-encoder setup.
     if (!encoder2_topic_.empty()) {
       encoder2_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-        encoder2_topic_, 50,
+        encoder2_topic_, sensor_qos,
         [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           encoder2_callback(msg);
@@ -605,7 +610,7 @@ public:
 
     if (!vslam_topic_.empty()) {
       vslam_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-        vslam_topic_, 50,
+        vslam_topic_, sensor_qos,
         [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           vslam_callback(msg);
@@ -616,7 +621,7 @@ public:
 
     if (!gnss_vel_topic_.empty()) {
       gnss_vel_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-        gnss_vel_topic_, 10,
+        gnss_vel_topic_, sensor_qos,
         [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gnss_vel_callback(msg);
@@ -627,7 +632,7 @@ public:
 
     if (!radar_vel_topic_.empty()) {
       radar_vel_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-        radar_vel_topic_, 10,
+        radar_vel_topic_, sensor_qos,
         [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           radar_vel_callback(msg);
@@ -638,7 +643,7 @@ public:
 
     if (use_gps_fix_) {
       gps_fix_sub_ = create_subscription<gps_msgs::msg::GPSFix>(
-        "/gnss/fix", 10,
+        "/gnss/fix", sensor_qos,
         [this](const gps_msgs::msg::GPSFix::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gps_fix_callback(msg, 0);
@@ -647,7 +652,7 @@ public:
         "GNSS: using gps_msgs/GPSFix on /gnss/fix (RTK_FLOAT capable)");
     } else {
       gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
-        "/gnss/fix", 10,
+        "/gnss/fix", sensor_qos,
         [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gnss_callback(msg, 0);
@@ -657,7 +662,7 @@ public:
     // compass_msgs/Azimuth heading: optional, preferred over sensor_msgs/Imu
     if (!azimuth_topic_.empty()) {
       azimuth_sub_ = create_subscription<compass_msgs::msg::Azimuth>(
-        azimuth_topic_, 10,
+        azimuth_topic_, sensor_qos,
         [this](const compass_msgs::msg::Azimuth::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           azimuth_callback(msg);
@@ -669,7 +674,7 @@ public:
     // Raw magnetometer heading: optional, enabled via magnetometer.enabled
     if (mag_enabled_) {
       mag_sub_ = create_subscription<sensor_msgs::msg::MagneticField>(
-        mag_topic_, 50,
+        mag_topic_, sensor_qos,
         [this](const sensor_msgs::msg::MagneticField::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           mag_callback(msg);
@@ -681,7 +686,7 @@ public:
     // Second GNSS receiver: optional
     if (!gnss2_topic_.empty()) {
       gnss2_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
-        gnss2_topic_, 10,
+        gnss2_topic_, sensor_qos,
         [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gnss_callback(msg, 1);
@@ -695,7 +700,7 @@ public:
     // This is the standard way dual antenna GPS receivers report heading in ROS.
     if (!heading_topic_.empty()) {
       gnss_heading_sub_ = create_subscription<sensor_msgs::msg::Imu>(
-        heading_topic_, 10,
+        heading_topic_, sensor_qos,
         [this](const sensor_msgs::msg::Imu::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gnss_heading_callback(msg);
