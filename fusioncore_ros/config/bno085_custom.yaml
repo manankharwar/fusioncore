@@ -65,6 +65,21 @@ fusioncore:
     gnss.heading_topic: ""
     gnss.azimuth_topic: ""
 
+    # ── Raw magnetometer heading (BNO085-specific) ────────────────────────────
+    # The BNO085 publishes raw magnetometer data on /imu/mag at 100 Hz via the
+    # Hillcrest driver. FusionCore can fuse this directly as a tilt-compensated
+    # heading update. Useful for heading at startup before the robot has moved
+    # enough for GPS track heading to kick in.
+    # Requires hard/soft iron calibration first (use imu_calib or magneto).
+    # Set enabled: true only after verifying your magnetic environment is clean.
+    magnetometer.enabled: false
+    magnetometer.topic: "/imu/mag"
+    magnetometer.noise_rad: 0.05
+    magnetometer.chi2_threshold: 9.21
+    magnetometer.declination_rad: 0.0    # look up at magnetic-declination.com
+    magnetometer.hard_iron: [0.0, 0.0, 0.0]
+    magnetometer.soft_iron: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+
     # ── Outlier rejection ─────────────────────────────────────────────────────
     outlier_rejection: true
     outlier_threshold_gnss: 16.27

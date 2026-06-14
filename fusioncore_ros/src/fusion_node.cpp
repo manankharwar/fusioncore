@@ -2454,6 +2454,14 @@ private:
         {{"outlier_count", std::to_string(status.vslam_outliers)}}));
     }
 
+    // Magnetometer (only shown when configured)
+    if (mag_enabled_) {
+      diag_array.status.push_back(make_status("Magnetometer",
+        health_to_level(status.mag_health),
+        health_to_str(status.mag_health),
+        {{"outlier_count", std::to_string(status.mag_outliers)}}));
+    }
+
     // Filter
     auto heading_src_str = [](fusioncore::HeadingSource src) -> std::string {
       switch (src) {
@@ -2513,6 +2521,7 @@ private:
       fh.gnss_outlier_count    = status.gnss_outliers;
       fh.imu_outlier_count     = status.imu_outliers;
       fh.encoder_outlier_count = status.enc_outliers;
+      fh.mag_outlier_count     = status.mag_outliers;
 
       filter_health_pub_->publish(fh);
     }

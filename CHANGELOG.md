@@ -6,6 +6,17 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.3.1]: 2026-06-14
+
+### Added
+- **Raw magnetometer heading fusion**: FusionCore now subscribes to `sensor_msgs/MagneticField` and fuses the heading as a 1-DOF UKF update. Applies hard/soft iron correction (configurable 3-vector bias + 3x3 scale matrix) and tilt compensation using the current filter roll/pitch before fusing. Chi-squared gate (chi2(1, 0.99) = 9.21 by default) rejects magnetic spikes. Heading source hierarchy: DUAL_ANTENNA overrides MAGNETOMETER overrides GPS_TRACK. Enable with `magnetometer.enabled: true`. Requires calibration: collect data with a full 360-degree rotation and run `imu_calib` or `magneto` to get `hard_iron` and `soft_iron` values.
+- **`mag_outlier_count` in FilterHealth**: cumulative magnetometer rejection count now published on `/fusion/debug/filter_health` alongside the existing GNSS, IMU, and encoder outlier counts.
+- **Magnetometer diagnostics**: when `magnetometer.enabled: true`, a `fusioncore: Magnetometer` status block appears in `/diagnostics` with health state (OK/STALE/NOT_INIT) and outlier count.
+- **`magnetometer.topic` subscriber row in topics reference**: documentation now lists the `/imu/mag` subscriber.
+- 12 new unit tests: flat heading (east/north/west), declination offset, hard iron correction, tilt compensation, UKF convergence, chi2 gate rejection, heading source hierarchy, outlier counter.
+
+---
+
 ## [0.3.0]: 2026-06-04
 
 ### Added

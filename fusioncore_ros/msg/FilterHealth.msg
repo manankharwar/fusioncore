@@ -17,7 +17,7 @@ float64 heading_sigma_deg
 
 # Heading observability
 bool   heading_validated
-string heading_source  # NONE | GPS_TRACK | IMU_ORIENTATION | DUAL_ANTENNA
+string heading_source  # NONE | GPS_TRACK | IMU_ORIENTATION | DUAL_ANTENNA | MAGNETOMETER
 
 # GPS coast mode state
 bool  gnss_in_coast
@@ -30,3 +30,4 @@ float64 distance_traveled_m
 int32 gnss_outlier_count
 int32 imu_outlier_count
 int32 encoder_outlier_count
+int32 mag_outlier_count

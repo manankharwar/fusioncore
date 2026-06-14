@@ -141,6 +141,43 @@ fusioncore:
     gnss.heading_topic: ""      # sensor_msgs/Imu (dual antenna heading)
     gnss.azimuth_topic: ""      # compass_msgs/Azimuth (preferred REP-145 standard)
 
+    # ── Raw magnetometer heading ──────────────────────────────────────────────
+    # Fuses sensor_msgs/MagneticField directly into the UKF as a 1-DOF heading
+    # measurement. Applies hard/soft iron correction then tilt compensation using
+    # the current filter roll/pitch. Useful when GPS is unavailable and the robot
+    # is stationary (GPS track heading requires motion; magnetometer does not).
+    # Heading source hierarchy: DUAL_ANTENNA > MAGNETOMETER > GPS_TRACK.
+    # Requires calibration: collect data by rotating the robot through a full circle
+    # and use imu_calib (ROS) or magneto (desktop) to get hard_iron and soft_iron values.
+
+    magnetometer.enabled: false
+    magnetometer.topic: "/imu/mag"   # sensor_msgs/MagneticField publisher
+
+    magnetometer.noise_rad: 0.05
+    # Standard deviation of heading estimate (rad) after correction.
+    # 0.05 rad (~3 deg) is typical for a well-calibrated sensor in benign conditions.
+    # Loosen to 0.15-0.30 near motors or variable magnetic fields.
+
+    magnetometer.chi2_threshold: 9.21
+    # Chi-squared outlier gate: chi2(1, 0.99) = 9.21 for 1-DOF heading.
+    # Rejects magnetic spikes. Tighten to 3.84 (chi2(1,0.95)) in clean environments.
+
+    magnetometer.declination_rad: 0.0
+    # Magnetic declination: offset from magnetic north to true north (rad).
+    # Positive east. Look up your location at https://www.magnetic-declination.com
+    # Leave 0.0 when FusionCore can self-correct via GPS: the constant heading
+    # offset is absorbed by the filter over time.
+
+    magnetometer.hard_iron: [0.0, 0.0, 0.0]
+    # Constant bias offset in body frame (Tesla): [x, y, z].
+    # Estimated by rotating the sensor through a full circle and computing
+    # (max + min) / 2 per axis. Use imu_calib or magneto for best results.
+
+    magnetometer.soft_iron: [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    # 3x3 scale+rotation matrix in row-major order. Identity = disabled.
+    # Corrects for elliptical distortion in the magnetic field.
+    # Estimated alongside hard iron using imu_calib or magneto.
+
     # ── GPS coast mode ────────────────────────────────────────────────────────
     # During GPS blackouts, inflates process noise so P grows and the chi2 gate
     # relaxes by the time GPS resumes. Prevents the filter from rejecting its
