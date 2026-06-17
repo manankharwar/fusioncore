@@ -9,7 +9,17 @@
 
 ## Install
 
-FusionCore is a monorepo with 4 packages: `compass_msgs`, `fusioncore_core`, `fusioncore_ros`, and `fusioncore_gazebo`. The repo must live inside `src/` for colcon to find them.
+FusionCore is a monorepo with these packages:
+
+| Package | Purpose | Required? |
+|---|---|---|
+| `compass_msgs` | Custom heading message type | Yes |
+| `fusioncore_core` | Pure C++ UKF library, no ROS | Yes |
+| `fusioncore_ros` | ROS 2 lifecycle node | Yes |
+| `fusioncore_gazebo` | Simulation world + demo launch | Optional |
+| `fusioncore_ublox` | u-blox NavPVT Doppler bridge | Optional (only builds with `ublox_msgs` installed) |
+
+The repo must live inside `src/` for colcon to find them.
 
 !!! note "Humble users"
     Replace `jazzy` with `humble` in all commands below.
@@ -31,9 +41,10 @@ source install/setup.bash
     from inside the repo produces a nested `install/` that conflicts with the workspace.
 
 !!! tip "Headless machines (Raspberry Pi, servers)"
-    `--packages-up-to fusioncore_ros` already skips Gazebo. If you want to be explicit:
+    `--packages-up-to fusioncore_ros` already skips Gazebo and the ublox bridge. To be explicit:
     ```bash
     touch ~/ros2_ws/src/fusioncore/fusioncore_gazebo/COLCON_IGNORE
+    touch ~/ros2_ws/src/fusioncore/fusioncore_ublox/COLCON_IGNORE
     ```
 
 ---
