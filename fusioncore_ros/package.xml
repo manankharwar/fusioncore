@@ -11,12 +11,13 @@
   <url type="bugtracker">https://github.com/manankharwar/fusioncore/issues</url>
   <url type="documentation">https://manankharwar.github.io/fusioncore</url>
 
-  <buildtool_depend>ament_cmake</buildtool_depend>
+  <buildtool_depend>ament_cmake_auto</buildtool_depend>
   <buildtool_depend>rosidl_default_generators</buildtool_depend>
 
   <depend>rosidl_default_runtime</depend>
   <depend>geographic_msgs</depend>
   <depend>gps_msgs</depend>
+  <depend>std_msgs</depend>
   <member_of_group>rosidl_interface_packages</member_of_group>
 
   <depend>rclcpp</depend>

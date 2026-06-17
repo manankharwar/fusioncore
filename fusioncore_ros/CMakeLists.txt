@@ -4,24 +4,11 @@ project(fusioncore_ros VERSION 0.3.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(ament_cmake REQUIRED)
-find_package(rclcpp REQUIRED)
-find_package(rclcpp_lifecycle REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(nav_msgs REQUIRED)
-find_package(geometry_msgs REQUIRED)
-find_package(geographic_msgs REQUIRED)
-find_package(gps_msgs REQUIRED)
-find_package(tf2 REQUIRED)
-find_package(tf2_ros REQUIRED)
-find_package(tf2_geometry_msgs REQUIRED)
-find_package(compass_msgs REQUIRED)
-find_package(eigen3_cmake_module REQUIRED)
+find_package(ament_cmake_auto REQUIRED)
+ament_auto_find_build_dependencies()
+
+# Non-ROS deps not picked up by ament_auto_find_build_dependencies()
 find_package(Eigen3 REQUIRED)
-find_package(fusioncore_core REQUIRED)
-find_package(diagnostic_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
 find_package(PROJ QUIET)
 if(NOT PROJ_FOUND)
   # PROJ 8 (Ubuntu 22.04 / Humble) ships no CMake config; fall back to pkg-config
@@ -33,7 +20,6 @@ if(NOT PROJ_FOUND)
     target_link_libraries(PROJ::proj INTERFACE ${PROJ_LINK_LIBRARIES})
   endif()
 endif()
-find_package(rosidl_default_generators REQUIRED)
 
 rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/FromLL.srv"
@@ -42,57 +28,15 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   DEPENDENCIES geographic_msgs geometry_msgs std_msgs
 )
 
-add_executable(fusioncore_node
+ament_auto_add_executable(fusioncore_node
   src/fusion_node.cpp
 )
 
-target_include_directories(fusioncore_node PRIVATE
-  ${fusioncore_core_INCLUDE_DIRS}
-)
-
-target_link_directories(fusioncore_node PRIVATE
-  ${fusioncore_core_LIB_DEPENDS}
-)
-
-ament_target_dependencies(fusioncore_node
-  rclcpp
-  rclcpp_lifecycle
-  sensor_msgs
-  nav_msgs
-  geometry_msgs
-  geographic_msgs
-  gps_msgs
-  tf2
-  tf2_ros
-  tf2_geometry_msgs
-  fusioncore_core
-  compass_msgs
-  diagnostic_msgs
-  std_msgs
-  std_srvs
-)
-
 rosidl_get_typesupport_target(cpp_typesupport_target ${PROJECT_NAME} "rosidl_typesupport_cpp")
-target_link_libraries(fusioncore_node ${cpp_typesupport_target})
-
 target_link_libraries(fusioncore_node
+  ${cpp_typesupport_target}
   Eigen3::Eigen
   PROJ::proj
-)
-
-# Explicitly link the static library
-find_library(FUSIONCORE_CORE_LIB
-  NAMES fusioncore_core
-  HINTS ${fusioncore_core_DIR}/../../../lib
-)
-if(FUSIONCORE_CORE_LIB)
-  target_link_libraries(fusioncore_node ${FUSIONCORE_CORE_LIB})
-else()
-  message(FATAL_ERROR "Could not find libfusioncore_core.a")
-endif()
-
-install(TARGETS fusioncore_node
-  DESTINATION lib/${PROJECT_NAME}
 )
 
 install(DIRECTORY config launch
@@ -106,4 +50,4 @@ if(BUILD_TESTING)
   target_link_libraries(test_proj_axis_order PROJ::proj)
 endif()
 
-ament_package()
+ament_auto_package()
