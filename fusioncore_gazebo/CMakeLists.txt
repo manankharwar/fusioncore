@@ -14,6 +14,12 @@ install(PROGRAMS
 )
 
 install(PROGRAMS
+  launch/scenario_driver.py
+  DESTINATION lib/${PROJECT_NAME}
+  RENAME scenario_driver
+)
+
+install(PROGRAMS
   launch/circle_driver.py
   DESTINATION lib/${PROJECT_NAME}
   RENAME circle_driver

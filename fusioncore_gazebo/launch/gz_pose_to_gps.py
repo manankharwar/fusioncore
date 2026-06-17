@@ -1,8 +1,15 @@
 #!/usr/bin/env python3
-# Converts Gazebo ground truth pose to NavSatFix (/gnss/fix) and
-# nav_msgs/Odometry (/gps/odometry) with configurable GPS spike injection
-# for the demo run. Both outputs spike simultaneously so FusionCore and
-# robot_localization see the same corrupted measurement.
+# Converts Gazebo ground truth pose to GPS outputs with configurable disruptions.
+#
+# Publishes:
+#   /gnss/fix          (sensor_msgs/NavSatFix)   for FusionCore
+#   /gps/odometry      (nav_msgs/Odometry)        ENU for robot_localization
+#   /gps/status_marker (visualization_msgs/Marker) RViz text overlay
+#
+# Disruption schedule (times relative to first published fix):
+#   Spike 1:  spike_at_s  for spike_duration_s   (+spike_dx_m east)
+#   Outage:   outage_at_s for outage_duration_s  (no output at all)
+#   Spike 2:  spike2_at_s for spike2_duration_s  (+spike2_dx_m, from any direction)
 
 import math
 import random
@@ -11,6 +18,7 @@ from rclpy.node import Node
 from tf2_msgs.msg import TFMessage
 from sensor_msgs.msg import NavSatFix, NavSatStatus
 from nav_msgs.msg import Odometry
+from visualization_msgs.msg import Marker
 
 ORIGIN_LAT = 43.2557
 ORIGIN_LON = -79.8711
@@ -54,34 +62,64 @@ class GzPoseToGps(Node):
     def __init__(self):
         super().__init__("gz_pose_to_gps")
 
-        self.declare_parameter("world_name",        "fusioncore_outdoor")
-        self.declare_parameter("noise_h",            0.5)
-        self.declare_parameter("noise_v",            0.3)
-        self.declare_parameter("spike_at_s",        -1.0)   # <0 disables spike
-        self.declare_parameter("spike_duration_s",   6.0)
-        self.declare_parameter("spike_dx_m",        50.0)
-        self.declare_parameter("spike_dy_m",         0.0)
+        # World / noise
+        self.declare_parameter("world_name",         "fusioncore_outdoor")
+        self.declare_parameter("noise_h",             0.5)
+        self.declare_parameter("noise_v",             0.3)
+        # Spike 1
+        self.declare_parameter("spike_at_s",         -1.0)   # <0 disables
+        self.declare_parameter("spike_duration_s",    8.0)
+        self.declare_parameter("spike_dx_m",         60.0)
+        self.declare_parameter("spike_dy_m",          0.0)
+        # GPS blackout
+        self.declare_parameter("outage_at_s",        -1.0)   # <0 disables
+        self.declare_parameter("outage_duration_s",  25.0)
+        # Spike 2
+        self.declare_parameter("spike2_at_s",        -1.0)   # <0 disables
+        self.declare_parameter("spike2_duration_s",   6.0)
+        self.declare_parameter("spike2_dx_m",        -60.0)  # opposite direction
+        self.declare_parameter("spike2_dy_m",          0.0)
 
-        world_name = self.get_parameter("world_name").get_parameter_value().string_value
+        world = self.get_parameter("world_name").get_parameter_value().string_value
 
-        self.pub_fix  = self.create_publisher(NavSatFix, "/gnss/fix",     10)
-        self.pub_odom = self.create_publisher(Odometry,  "/gps/odometry", 10)
+        self.pub_fix    = self.create_publisher(NavSatFix, "/gnss/fix",          10)
+        self.pub_odom   = self.create_publisher(Odometry,  "/gps/odometry",      10)
+        self.pub_marker = self.create_publisher(Marker,    "/gps/status_marker", 10)
         self.sub = self.create_subscription(
-            TFMessage, f"/world/{world_name}/pose/info", self.pose_cb, 10)
+            TFMessage, f"/world/{world}/pose/info", self.pose_cb, 10)
 
         self.body_frame_id = None
         self.ref_published = False
-        self.start_ns = None
+        self.start_ns      = None
+        self._last_status  = ""
 
-        self.get_logger().info(f"GPS publisher ready (world={world_name})")
+        self.get_logger().info(f"GPS publisher ready (world={world})")
+
+    # ── elapsed time helpers ──────────────────────────────────────────
+
+    def _elapsed(self):
+        if self.start_ns is None:
+            return 0.0
+        return (self.get_clock().now().nanoseconds - self.start_ns) * 1e-9
+
+    def _window(self, at_param, dur_param):
+        at = self.get_parameter(at_param).get_parameter_value().double_value
+        if at < 0.0:
+            return False
+        dur = self.get_parameter(dur_param).get_parameter_value().double_value
+        e = self._elapsed()
+        return at <= e < (at + dur)
+
+    def _outage_active(self):
+        return self._window("outage_at_s", "outage_duration_s")
 
     def _spike_active(self):
-        spike_at = self.get_parameter("spike_at_s").get_parameter_value().double_value
-        if spike_at < 0.0 or self.start_ns is None:
-            return False
-        elapsed = (self.get_clock().now().nanoseconds - self.start_ns) * 1e-9
-        dur = self.get_parameter("spike_duration_s").get_parameter_value().double_value
-        return spike_at <= elapsed < (spike_at + dur)
+        return self._window("spike_at_s", "spike_duration_s")
+
+    def _spike2_active(self):
+        return self._window("spike2_at_s", "spike2_duration_s")
+
+    # ── body tracking ────────────────────────────────────────────────
 
     def _find_body(self, msg):
         if self.body_frame_id is not None:
@@ -108,38 +146,89 @@ class GzPoseToGps(Node):
             self.body_frame_id = best_fid
         return best
 
+    # ── status marker ─────────────────────────────────────────────────
+
+    def _publish_status(self, label: str, r: float, g: float, b: float):
+        if label == self._last_status:
+            return
+        self._last_status = label
+        m = Marker()
+        m.header.stamp    = self.get_clock().now().to_msg()
+        m.header.frame_id = "odom"
+        m.ns   = "gps_status"
+        m.id   = 0
+        m.type = Marker.TEXT_VIEW_FACING
+        m.action = Marker.ADD
+        m.pose.position.x = -18.0
+        m.pose.position.y =  28.0
+        m.pose.position.z =   3.0
+        m.pose.orientation.w = 1.0
+        m.scale.z = 2.5
+        m.color.r = r; m.color.g = g; m.color.b = b; m.color.a = 1.0
+        m.text = label
+        self.pub_marker.publish(m)
+
+    # ── main callback ────────────────────────────────────────────────
+
     def pose_cb(self, msg):
         best = self._find_body(msg)
         if best is None:
             return
 
-        noise_h  = self.get_parameter("noise_h").get_parameter_value().double_value
-        noise_v  = self.get_parameter("noise_v").get_parameter_value().double_value
-        spike_dx = self.get_parameter("spike_dx_m").get_parameter_value().double_value
-        spike_dy = self.get_parameter("spike_dy_m").get_parameter_value().double_value
-
         if self.start_ns is None:
             self.start_ns = self.get_clock().now().nanoseconds
 
-        x = best.x + random.gauss(0, noise_h)
-        y = best.y + random.gauss(0, noise_h)
-        z = best.z if not self.ref_published else best.z + random.gauss(0, noise_v)
+        noise_h  = self.get_parameter("noise_h").get_parameter_value().double_value
+        noise_v  = self.get_parameter("noise_v").get_parameter_value().double_value
 
-        spike = self._spike_active()
-        if spike:
-            x += spike_dx
-            y += spike_dy
-            if not hasattr(self, "_spike_logged"):
-                self.get_logger().warn(
-                    f"GPS SPIKE ACTIVE: +{spike_dx:.0f} m East, +{spike_dy:.0f} m North")
-                self._spike_logged = True
-        elif hasattr(self, "_spike_logged"):
-            del self._spike_logged
-            self.get_logger().info("GPS spike ended, resuming normal fix")
+        # Determine GPS state
+        outage  = self._outage_active()
+        spike1  = self._spike_active()
+        spike2  = self._spike2_active()
+
+        if outage:
+            self._publish_status("  GPS OUTAGE  ", 0.95, 0.45, 0.0)
+            if not hasattr(self, "_outage_logged"):
+                self.get_logger().warn("GPS OUTAGE ACTIVE: no fixes being published")
+                self._outage_logged = True
+            return   # publish nothing during blackout
+        elif hasattr(self, "_outage_logged"):
+            del self._outage_logged
+            self.get_logger().info("GPS outage ended, fixes resuming")
+
+        if spike1:
+            dx = self.get_parameter("spike_dx_m").get_parameter_value().double_value
+            dy = self.get_parameter("spike_dy_m").get_parameter_value().double_value
+            self._publish_status("  GPS SPIKE +60 m  ", 0.95, 0.1, 0.1)
+            if not hasattr(self, "_spike1_logged"):
+                self.get_logger().warn(f"GPS SPIKE 1 ACTIVE: +{dx:.0f} m East")
+                self._spike1_logged = True
+        elif hasattr(self, "_spike1_logged"):
+            del self._spike1_logged
+            self.get_logger().info("GPS spike 1 ended")
+            dx, dy = 0.0, 0.0
+        elif spike2:
+            dx = self.get_parameter("spike2_dx_m").get_parameter_value().double_value
+            dy = self.get_parameter("spike2_dy_m").get_parameter_value().double_value
+            self._publish_status("  GPS SPIKE -60 m  ", 0.95, 0.1, 0.1)
+            if not hasattr(self, "_spike2_logged"):
+                self.get_logger().warn(f"GPS SPIKE 2 ACTIVE: {dx:.0f} m East")
+                self._spike2_logged = True
+        elif hasattr(self, "_spike2_logged"):
+            del self._spike2_logged
+            self.get_logger().info("GPS spike 2 ended")
+            dx, dy = 0.0, 0.0
+        else:
+            self._publish_status("  GPS OK  ", 0.1, 0.9, 0.1)
+            dx, dy = 0.0, 0.0
+
+        x = best.x + random.gauss(0, noise_h) + dx
+        y = best.y + random.gauss(0, noise_h) + dy
+        z = best.z if not self.ref_published else best.z + random.gauss(0, noise_v)
 
         now = self.get_clock().now().to_msg()
 
-        # NavSatFix for FusionCore (chi2 gate should reject during spike)
+        # NavSatFix for FusionCore (chi2 gate rejects spikes)
         lat, lon, alt = enu_to_lla(x, y, z)
         fix = NavSatFix()
         fix.header.stamp    = now

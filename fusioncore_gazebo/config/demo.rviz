@@ -6,8 +6,9 @@ Panels:
         - /FC Trajectory1
         - /RL Trajectory1
         - /GPS Track1
+        - /GPS Status1
       Splitter Ratio: 0.5
-    Tree Height: 480
+    Tree Height: 520
   - Class: rviz_common/Views
     Expanded:
       - /Current View1
@@ -16,10 +17,10 @@ Panels:
 Visualization Manager:
   Class: ""
   Displays:
-    - Alpha: 0.3
+    - Alpha: 0.25
       Cell Size: 2
       Class: rviz_default_plugins/Grid
-      Color: 100; 100; 100
+      Color: 80; 80; 80
       Enabled: true
       Line Style:
         Line Width: 0.029999999329447746
@@ -31,20 +32,20 @@ Visualization Manager:
         Y: 0
         Z: 0
       Plane: XY
-      Plane Cell Count: 30
+      Plane Cell Count: 40
       Reference Frame: <Fixed Frame>
       Value: true
     - Class: rviz_default_plugins/Path
-      Color: 0; 210; 60
+      Color: 0; 220; 80
       Enabled: true
       Line Style: Lines
-      Line Width: 0.07
+      Line Width: 0.08
       Name: FC Trajectory
       Offset:
         X: 0
         Y: 0
-        Z: 0
-      Pose Color: 0; 210; 60
+        Z: 0.02
+      Pose Color: 0; 220; 80
       Pose Style: None
       Topic:
         Depth: 5
@@ -55,16 +56,16 @@ Visualization Manager:
         Value: /fusion/path
       Value: true
     - Class: rviz_default_plugins/Path
-      Color: 220; 30; 30
+      Color: 230; 40; 40
       Enabled: true
       Line Style: Lines
-      Line Width: 0.07
+      Line Width: 0.08
       Name: RL Trajectory
       Offset:
         X: 0
         Y: 0
-        Z: 0
-      Pose Color: 220; 30; 30
+        Z: 0.01
+      Pose Color: 230; 40; 40
       Pose Style: None
       Topic:
         Depth: 5
@@ -75,7 +76,7 @@ Visualization Manager:
         Value: /rl/path
       Value: true
     - Class: rviz_default_plugins/Path
-      Color: 220; 180; 0
+      Color: 210; 170; 0
       Enabled: true
       Line Style: Lines
       Line Width: 0.04
@@ -84,7 +85,7 @@ Visualization Manager:
         X: 0
         Y: 0
         Z: 0
-      Pose Color: 220; 180; 0
+      Pose Color: 210; 170; 0
       Pose Style: None
       Topic:
         Depth: 5
@@ -94,9 +95,43 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /gps/path
       Value: true
+    - Class: rviz_default_plugins/Odometry
+      Angle Tolerance: 0.1
+      Color: 0; 220; 80
+      Color Style: Unique
+      Enabled: true
+      Keep: 1
+      Length: 1.2
+      Name: FC Robot Pose
+      Position Tolerance: 0.05
+      Shaft Length: 0.8
+      Shaft Radius: 0.06
+      Head Length: 0.3
+      Head Radius: 0.12
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /fusion/odom
+      Value: true
+    - Class: rviz_default_plugins/Marker
+      Enabled: true
+      Name: GPS Status
+      Namespaces:
+        gps_status: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /gps/status_marker
+      Value: true
   Enabled: true
   Global Options:
-    Background Color: 30; 30; 30
+    Background Color: 20; 20; 20
     Default Light: true
     Fixed Frame: odom
     Frame Rate: 30
@@ -118,20 +153,20 @@ Visualization Manager:
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Scale: 15
-      Target Frame: <Fixed Frame>
+      Scale: 11
+      Target Frame: base_link
       Value: TopDownOrtho (rviz_default_plugins)
-      X: 0
-      Y: 12
+      X: 11
+      Y: 7
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 900
+  Height: 960
   Hide Left Dock: false
-  Hide Right Dock: false
+  Hide Right Dock: true
   Views:
     collapsed: false
-  Width: 1400
+  Width: 1600
   X: 50
   Y: 50

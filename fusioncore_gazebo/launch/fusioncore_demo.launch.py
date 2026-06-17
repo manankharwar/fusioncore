@@ -13,16 +13,34 @@ from launch_ros.events.lifecycle import ChangeState
 from lifecycle_msgs.msg import Transition
 
 
-def generate_launch_description():
-    gz_pkg  = get_package_share_directory("fusioncore_gazebo")
-    fc_pkg  = get_package_share_directory("fusioncore_ros")
-    rl_yaml = os.path.join(gz_pkg, "config", "rl_ekf_gazebo.yaml")
-    fc_yaml = os.path.join(gz_pkg, "config", "fusioncore_gazebo.yaml")
-    rviz_cfg = os.path.join(gz_pkg, "config", "demo.rviz")
-    world   = os.path.join(gz_pkg, "worlds", "fusioncore_outdoor.sdf")
-    models  = os.path.join(gz_pkg, "models")
+# ── GPS disruption schedule ───────────────────────────────────────────────────
+#
+# Times are seconds after the GPS node publishes its first fix (~t=0 of launch).
+# Robot starts moving at t=18 s (start_delay_s in scenario_driver).
+#
+#   t=18 s  robot starts lawnmower Row 1 (East)
+#   t=40 s  Row 1 ends, U-turn
+#   t=48 s  Row 2 starts (West)  ← Spike 1 at t=50: dramatic, robot going West,
+#                                    spike pushes it 60 m East in GPS
+#   t=70 s  Row 2 ends, U-turn
+#   t=79 s  Row 3 starts (East)  ← Outage at t=82: 25 s blackout "under canopy"
+#                                    RL drifts with wheels only; FC coasts
+#  t=107 s  Outage ends, GPS resumes
+#  t=109 s  Row 4 starts (West)  ← Spike 2 at t=110: GPS just returned, another
+#                                    spike tests re-acquisition gating
+#  t=131 s  Row 4 ends, stop
+#
+# ─────────────────────────────────────────────────────────────────────────────
 
-    # LifecycleNode needs a local reference for the event handlers
+
+def generate_launch_description():
+    gz_pkg   = get_package_share_directory("fusioncore_gazebo")
+    rl_yaml  = os.path.join(gz_pkg, "config", "rl_ekf_gazebo.yaml")
+    fc_yaml  = os.path.join(gz_pkg, "config", "fusioncore_gazebo.yaml")
+    rviz_cfg = os.path.join(gz_pkg, "config", "demo.rviz")
+    world    = os.path.join(gz_pkg, "worlds", "fusioncore_outdoor.sdf")
+    models   = os.path.join(gz_pkg, "models")
+
     fusioncore_node = LifecycleNode(
         package="fusioncore_ros",
         executable="fusioncore_node",
@@ -54,18 +72,22 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
-        # ── Args ──────────────────────────────────────────────────────
-        DeclareLaunchArgument("spike_at_s",       default_value="30.0",
-            description="Seconds after GPS node start to inject spike"),
-        DeclareLaunchArgument("spike_duration_s",  default_value="6.0",
-            description="How long the spike lasts (s)"),
-        DeclareLaunchArgument("spike_dx_m",        default_value="50.0",
-            description="Spike offset east (m): big enough to trigger chi2 rejection"),
-        DeclareLaunchArgument("spike_dy_m",        default_value="0.0"),
-        DeclareLaunchArgument("rviz",              default_value="true",
-            description="Launch RViz"),
 
-        # ── Gazebo sim ────────────────────────────────────────────────
+        # ── User-adjustable args ───────────────────────────────────────
+        DeclareLaunchArgument("rviz",             default_value="true"),
+        DeclareLaunchArgument("spike_at_s",       default_value="50.0",
+            description="Spike 1 time (s): mid Row 2, robot heading West"),
+        DeclareLaunchArgument("spike_dx_m",       default_value="60.0",
+            description="Spike 1 east offset (m)"),
+        DeclareLaunchArgument("outage_at_s",      default_value="82.0",
+            description="GPS blackout start (s): Row 3, simulates canopy"),
+        DeclareLaunchArgument("outage_duration_s", default_value="25.0"),
+        DeclareLaunchArgument("spike2_at_s",      default_value="110.0",
+            description="Spike 2 time (s): GPS just resumed, Row 4"),
+        DeclareLaunchArgument("spike2_dx_m",      default_value="-60.0",
+            description="Spike 2 east offset (m, negative = West)"),
+
+        # ── Gazebo ────────────────────────────────────────────────────
         ExecuteProcess(
             cmd=["gz", "sim", "-r", world],
             additional_env={"GZ_SIM_RESOURCE_PATH": models},
@@ -73,8 +95,8 @@ def generate_launch_description():
         ),
 
         # ── ROS-Gazebo bridge ─────────────────────────────────────────
-        # override_timestamps_with_wall_time: avoids sim-time vs wall-time
-        # mismatch that would prevent FusionCore from fusing anything.
+        # override_timestamps_with_wall_time avoids sim-time / wall-time
+        # mismatch that would prevent FusionCore from receiving any data.
         Node(
             package="ros_gz_bridge",
             executable="parameter_bridge",
@@ -116,22 +138,30 @@ def generate_launch_description():
                        "--child-frame-id", "fusioncore_robot/imu_link/imu_sensor"],
         ),
 
-        # ── GPS publisher with spike injection ────────────────────────
+        # ── GPS publisher: spike / outage / marker ─────────────────────
         Node(
             package="fusioncore_gazebo",
             executable="gz_pose_to_gps",
             name="gz_pose_to_gps",
             output="screen",
             parameters=[{
-                "world_name":       "fusioncore_outdoor",
-                "spike_at_s":       LaunchConfiguration("spike_at_s"),
-                "spike_duration_s": LaunchConfiguration("spike_duration_s"),
-                "spike_dx_m":       LaunchConfiguration("spike_dx_m"),
-                "spike_dy_m":       LaunchConfiguration("spike_dy_m"),
+                "world_name":        "fusioncore_outdoor",
+                "spike_at_s":        LaunchConfiguration("spike_at_s"),
+                "spike_duration_s":  8.0,
+                "spike_dx_m":        LaunchConfiguration("spike_dx_m"),
+                "spike_dy_m":        0.0,
+                "outage_at_s":       LaunchConfiguration("outage_at_s"),
+                "outage_duration_s": LaunchConfiguration("outage_duration_s"),
+                "spike2_at_s":       LaunchConfiguration("spike2_at_s"),
+                "spike2_duration_s": 6.0,
+                "spike2_dx_m":       LaunchConfiguration("spike2_dx_m"),
+                "spike2_dy_m":       0.0,
             }],
         ),
 
-        # ── robot_localization EKF (no rejection threshold: diverges on spike) ─
+        # ── robot_localization EKF ─────────────────────────────────────
+        # No rejection threshold: RL accepts all spikes and diverges.
+        # That divergence is the demo.
         Node(
             package="robot_localization",
             executable="ekf_node",
@@ -141,24 +171,21 @@ def generate_launch_description():
             remappings=[("odometry/filtered", "/odometry/filtered")],
         ),
 
+        # ── FusionCore ────────────────────────────────────────────────
         fusioncore_node,
         configure_cmd,
         activate_cmd,
 
-        # ── Circle driver: starts moving at t=18s via internal timer ──
+        # ── Lawnmower scenario driver ──────────────────────────────────
         Node(
             package="fusioncore_gazebo",
-            executable="circle_driver",
-            name="circle_driver",
+            executable="scenario_driver",
+            name="scenario_driver",
             output="screen",
-            parameters=[{
-                "linear_speed":  0.8,
-                "radius":        12.0,
-                "start_delay_s": 18.0,
-            }],
+            parameters=[{"start_delay_s": 18.0}],
         ),
 
-        # ── Path publisher: trajectory lines for RViz ─────────────────
+        # ── Path visualiser ────────────────────────────────────────────
         Node(
             package="fusioncore_gazebo",
             executable="path_publisher",
