@@ -14,17 +14,11 @@
 #include <nav_msgs/msg/odometry.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 #include <tf2_ros/transform_broadcaster.hpp>
-#include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
-#if __has_include(<tf2/LinearMath/Quaternion.hpp>)
+#include <tf2_ros/buffer.hpp>
+#include <tf2_ros/transform_listener.hpp>
 #include <tf2/LinearMath/Quaternion.hpp>
 #include <tf2/LinearMath/Vector3.hpp>
 #include <tf2/LinearMath/Matrix3x3.hpp>
-#else
-#include <tf2/LinearMath/Quaternion.h>
-#include <tf2/LinearMath/Vector3.h>
-#include <tf2/LinearMath/Matrix3x3.h>
-#endif
 #include <compass_msgs/msg/azimuth.hpp>
 #include <rclcpp/executors/multi_threaded_executor.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
