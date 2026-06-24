@@ -24,7 +24,7 @@ def _launch_fusioncore(context, *args, **kwargs):
     params = [config]
     if env:
         params.append(env)
-    params.append({"use_sim_time": sim})
+    params.append({"use_sim_time": sim, "autostart": False})
 
     fc = LifecycleNode(
         package="fusioncore_ros",

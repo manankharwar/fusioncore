@@ -28,6 +28,7 @@
 #include "fusioncore_ros/srv/from_ll.hpp"
 #include "fusioncore_ros/msg/gnss_status.hpp"
 #include "fusioncore_ros/msg/filter_health.hpp"
+#include <lifecycle_msgs/msg/transition.hpp>
 #include <mutex>
 #include <optional>
 #include <set>
@@ -71,6 +72,13 @@ public:
     // (e.g. a separate sensor fusion layer). FusionCore will still
     // publish /fusion/odom; only the TF broadcast is suppressed.
     declare_parameter("publish.tf", true);
+
+    // When true (default), the node self-transitions configure -> activate
+    // automatically ~200ms after on_configure() returns. This removes the
+    // need for external callers to manage lifecycle transitions manually.
+    // Set to false when your launch file drives transitions itself (e.g. via
+    // OnStateTransition or nav2_lifecycle_manager) to avoid a double-activate.
+    declare_parameter("autostart", true);
 
     // Primary IMU topic. Override when your driver publishes at a non-default topic
     // (e.g. Clearpath Microstrain at /sensors/imu_0/data, Realsense at /camera/imu).
@@ -584,6 +592,15 @@ public:
       "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
 
+    autostart_ = get_parameter("autostart").as_bool();
+    if (autostart_) {
+      autostart_timer_ = create_wall_timer(200ms, [this]() {
+        autostart_timer_->cancel();
+        trigger_transition(lifecycle_msgs::msg::Transition::TRANSITION_ACTIVATE);
+      });
+      RCLCPP_INFO(get_logger(), "Autostart enabled: activating in 200ms.");
+    }
+
     return CallbackReturn::SUCCESS;
   }
 
@@ -962,6 +979,7 @@ public:
 
   CallbackReturn on_cleanup(const rclcpp_lifecycle::State &)
   {
+    autostart_timer_.reset();
     fc_.reset();
     tf_broadcaster_.reset();
     tf_listener_.reset();
@@ -2869,6 +2887,10 @@ private:
   bool                     sensor_wait_done_     = false;
   std::set<std::string>    sensors_expected_;
   std::set<std::string>    sensors_received_;
+
+  // Autostart: self-transition configure -> activate without external lifecycle management
+  bool autostart_ = true;
+  rclcpp::TimerBase::SharedPtr autostart_timer_;
 
   // Deterministic replay checkpoint (#27)
   std::string checkpoint_path_;
