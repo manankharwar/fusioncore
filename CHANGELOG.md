@@ -6,7 +6,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
-## [0.3.1]: 2026-06-14
+## [0.3.1]: 2026-06-24
 
 ### Added
 - **Raw magnetometer heading fusion**: FusionCore now subscribes to `sensor_msgs/MagneticField` and fuses the heading as a 1-DOF UKF update. Applies hard/soft iron correction (configurable 3-vector bias + 3x3 scale matrix) and tilt compensation using the current filter roll/pitch before fusing. Chi-squared gate (chi2(1, 0.99) = 9.21 by default) rejects magnetic spikes. Heading source hierarchy: DUAL_ANTENNA overrides MAGNETOMETER overrides GPS_TRACK. Enable with `magnetometer.enabled: true`. Requires calibration: collect data with a full 360-degree rotation and run `imu_calib` or `magneto` to get `hard_iron` and `soft_iron` values.
@@ -14,6 +14,22 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Magnetometer diagnostics**: when `magnetometer.enabled: true`, a `fusioncore: Magnetometer` status block appears in `/diagnostics` with health state (OK/STALE/NOT_INIT) and outlier count.
 - **`magnetometer.topic` subscriber row in topics reference**: documentation now lists the `/imu/mag` subscriber.
 - 12 new unit tests: flat heading (east/north/west), declination offset, hard iron correction, tilt compensation, UKF convergence, chi2 gate rejection, heading source hierarchy, outlier counter.
+- **IMU lever arm centripetal compensation**: when an IMU lever arm is configured, the measurement function adds the centripetal term (omega x (omega x r)) to the predicted acceleration so an off-center IMU is modeled correctly. Falls back to the zero-allocation hot path when the lever arm is zero, so platforms without one pay no cost.
+- **GPS pre-heading lever arm option**: `gnss.apply_lever_arm_pre_heading` applies the antenna lever arm from the first fix, before heading is validated, for setups where the lever arm is known up front.
+- **IMU frame auto-resolve**: `imu.frame_id` override resolves the IMU TF frame when a driver publishes an empty `header.frame_id`. Leave empty to use the message frame as before.
+- **Lifecycle `autostart` parameter** (default `true`): the node self-transitions `configure` to `activate` about 200 ms after `on_configure()` returns, so it runs standalone without a lifecycle manager. Set `autostart: false` when `nav2_lifecycle_manager` drives the node, to avoid a double-activate.
+- **Certified hardware config registry**: curated, tested YAML configs for known hardware setups.
+- **GNSS Doppler bridge package and Gazebo demo infrastructure**: new `fusioncore_ublox` package plus simulation tooling for an end-to-end outdoor scenario.
+- **Production-grade Gazebo demo with multi-event GPS scenario**: scripted GPS outlier and dropout events for reproducible demos.
+- **Docker support**: published image at `ghcr.io/manankharwar/fusioncore` with CI auto-tagging on release, plus a Docker tutorial in the docs.
+- **Field tooling**: bag-recording launch file, a field day checklist, and four troubleshooting guides.
+
+### Changed
+- **`fusioncore_ros` migrated to `ament_cmake_auto`** for ROS 2 Lyrical support: Lyrical dropped `ament_target_dependencies`, so build dependencies now come from `package.xml`. Added `std_msgs` as an explicit dependency for the `GnssStatus`/`FilterHealth` messages. Eigen3 and PROJ stay explicit.
+- **tf2 headers use `.hpp` uniformly**: Lyrical renamed `tf2/LinearMath/*.h` to `.hpp`. The temporary `__has_include` guard was dropped in favor of `.hpp` everywhere. Still builds on Jazzy.
+
+### Fixed
+- **Sensor subscriptions now use `SensorDataQoS` (BEST_EFFORT)**: all sensor subscriptions previously used the default reliable QoS, which silently fails to connect to standard sensor drivers that publish best-effort. Switching to `SensorDataQoS` makes IMU, GPS, and encoder topics connect out of the box.
 
 ---
 
