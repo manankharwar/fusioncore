@@ -66,6 +66,12 @@ class GzPoseToGps(Node):
         self.declare_parameter("world_name",         "fusioncore_outdoor")
         self.declare_parameter("noise_h",             0.5)
         self.declare_parameter("noise_v",             0.3)
+        # Robot identification. The ros_gz bridge publishes pose/info with empty
+        # frame_ids, so the robot cannot be found by name. It is instead found by
+        # its model height: the robot base sits at body_z and is the only entity
+        # in the world at that height (scenery is taller, link poses are at 0).
+        self.declare_parameter("body_z",              0.15)
+        self.declare_parameter("body_z_tol",          0.03)
         # Spike 1
         self.declare_parameter("spike_at_s",         -1.0)   # <0 disables
         self.declare_parameter("spike_duration_s",    8.0)
@@ -89,6 +95,7 @@ class GzPoseToGps(Node):
             TFMessage, f"/world/{world}/pose/info", self.pose_cb, 10)
 
         self.body_frame_id = None
+        self._last_xy      = None
         self.ref_published = False
         self.start_ns      = None
         self._last_status  = ""
@@ -122,28 +129,26 @@ class GzPoseToGps(Node):
     # ── body tracking ────────────────────────────────────────────────
 
     def _find_body(self, msg):
-        if self.body_frame_id is not None:
-            for tf in msg.transforms:
-                if tf.child_frame_id == self.body_frame_id:
-                    t = tf.transform.translation
-                    if 0.05 < t.z < 0.4:
-                        return t
+        # If frame_ids are populated (older bridge / other worlds), prefer the
+        # named base_link. This keeps the node working across bridge versions.
         for tf in msg.transforms:
-            if _is_base_link(tf.child_frame_id):
-                t = tf.transform.translation
-                if 0.05 < t.z < 0.4:
-                    self.body_frame_id = tf.child_frame_id
-                    return t
-        best = None; best_mag = -1.0; best_fid = None
-        for tf in msg.transforms:
-            t = tf.transform.translation
-            if not (0.05 < t.z < 0.4):
-                continue
-            mag = t.x * t.x + t.y * t.y
-            if mag > best_mag:
-                best_mag = mag; best = t; best_fid = tf.child_frame_id
-        if best_fid is not None:
-            self.body_frame_id = best_fid
+            if tf.child_frame_id and _is_base_link(tf.child_frame_id):
+                return tf.transform.translation
+
+        # Otherwise identify the robot by its model height. Among the entities
+        # whose world pose sits at body_z (only the robot does), pick the one
+        # nearest the last known robot position for continuity. Scenery (crop
+        # rows at 0.25, fences at 0.75+, trees higher) and the zeroed relative
+        # link poses are all excluded by the height window.
+        z0  = self.get_parameter("body_z").get_parameter_value().double_value
+        tol = self.get_parameter("body_z_tol").get_parameter_value().double_value
+        cands = [tf.transform.translation for tf in msg.transforms
+                 if abs(tf.transform.translation.z - z0) <= tol]
+        if not cands:
+            return None
+        ref = self._last_xy if self._last_xy is not None else (0.0, 0.0)
+        best = min(cands, key=lambda t: (t.x - ref[0]) ** 2 + (t.y - ref[1]) ** 2)
+        self._last_xy = (best.x, best.y)
         return best
 
     # ── status marker ─────────────────────────────────────────────────

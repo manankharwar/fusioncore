@@ -2,13 +2,11 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
-    DeclareLaunchArgument, ExecuteProcess, TimerAction,
-    RegisterEventHandler, EmitEvent,
+    DeclareLaunchArgument, ExecuteProcess, TimerAction, EmitEvent,
 )
-from launch.conditions import IfCondition
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, LifecycleNode
-from launch_ros.event_handlers import OnStateTransition
 from launch_ros.events.lifecycle import ChangeState
 from lifecycle_msgs.msg import Transition
 
@@ -47,29 +45,19 @@ def generate_launch_description():
         name="fusioncore",
         namespace="",
         output="screen",
-        parameters=[fc_yaml],
+        parameters=[fc_yaml, {"use_sim_time": True}],
     )
 
-    configure_cmd = TimerAction(period=15.0, actions=[
+    # Trigger the initial CONFIGURE once the node has spun up. With autostart
+    # true (the default in fusioncore_gazebo.yaml) the node then activates
+    # itself ~200ms later, so we do not emit ACTIVATE here. The 4s delay lets
+    # DDS discovery and the gz bridge settle before the transition fires.
+    configure_cmd = TimerAction(period=4.0, actions=[
         EmitEvent(event=ChangeState(
             lifecycle_node_matcher=lambda action: action == fusioncore_node,
             transition_id=Transition.TRANSITION_CONFIGURE,
         )),
     ])
-
-    activate_cmd = RegisterEventHandler(
-        OnStateTransition(
-            target_lifecycle_node=fusioncore_node,
-            start_state="configuring",
-            goal_state="inactive",
-            entities=[
-                EmitEvent(event=ChangeState(
-                    lifecycle_node_matcher=lambda action: action == fusioncore_node,
-                    transition_id=Transition.TRANSITION_ACTIVATE,
-                )),
-            ],
-        )
-    )
 
     return LaunchDescription([
 
@@ -86,24 +74,38 @@ def generate_launch_description():
             description="Spike 2 time (s): GPS just resumed, Row 4"),
         DeclareLaunchArgument("spike2_dx_m",      default_value="-60.0",
             description="Spike 2 east offset (m, negative = West)"),
+        DeclareLaunchArgument("headless",         default_value="false",
+            description="Run Gazebo with no GUI (server only). Use for CI or "
+                        "offscreen verification; the demo video needs GUI."),
 
-        # ── Gazebo ────────────────────────────────────────────────────
+        # ── Gazebo (GUI) ──────────────────────────────────────────────
         ExecuteProcess(
             cmd=["gz", "sim", "-r", world],
             additional_env={"GZ_SIM_RESOURCE_PATH": models},
             output="screen",
+            condition=UnlessCondition(LaunchConfiguration("headless")),
+        ),
+        # ── Gazebo (headless server) ──────────────────────────────────
+        ExecuteProcess(
+            cmd=["gz", "sim", "-s", "-r", world],
+            additional_env={"GZ_SIM_RESOURCE_PATH": models},
+            output="screen",
+            condition=IfCondition(LaunchConfiguration("headless")),
         ),
 
         # ── ROS-Gazebo bridge ─────────────────────────────────────────
-        # override_timestamps_with_wall_time avoids sim-time / wall-time
-        # mismatch that would prevent FusionCore from receiving any data.
+        # The whole demo runs on sim time (use_sim_time:true everywhere) driven
+        # by /clock from Gazebo. Bridged messages keep their Gazebo timestamps,
+        # so every filter dt is sim time and is immune to wall-clock stalls
+        # (which otherwise blow up the velocity estimate when running headless
+        # on a slow filesystem or when the sim is not pinned to real time).
         Node(
             package="ros_gz_bridge",
             executable="parameter_bridge",
             name="gz_bridge",
             output="screen",
             parameters=[{
-                "override_timestamps_with_wall_time": True,
+                "use_sim_time": True,
                 "expand_gz_topic_names": True,
             }],
             remappings=[
@@ -124,6 +126,7 @@ def generate_launch_description():
             package="tf2_ros",
             executable="static_transform_publisher",
             name="imu_tf",
+            parameters=[{"use_sim_time": True}],
             arguments=["--x", "0", "--y", "0", "--z", "0.1",
                        "--roll", "0", "--pitch", "0", "--yaw", "0",
                        "--frame-id", "base_link", "--child-frame-id", "imu_link"],
@@ -132,10 +135,23 @@ def generate_launch_description():
             package="tf2_ros",
             executable="static_transform_publisher",
             name="imu_tf_gz",
+            parameters=[{"use_sim_time": True}],
             arguments=["--x", "0", "--y", "0", "--z", "0.1",
                        "--roll", "0", "--pitch", "0", "--yaw", "0",
                        "--frame-id", "base_link",
                        "--child-frame-id", "fusioncore_robot/imu_link/imu_sensor"],
+        ),
+        # GPS antenna frame. The NavSatFix messages are stamped gnss_link, and
+        # FusionCore auto-resolves the lever arm from base_link to gnss_link.
+        # Matches the antenna position on the robot model (rear-top).
+        Node(
+            package="tf2_ros",
+            executable="static_transform_publisher",
+            name="gnss_tf",
+            parameters=[{"use_sim_time": True}],
+            arguments=["--x", "-0.12", "--y", "0", "--z", "0.12",
+                       "--roll", "0", "--pitch", "0", "--yaw", "0",
+                       "--frame-id", "base_link", "--child-frame-id", "gnss_link"],
         ),
 
         # ── GPS publisher: spike / outage / marker ─────────────────────
@@ -145,6 +161,7 @@ def generate_launch_description():
             name="gz_pose_to_gps",
             output="screen",
             parameters=[{
+                "use_sim_time":      True,
                 "world_name":        "fusioncore_outdoor",
                 "spike_at_s":        LaunchConfiguration("spike_at_s"),
                 "spike_duration_s":  8.0,
@@ -167,14 +184,13 @@ def generate_launch_description():
             executable="ekf_node",
             name="rl_ekf",
             output="screen",
-            parameters=[rl_yaml],
+            parameters=[rl_yaml, {"use_sim_time": True}],
             remappings=[("odometry/filtered", "/odometry/filtered")],
         ),
 
-        # ── FusionCore ────────────────────────────────────────────────
+        # ── FusionCore (configure now, autostart handles activate) ────
         fusioncore_node,
         configure_cmd,
-        activate_cmd,
 
         # ── Lawnmower scenario driver ──────────────────────────────────
         Node(
@@ -182,7 +198,7 @@ def generate_launch_description():
             executable="scenario_driver",
             name="scenario_driver",
             output="screen",
-            parameters=[{"start_delay_s": 18.0}],
+            parameters=[{"use_sim_time": True, "start_delay_s": 18.0}],
         ),
 
         # ── Path visualiser ────────────────────────────────────────────
@@ -191,6 +207,7 @@ def generate_launch_description():
             executable="path_publisher",
             name="path_publisher",
             output="screen",
+            parameters=[{"use_sim_time": True}],
         ),
 
         # ── RViz ──────────────────────────────────────────────────────
@@ -199,6 +216,7 @@ def generate_launch_description():
             executable="rviz2",
             name="rviz2",
             arguments=["-d", rviz_cfg],
+            parameters=[{"use_sim_time": True}],
             output="screen",
             condition=IfCondition(LaunchConfiguration("rviz")),
         ),

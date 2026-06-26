@@ -94,6 +94,10 @@ paper/*.blg
 paper/*.zip
 CLAUDE.md
 
+# Python bytecode
+__pycache__/
+*.pyc
+
 # Client engagement files: local only, never commit
 clients/
 outreach/

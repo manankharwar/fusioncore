@@ -16,7 +16,7 @@ rl_ekf:
     odom_frame: odom
     base_link_frame: base_link
     world_frame: odom
-    use_sim_time: false
+    use_sim_time: true
 
     # Wheel odometry: velocity only
     odom0: /odom/wheels
