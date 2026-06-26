@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!-- Fast-DDS profile that disables the shared-memory transport and uses UDP
+     only. On WSL2 the SHM transport fails to lock its port files
+     ("RTPS_TRANSPORT_SHM Error: Failed init_port") and intermittently drops
+     messages (e.g. /cmd_vel never reaching the diff-drive plugin). Forcing UDP
+     makes inter-node comms reliable. Use with:
+       export FASTRTPS_DEFAULT_PROFILES_FILE=<this file>
+-->
+<dds>
+  <profiles xmlns="http://www.eprosima.com/XMLSchemas/fastRTPS_Profiles">
+    <transport_descriptors>
+      <transport_descriptor>
+        <transport_id>udp_only</transport_id>
+        <type>UDPv4</type>
+      </transport_descriptor>
+    </transport_descriptors>
+
+    <participant profile_name="udp_only_participant" is_default_profile="true">
+      <rtps>
+        <userTransports>
+          <transport_id>udp_only</transport_id>
+        </userTransports>
+        <useBuiltinTransports>false</useBuiltinTransports>
+      </rtps>
+    </participant>
+  </profiles>
+</dds>

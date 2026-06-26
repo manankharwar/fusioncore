@@ -77,6 +77,10 @@ def generate_launch_description():
         DeclareLaunchArgument("headless",         default_value="false",
             description="Run Gazebo with no GUI (server only). Use for CI or "
                         "offscreen verification; the demo video needs GUI."),
+        DeclareLaunchArgument("start_delay",      default_value="18.0",
+            description="Seconds (sim time) before the robot starts driving. "
+                        "Lower it (e.g. 2.0) to see motion immediately when "
+                        "watching the GUI live."),
 
         # ── Gazebo (GUI) ──────────────────────────────────────────────
         ExecuteProcess(
@@ -198,7 +202,8 @@ def generate_launch_description():
             executable="scenario_driver",
             name="scenario_driver",
             output="screen",
-            parameters=[{"use_sim_time": True, "start_delay_s": 18.0}],
+            parameters=[{"use_sim_time": True,
+                         "start_delay_s": LaunchConfiguration("start_delay")}],
         ),
 
         # ── Path visualiser ────────────────────────────────────────────
