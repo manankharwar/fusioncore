@@ -93,8 +93,28 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
     state_.P += StateMatrix::Identity() * (-min_eigen + 1e-9);
     P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
     llt.compute(P_reg);
-    if (llt.info() != Eigen::Success)
-      throw std::runtime_error("FusionCore: Cholesky decomposition failed after P repair");
+    if (llt.info() != Eigen::Success) {
+      // Last resort: rebuild P from its eigendecomposition with all eigenvalues
+      // floored to a small positive value. This always yields a PSD matrix, so
+      // the filter degrades gracefully and re-converges when good measurements
+      // return, instead of aborting the whole process. Flooring can shrink some
+      // uncertainty dimensions (the identity shift above is tried first precisely
+      // to avoid that), but a briefly over-confident filter is recoverable; a
+      // crash is not. Reaching here means the state was already badly corrupted
+      // (e.g. by replay clock chaos), which the predict_to re-sync guards upstream.
+      Eigen::SelfAdjointEigenSolver<StateMatrix> es_full(state_.P);
+      Eigen::Matrix<double, STATE_DIM, 1> ev = es_full.eigenvalues().cwiseMax(1e-9);
+      state_.P = es_full.eigenvectors() * ev.asDiagonal() * es_full.eigenvectors().transpose();
+      state_.P = (state_.P + state_.P.transpose()) * 0.5;
+      P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
+      llt.compute(P_reg);
+      if (llt.info() != Eigen::Success) {
+        // Absolute last resort: reset to a safe diagonal covariance. Never throw.
+        state_.P = StateMatrix::Identity();
+        P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
+        llt.compute(P_reg);
+      }
+    }
   }
   StateMatrix L = llt.matrixL();
   sigma.col(0) = state_.x;

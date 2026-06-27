@@ -201,6 +201,43 @@ TEST(FusionCoreTest, NineAxisIMUYawFusedNormally) {
   EXPECT_GT(fc.get_state().yaw(), 0.3);
 }
 
+// ─── Test 9: a backward time jump must not crash the filter ──────────────────
+// A large backward timestamp jump (clock reset, out-of-order timestamps, or
+// bag-replay clock corruption) used to freeze last_timestamp_ in the future, so
+// every following measurement skipped its predict (negative dt) but still ran
+// its update. P then shrank with no process noise injected until it went
+// non-PSD and the Cholesky factorization aborted the whole process. The filter
+// must re-sync the clock and stay alive with finite state instead.
+TEST(FusionCoreTest, BackwardTimeJumpDoesNotCrash) {
+  FusionCore fc{FusionCoreConfig{}};
+
+  State initial;
+  initial.P = StateMatrix::Identity() * 0.5;
+  fc.init(initial, 0.0);
+
+  // Normal operation up to t = 10 s.
+  for (int i = 1; i <= 1000; ++i) {
+    double t = i * 0.01;
+    fc.update_imu(t, 0, 0, 0, 0, 0, 9.81);
+    if (i % 2 == 0) fc.update_encoder(t, 1.0, 0.0, 0.0);
+  }
+
+  // Clock jumps back to t = 2 s and continues. 300 cycles of measurements at the
+  // rewound time: the old code collapsed P here and aborted with a Cholesky
+  // failure. Reaching the assertions below means it did not crash.
+  for (int i = 1; i <= 300; ++i) {
+    double t = 2.0 + i * 0.01;
+    fc.update_imu(t, 0, 0, 0, 0, 0, 9.81);
+    if (i % 2 == 0) fc.update_encoder(t, 1.0, 0.0, 0.0);
+  }
+
+  const State& s = fc.get_state();
+  EXPECT_TRUE(std::isfinite(s.x[X]));
+  EXPECT_TRUE(std::isfinite(s.x[VX]));
+  EXPECT_TRUE(std::isfinite(s.P(X, X)));
+  EXPECT_GT(s.P(X, X), 0.0);  // covariance stayed positive-definite
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

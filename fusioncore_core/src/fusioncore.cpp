@@ -348,6 +348,19 @@ void FusionCore::predict_to(double timestamp_seconds) {
   }
 
   double dt = timestamp_seconds - last_timestamp_;
+  // Large backward time jump (clock reset, badly out-of-order timestamps,
+  // bag-replay clock corruption on WSL2): re-sync the clock to the new time
+  // base instead of freezing last_timestamp_ in the future. If we just returned,
+  // last_timestamp_ would stay ahead and every following measurement would skip
+  // its predict (dt stays negative) while still running its update, so P shrinks
+  // with no Q injected until it goes non-PSD and the Cholesky factorization
+  // fails. Small backward steps (delayed measurements within the delay window)
+  // are still handled by the retrodiction path; this only catches jumps beyond
+  // that window. We do not fold in the spurious measurement here: just re-base.
+  if (dt < -config_.max_measurement_delay) {
+    last_timestamp_ = timestamp_seconds;
+    return;
+  }
   if (dt < config_.min_dt) return;
   if (dt > config_.max_dt) {
     // Gap too large for a single step (sensor dropout, startup lag, etc.).
