@@ -17,48 +17,73 @@ sudo apt install ros-jazzy-ros-gz ros-jazzy-robot-localization
 
 ---
 
-## Demo: FusionCore vs robot_localization GPS spike
+## Demo: FusionCore vs robot_localization under GPS spikes and an outage
 
-The demo launch runs both FusionCore and robot_localization EKF simultaneously on the same sensor streams. At t=30 s, a 50-meter GPS spike is injected. FusionCore's chi-squared gate rejects it and holds course. robot_localization has no rejection threshold configured, accepts the spike, and diverges.
+The demo launch runs FusionCore and a robot_localization EKF side by side on the
+same sensor streams while the robot drives a lawnmower survey pattern. Three GPS
+disruptions are injected: two 60 m spikes and a 25 s full outage. FusionCore's
+chi-squared gate plus its gap-gated coast logic reject the spikes and hold
+course; robot_localization has no rejection threshold and follows every spike.
 
 ```bash
 ros2 launch fusioncore_gazebo fusioncore_demo.launch.py
 ```
 
-RViz opens automatically showing three trajectories:
+RViz opens automatically showing four trajectories:
 
 | Color | Source |
 |---|---|
 | Green | FusionCore (`/fusion/path`) |
 | Red | robot_localization EKF (`/rl/path`) |
-| Yellow | Raw GPS position (`/gps/path`) |
+| Yellow | Raw GPS position, including the spikes (`/gps/path`) |
+| (text overlay) | Current GPS state: `GPS OK` / `GPS SPIKE` / `GPS OUTAGE` |
 
-**Timeline:**
+**Timeline** (times are relative to the first GPS fix):
 
 | Time | Event |
 |---|---|
 | t=0 s | Gazebo starts, GPS and IMU publishing |
-| t=15 s | FusionCore configures and activates |
-| t=18 s | Robot starts driving in a circle (0.8 m/s, 12 m radius) |
-| t=30 s | GPS spike: +50 m East injected for 6 seconds |
-| t=36 s | Spike ends, GPS returns to normal |
+| t=18 s | Robot starts the lawnmower pattern (adjust with `start_delay`) |
+| t=50 s | Spike 1: +60 m East for 8 s. FC rejects it; RL jumps to it. |
+| t=82 s | GPS outage: no fixes for 25 s. Both dead-reckon. |
+| t=110 s | Spike 2: -60 m East for 6 s. FC rejects it; RL jumps to it. |
+| t=131 s | Robot stops. |
 
-During the spike, the yellow GPS track jumps 50 m east. The red RL trajectory follows it. The green FusionCore trajectory continues the circle undisturbed.
+On the spikes, the green FusionCore line stays on course while the red
+robot_localization line lurches out to the spike and crawls back. During the
+outage both dead-reckon: FusionCore stays much closer to truth than before the
+gap-gated-coast fix, but a long full outage still produces some drift (this is
+the open dead-reckoning limitation, see [Known Limitations](known-limitations.md)).
 
-**Spike parameters are adjustable:**
+**Adjustable parameters** (defaults shown):
 
 ```bash
 ros2 launch fusioncore_gazebo fusioncore_demo.launch.py \
-  spike_at_s:=45.0 \
-  spike_duration_s:=10.0 \
-  spike_dx_m:=100.0
+  start_delay:=18.0 \        # sim seconds before the robot starts driving
+  spike_at_s:=50.0 spike_dx_m:=60.0 \
+  outage_at_s:=82.0 outage_duration_s:=25.0 \
+  spike2_at_s:=110.0 spike2_dx_m:=-60.0
 ```
 
-**To run headless (no RViz):**
+Set `start_delay:=2.0` to see motion almost immediately when watching live.
+
+**Run headless (no GUI, for CI or offscreen rendering):**
 
 ```bash
-ros2 launch fusioncore_gazebo fusioncore_demo.launch.py rviz:=false
+ros2 launch fusioncore_gazebo fusioncore_demo.launch.py headless:=true rviz:=false
 ```
+
+!!! warning "WSL2: the robot does not move / `RTPS_TRANSPORT_SHM` errors"
+    On WSL2 the default Fast-DDS shared-memory transport fails to lock its port
+    files and intermittently drops messages (including `/cmd_vel`, so the robot
+    never drives) and can corrupt the `/clock`. Force UDP-only transport before
+    launching:
+    ```bash
+    export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+    export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix fusioncore_gazebo)/share/fusioncore_gazebo/config/fastdds_udp.xml
+    ```
+    The profile ships with the package. The GUI also runs well below real time
+    under WSLg software rendering; let the scenario play out.
 
 ---
 

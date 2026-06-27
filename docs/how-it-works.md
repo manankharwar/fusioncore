@@ -303,14 +303,17 @@ Coast mode solves this by inflating `Q_position` by `gnss.coast_q_factor` during
 During GPS absence, heading errors accumulate at `gyro_bias * time` with no GPS heading cross-covariance to correct them. Coast mode inflates `Q_gyro_bias` by `gnss.coast_q_bias_factor` (default 100x) to loosen the filter's confidence in its current bias estimate. `R_imu[WZ,WZ]` can optionally be inflated by `gnss.coast_imu_wz_scale` (default 1.0, disabled) to down-weight the IMU heading rate and let encoder WZ dominate heading integration. When enabled (values of 200-1000x are typical for outdoor robots), the filter rapidly re-estimates gyro bias from encoder WZ readings during the blackout instead of letting a stale bias estimate silently corrupt heading. Leave at 1.0 if you trust your IMU gyro over your encoder during blackouts, or if you have no wheel encoder.
 
 **Coast mode triggers:**
-- After `gnss.coast_n` consecutive GPS rejections (default: 5)
+- After `gnss.coast_n` consecutive GPS rejections (default: 5), **but only if the rejection streak began after a real GPS gap of at least `gnss.coast_min_gap_s` seconds** (default: 1.0)
 - After `gnss.coast_timeout_s` seconds of GPS silence (default: 0.0, disabled; set to 30.0 to catch receiver-silent outages where no fixes arrive to reject)
+
+The gap condition is what keeps coast from being abused by an outlier. Coast inflates `Q_position` to re-admit GPS after the filter dead-reckoned through a gap. A *continuously present* GPS that keeps failing the gate is a persistent outlier (e.g. a sustained multipath spike), not filter drift: inflating P for it would widen the gate until the outlier slips through. Gating on a preceding gap (the receiver actually went silent) blocks that: a sustained spike during continuous GPS stays rejected for its full duration, while genuine post-outage re-acquisition still works. Set `gnss.coast_min_gap_s: 0` to restore the old gap-agnostic behavior.
 
 **Coast mode exits** when the first GPS fix passes the chi2 gate after the blackout ends. Process noise returns to normal immediately.
 
 ```yaml
 # Defaults:
 gnss.coast_n: 5                  # consecutive rejections before entering coast
+gnss.coast_min_gap_s: 1.0        # required preceding GPS gap before coast can fire
 gnss.coast_q_factor: 20.0        # position Q multiplier during coast
 gnss.coast_q_bias_factor: 100.0  # gyro bias Q multiplier during coast
 gnss.coast_imu_wz_scale: 1.0     # R_imu[WZ] multiplier (1.0 = no effect, disabled)

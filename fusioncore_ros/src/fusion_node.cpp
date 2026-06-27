@@ -228,6 +228,7 @@ public:
     declare_parameter("vslam.reinit_n",           10);
 
     declare_parameter("gnss.coast_n",               5);
+    declare_parameter("gnss.coast_min_gap_s",       1.0);
     declare_parameter("gnss.coast_q_factor",        20.0);
     declare_parameter("gnss.coast_timeout_s",       0.0);
     declare_parameter("gnss.coast_q_bias_factor",   100.0);
@@ -476,6 +477,7 @@ public:
     vslam_reinit_n_       = get_parameter("vslam.reinit_n").as_int();
 
     config.gnss_coast_n               = get_parameter("gnss.coast_n").as_int();
+    config.gnss_coast_min_gap_s       = get_parameter("gnss.coast_min_gap_s").as_double();
     config.gnss_coast_q_factor        = get_parameter("gnss.coast_q_factor").as_double();
     config.gnss_coast_timeout_s       = get_parameter("gnss.coast_timeout_s").as_double();
     config.gnss_coast_q_bias_factor   = get_parameter("gnss.coast_q_bias_factor").as_double();

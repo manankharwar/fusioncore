@@ -283,6 +283,38 @@ This tells FusionCore to ignore the frame stamped on incoming IMU messages and u
 
 ---
 
+## WSL2: robot doesn't move, `RTPS_TRANSPORT_SHM` errors, or the filter crashes
+
+On WSL2 the default Fast-DDS shared-memory transport often fails to lock its
+port files and intermittently drops or reorders messages. Symptoms:
+
+```
+RTPS_TRANSPORT_SHM Error] Failed init_port fastrtps_port7004: open_and_lock_file failed
+```
+
+- **Robot never drives in the Gazebo demo:** `/cmd_vel` is being dropped before it
+  reaches the diff-drive plugin.
+- **`Detected jump back in time. Clearing TF buffer`** in the logs: the `/clock`
+  stream is being reordered.
+- **`Cholesky decomposition failed after P repair` / the node aborts:** a corrupted
+  (backward) clock hands the filter a bad `dt`, which blows up the covariance.
+
+Fix: force UDP-only transport. The package ships a profile that disables shared
+memory:
+
+```bash
+export RMW_IMPLEMENTATION=rmw_fastrtps_cpp
+export FASTRTPS_DEFAULT_PROFILES_FILE=$(ros2 pkg prefix fusioncore_gazebo)/share/fusioncore_gazebo/config/fastdds_udp.xml
+```
+
+Set these before launching (in the same shell). CycloneDDS is not a reliable
+fallback on WSL2 here: it tends to fail with "Failed to find a free participant
+index for domain 0". If you are replaying a long bag (e.g. an NCLT sequence) and
+still see clock jumps because the machine cannot keep up at 1x, lower the
+playback rate (`playback_rate:=0.5` or `0.3`) to give it headroom.
+
+---
+
 ## VSLAM pose updates not being fused
 
 **Check 1: Is the topic set and correct?**

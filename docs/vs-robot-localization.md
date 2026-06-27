@@ -96,13 +96,13 @@ These are open robot_localization issues that describe problems FusionCore handl
 
 ## See the difference in simulation
 
-The Gazebo demo runs both filters simultaneously on the same sensor stream and injects a GPS spike at t=30 s. No real hardware needed.
+The Gazebo demo runs both filters simultaneously on the same sensor stream while the robot drives a lawnmower pattern, then injects two 60 m GPS spikes and a 25 s outage. No real hardware needed.
 
 ```bash
 ros2 launch fusioncore_gazebo fusioncore_demo.launch.py
 ```
 
-RViz shows green (FusionCore holds the circle), red (robot_localization follows the spike), yellow (raw GPS). See [Simulation](simulation.md#demo-fusioncore-vs-robot_localization-gps-spike) for details.
+RViz shows green (FusionCore, which holds course through the spikes), red (robot_localization, which lurches to each spike), and yellow (raw GPS, including the spikes). See [Simulation](simulation.md#demo-fusioncore-vs-robot_localization-under-gps-spikes-and-an-outage) for details and the WSL2 transport note.
 
 ---
 

@@ -187,6 +187,15 @@ fusioncore:
     gnss.coast_n: 3
     # Consecutive chi2 GPS rejections before entering coast mode. 0 = disabled.
 
+    gnss.coast_min_gap_s: 1.0
+    # Rejection-triggered coast only fires if the rejection streak began after a
+    # GPS gap of at least this many seconds (the receiver actually went silent and
+    # the filter dead-reckoned). A continuously present GPS that keeps failing the
+    # chi2 gate is a persistent outlier (e.g. a sustained multipath spike), not
+    # filter drift, so inflating P to re-admit it would let the outlier defeat the
+    # gate. Gating on a preceding gap keeps a sustained spike rejected for its full
+    # duration while preserving post-outage re-acquisition. 0 = old behavior.
+
     gnss.coast_q_factor: 10.0
     # Q_position multiplier in coast mode. Controls how fast position uncertainty
     # grows during the blackout. 10.0: after 228s, sigma_xy=48m (rejects 840m
