@@ -48,7 +48,10 @@ if(BUILD_TESTING)
   ament_add_gtest(test_magnetometer tests/test_magnetometer.cpp)
   target_link_libraries(test_magnetometer fusioncore_core Eigen3::Eigen)
 
-  ament_add_gtest(test_gnss_coast tests/test_gnss_coast.cpp)
+  # Longer timeout: these are integration-style runs (tens of seconds of
+  # simulated 100 Hz drive), which are fast in Release but can approach the
+  # default 60s ctest timeout on a slower Debug CI build.
+  ament_add_gtest(test_gnss_coast tests/test_gnss_coast.cpp TIMEOUT 300)
   target_link_libraries(test_gnss_coast fusioncore_core Eigen3::Eigen)
 endif()
 
