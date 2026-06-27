@@ -98,6 +98,10 @@ CLAUDE.md
 __pycache__/
 *.pyc
 
+# Demo media + local context notes: kept locally, not pushed
+demo_output/
+gazebo.md
+
 # Client engagement files: local only, never commit
 clients/
 outreach/
