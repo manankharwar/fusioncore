@@ -1233,6 +1233,15 @@ bool FusionCore::update_magnetometer(
 
   predict_to(timestamp_seconds);
 
+  // Reject readings taken in a locally disturbed field (motor, steel, rebar):
+  // the magnitude no longer matches Earth's field, so the tilt-compensated
+  // heading is untrustworthy in a way the 1-DOF chi2 gate below cannot reliably
+  // catch. See sensors::mag_field_disturbed. Disabled when field_strength <= 0.
+  if (sensors::mag_field_disturbed(mx, my, mz, config_.mag)) {
+    ++mag_outliers_;
+    return false;
+  }
+
   // Extract current roll and pitch from the filter state for tilt compensation.
   // Yaw is what we are about to measure, so we only need roll and pitch here.
   const State& s = ukf_.state();

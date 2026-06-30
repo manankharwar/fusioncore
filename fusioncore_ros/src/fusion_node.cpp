@@ -276,6 +276,12 @@ public:
     // Soft iron scale matrix (row-major 3x3). Identity = no correction.
     declare_parameter("magnetometer.soft_iron",
       std::vector<double>{1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0});
+    // Disturbance rejection by field magnitude. field_strength = local Earth
+    // total field in the SAME units as the incoming reading (Gauss, microtesla);
+    // a reading whose magnitude deviates by more than field_tolerance is treated
+    // as locally disturbed (motor, steel) and rejected. 0.0 = disabled.
+    declare_parameter("magnetometer.field_strength",  0.0);
+    declare_parameter("magnetometer.field_tolerance", 0.2);
 
     // Lateral velocity NHC: how strongly to enforce VY=0 (m/s sigma).
     // 0.05 (default): standard differential drive on good surface.
@@ -530,6 +536,8 @@ public:
     config.mag.noise_rad      = get_parameter("magnetometer.noise_rad").as_double();
     config.mag.chi2_threshold = get_parameter("magnetometer.chi2_threshold").as_double();
     config.mag.declination_rad = get_parameter("magnetometer.declination_rad").as_double();
+    config.mag.field_strength  = get_parameter("magnetometer.field_strength").as_double();
+    config.mag.field_tolerance = get_parameter("magnetometer.field_tolerance").as_double();
 
     {
       auto hi = get_parameter("magnetometer.hard_iron").as_double_array();

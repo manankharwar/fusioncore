@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include "fusioncore/fusioncore.hpp"
 #include "fusioncore/sensors/magnetometer.hpp"
+#include "fusioncore/motion_model.hpp"
 #include "fusioncore/state.hpp"
 
 using namespace fusioncore;
@@ -210,4 +211,96 @@ TEST(MagnetometerTest, OutlierCounterIncremented) {
 
   auto status = fc.get_status();
   EXPECT_GT(status.mag_outliers, 0);
+}
+
+// ─── Test 13: field-magnitude disturbance detection (pure helper) ─────────────
+// A clean reading's corrected magnitude equals the local Earth field. A nearby
+// motor or steel structure distorts the magnitude. The helper flags that, which
+// the heading-only chi2 gate cannot.
+
+TEST(MagnetometerTest, FieldDisturbanceHelper) {
+  MagParams p;
+  // Disabled by default (field_strength = 0): never flags, whatever the input.
+  EXPECT_FALSE(mag_field_disturbed(99.0, 0.0, 0.0, p));
+
+  p.field_strength  = 1.0;
+  p.field_tolerance = 0.2;
+  EXPECT_FALSE(mag_field_disturbed(0.6, 0.8, 0.0, p));  // |(.6,.8,0)| = 1.0, clean
+  EXPECT_TRUE (mag_field_disturbed(1.5, 0.0, 0.0, p));  // 50% high, disturbed
+  EXPECT_TRUE (mag_field_disturbed(0.5, 0.0, 0.0, p));  // 50% low, disturbed
+}
+
+// ─── Test 14: update_magnetometer rejects a disturbed-magnitude reading ───────
+// The disturbed reading points the SAME direction (east) as a clean one, so the
+// heading chi2 gate would accept it. The magnitude check is what rejects it.
+
+TEST(MagnetometerTest, DisturbedFieldRejected) {
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection  = true;
+  cfg.mag.noise_rad      = 0.05;
+  cfg.mag.chi2_threshold = 10.83;
+  cfg.mag.field_strength  = 1.0;   // expect a unit-magnitude field
+  cfg.mag.field_tolerance = 0.2;
+
+  FusionCore fc(cfg);
+  State s0;
+  s0.P(QW, QW) = 0.5;
+  s0.P(QZ, QZ) = 0.5;
+  fc.init(s0, 0.0);
+  fc.update_imu(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.80665);
+
+  EXPECT_TRUE (fc.update_magnetometer(0.01, 0.0, 1.0, 0.0));  // clean, accepted
+  EXPECT_FALSE(fc.update_magnetometer(0.02, 0.0, 1.6, 0.0));  // 60% high, rejected
+}
+
+// ─── Test 15: magnetometer bounds heading drift from wheel slip in a blackout ─
+// This is the lever for the long-blackout benchmark losses (#63/#64). During a
+// multi-minute GPS outage a ground robot dead-reckons on wheel odometry + IMU.
+// Wheel slip biases the odometry yaw rate and an unmodeled gyro bias compounds
+// it, so heading error grows without bound (this is what makes a long blackout
+// lose to a simpler 2D filter). A magnetometer adds a slip-immune absolute
+// heading that bounds the error and makes the gyro bias observable. Two identical
+// dead-reckoning runs, one fed the magnetometer at the true heading, prove it.
+//
+// Note: the magnetometer needs an independent rate reference (the wheel encoder
+// here) to resolve the yaw / gyro-bias ambiguity. Mag + IMU alone, with no rate
+// reference, is ill-conditioned over a long outage. Real ground robots always
+// have wheel odometry, which is exactly this configuration.
+
+TEST(MagnetometerTest, BoundsHeadingDriftFromSlipDuringBlackout) {
+  auto run = [](bool use_mag) {
+    FusionCoreConfig cfg;
+    cfg.outlier_rejection     = true;
+    cfg.outlier_threshold_imu = 15.09;
+    cfg.outlier_threshold_enc = 11.34;
+    cfg.mag.noise_rad         = 0.05;
+    cfg.mag.chi2_threshold    = 10.83;
+    cfg.encoder.vel_noise_wz  = 0.05;
+    cfg.motion_model = create_motion_model("DifferentialDrive");
+    FusionCore fc(cfg);
+    State s0;
+    s0.P(QW, QW) = 0.25;
+    s0.P(QZ, QZ) = 0.25;
+    fc.init(s0, 0.0);
+
+    // Truth: driving straight east at 1 m/s (true yaw rate 0), GPS blacked out.
+    // The gyro has a +0.02 rad/s bias; the wheels slip so odometry reports a
+    // false +0.01 rad/s yaw rate. Both errors push heading the same way.
+    const double dt = 0.01, gyro_bias = 0.02, enc_slip_wz = 0.010;
+    for (int step = 1; step * dt <= 120.0 + 1e-9; ++step) {
+      double t = step * dt;
+      fc.update_imu(t, 0.0, 0.0, gyro_bias, 0.0, 0.0, 9.80665);
+      if (step % 2 == 0) fc.update_encoder(t, 1.0, 0.0, enc_slip_wz);
+      if (use_mag && step % 10 == 0) fc.update_magnetometer(t, 0.0, 1.0, 0.0);
+    }
+    return std::fabs(fc.get_state().yaw());
+  };
+
+  double err_no_mag = run(false);
+  double err_mag    = run(true);
+
+  EXPECT_GT(err_no_mag, 0.5);                 // odometry + gyro: heading runs away (>~29 deg)
+  EXPECT_LT(err_mag,    0.1);                  // magnetometer: bounded (<~6 deg)
+  EXPECT_LT(err_mag,    err_no_mag * 0.2)      // mag cuts the heading error by >80%
+      << "mag err " << err_mag << " vs no-mag " << err_no_mag;
 }

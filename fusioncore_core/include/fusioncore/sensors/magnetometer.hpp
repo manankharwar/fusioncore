@@ -47,7 +47,34 @@ struct MagParams {
   // Identity = no soft iron correction (default).
   // Estimated alongside hard iron using imu_calib or magneto.
   Eigen::Matrix3d soft_iron = Eigen::Matrix3d::Identity();
+
+  // Adaptive magnetic-disturbance rejection by field magnitude.
+  // A clean reading's corrected field magnitude |S*(m_raw - b)| equals the local
+  // Earth field strength. A nearby motor, steel structure, or rebar distorts the
+  // magnitude, and the resulting heading is wrong in a way the chi2 gate cannot
+  // reliably catch: a disturbed heading can still sit within chi2 of an already
+  // drifting prediction, so it gets accepted and pulls heading off. Checking the
+  // magnitude catches the disturbance the heading gate misses. When |m_corrected|
+  // deviates from field_strength by more than field_tolerance (fractional), the
+  // reading is rejected so a transient disturbance never corrupts heading.
+  // Set field_strength to the local Earth total-field magnitude in the SAME UNITS
+  // as the incoming reading (e.g. ~0.48 for Gauss, ~48 for microtesla; look up the
+  // total field at https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml).
+  // 0.0 = disabled (default), preserving prior behavior.
+  double field_strength  = 0.0;
+  double field_tolerance = 0.2;  // allowed fractional deviation (0.2 = +-20%)
 };
+
+// True when the corrected field magnitude deviates from the expected Earth field
+// by more than the configured tolerance: a local magnetic disturbance that makes
+// the heading untrustworthy. Always false when field_strength <= 0 (disabled).
+inline bool mag_field_disturbed(
+  double mx, double my, double mz, const MagParams& p)
+{
+  if (p.field_strength <= 0.0) return false;
+  Eigen::Vector3d m_c = p.soft_iron * (Eigen::Vector3d(mx, my, mz) - p.hard_iron);
+  return std::abs(m_c.norm() - p.field_strength) > p.field_tolerance * p.field_strength;
+}
 
 // Apply hard/soft iron correction and tilt compensation to a raw magnetometer
 // reading, returning the heading in radians (ENU yaw convention: counterclockwise
