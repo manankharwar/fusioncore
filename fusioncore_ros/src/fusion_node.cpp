@@ -220,6 +220,8 @@ public:
     declare_parameter("outlier_threshold_enc",   11.34);
     declare_parameter("outlier_threshold_hdg",   10.83);
     declare_parameter("outlier_threshold_vslam", 22.46);
+    declare_parameter("gnss.max_speed",          0.0);
+    declare_parameter("gnss.max_speed_margin",   5.0);
     // VSLAM pose input (ORB-SLAM3, RTAB-Map, Kimera, etc.)
     declare_parameter("vslam.topic",              std::string(""));
     declare_parameter("vslam.position_noise",     0.1);
@@ -465,6 +467,8 @@ public:
 
     config.outlier_rejection      = get_parameter("outlier_rejection").as_bool();
     config.outlier_threshold_gnss = get_parameter("outlier_threshold_gnss").as_double();
+    config.gnss_max_speed         = get_parameter("gnss.max_speed").as_double();
+    config.gnss_max_speed_margin  = get_parameter("gnss.max_speed_margin").as_double();
     config.outlier_threshold_imu  = get_parameter("outlier_threshold_imu").as_double();
     config.outlier_threshold_enc   = get_parameter("outlier_threshold_enc").as_double();
     config.outlier_threshold_hdg   = get_parameter("outlier_threshold_hdg").as_double();

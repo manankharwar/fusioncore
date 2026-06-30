@@ -112,6 +112,64 @@ TEST(GnssCoastTest, OutageStillRecovers) {
       << "filter failed to re-acquire after outage: final error " << final_err << " m";
 }
 
+// ─── Physical plausibility gate: an impossible jump after a gap is rejected ───
+// After a GPS gap, a fix far beyond what the robot could have moved/drifted
+// (max_speed * dt) must be rejected even though a coast-relaxed chi2 gate would
+// admit it. This is the #64 adversarial-cluster-at-blackout-boundary case.
+TEST(GnssCoastTest, ImplausibleJumpAfterGapRejected) {
+  FusionCoreConfig cfg = demo_config();
+  cfg.gnss_max_speed = 3.0;  // platform max ~3 m/s
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+  const double dt = 0.01, speed = 1.0, g = 9.80665;
+
+  // Drive with good GPS to t = 10 s.
+  for (int step = 1; step * dt <= 10.0 + 1e-9; ++step) {
+    double t = step * dt, tx = speed * t;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
+    if (step % 20 == 0) fc.update_gnss(t, make_fix(tx, 0.0));
+  }
+  // 10 s outage (keep driving, no GPS).
+  for (int step = 1001; step * dt <= 20.0 + 1e-9; ++step) {
+    double t = step * dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
+  }
+  // Outlier 700 m east of truth. Bound is 3 m/s * 10 s + 5 m = 35 m, so reject.
+  double t = 20.0, tx = speed * t;
+  bool accepted = fc.update_gnss(t, make_fix(tx + 700.0, 0.0));
+  EXPECT_FALSE(accepted);
+  EXPECT_EQ(fc.get_gnss_debug().reason, GnssRejectionReason::IMPLAUSIBLE_JUMP);
+  EXPECT_LT(fc.get_state().x[X], tx + 50.0)  // must not have lurched toward the outlier
+      << "filter jumped to the implausible fix";
+}
+
+// The gate must NOT block a legitimate recovery fix after the same outage.
+TEST(GnssCoastTest, LegitRecoveryAfterGapAccepted) {
+  FusionCoreConfig cfg = demo_config();
+  cfg.gnss_max_speed = 3.0;
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+  const double dt = 0.01, speed = 1.0, g = 9.80665;
+
+  for (int step = 1; step * dt <= 10.0 + 1e-9; ++step) {
+    double t = step * dt, tx = speed * t;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
+    if (step % 20 == 0) fc.update_gnss(t, make_fix(tx, 0.0));
+  }
+  for (int step = 1001; step * dt <= 15.0 + 1e-9; ++step) {  // 5 s outage
+    double t = step * dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
+  }
+  // Fix at the true position (small innovation = the drift). Bound 3*5+5 = 20 m.
+  double t = 15.0, tx = speed * t;
+  bool accepted = fc.update_gnss(t, make_fix(tx, 0.0));
+  EXPECT_TRUE(accepted) << "legitimate recovery fix was wrongly rejected";
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

@@ -865,6 +865,28 @@ bool FusionCore::apply_gnss_update(
     double d2 = innovation_pre.dot(S.ldlt().solve(innovation_pre));
     gnss_debug_.mahalanobis_sq = d2;
 
+    // Physical plausibility gate: the fix cannot be farther from the predicted
+    // position than the robot could have moved or drifted since the last accepted
+    // fix (dead-reckoning error <= distance traveled <= max_speed * dt). This
+    // catches an adversarial outlier cluster at a blackout boundary that a
+    // coast-relaxed chi2 gate would admit. It is checked filter-vs-fix (not
+    // GPS-to-GPS) so it scales with the gap and is immune to the cluster being
+    // internally self-consistent. Rejected fixes do NOT count toward coast, so
+    // an outlier can never inflate P and relax the gate.
+    if (config_.gnss_max_speed > 0.0 && last_gnss_time_ >= 0.0) {
+      double gap_s = timestamp_seconds - last_gnss_time_;
+      double offset_xy = std::sqrt(innovation_pre[0]*innovation_pre[0] +
+                                   innovation_pre[1]*innovation_pre[1]);
+      double max_offset = config_.gnss_max_speed * std::max(gap_s, 0.0) +
+                          config_.gnss_max_speed_margin;
+      if (offset_xy > max_offset) {
+        ++gnss_outliers_;
+        gnss_debug_.accepted = false;
+        gnss_debug_.reason   = GnssRejectionReason::IMPLAUSIBLE_JUMP;
+        return false;  // do not touch the coast counters: an outlier must not relax the gate
+      }
+    }
+
     if (d2 > config_.outlier_threshold_gnss) {
       ++gnss_outliers_;
       gnss_debug_.accepted = false;

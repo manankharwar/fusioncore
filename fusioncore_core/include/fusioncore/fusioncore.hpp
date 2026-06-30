@@ -75,6 +75,23 @@ struct FusionCoreConfig {
   double outlier_threshold_hdg   = 10.83;  // chi2(1, 0.999): 1D heading
   double outlier_threshold_vslam = 22.46;  // chi2(6, 0.999): 6D pose
 
+  // Physical plausibility gate for GNSS position.
+  // A fix cannot be farther from the filter's predicted position than the robot
+  // could physically have moved or drifted since the last accepted fix:
+  // dead-reckoning error is bounded by the distance traveled, which is bounded
+  // by max_speed * dt. This rejects an adversarial outlier cluster arriving at a
+  // GPS-blackout boundary, which a coast-relaxed chi2 gate would otherwise admit
+  // (the chi2 covariance has been inflated to re-acquire, so a far outlier slips
+  // through; chi2 alone cannot tell a 700 m outlier from a legitimate recovery
+  // fix after a long gap, but physics can). An implausible fix is rejected and
+  // does NOT count toward coast, so an outlier can never relax the gate.
+  // Set to the platform's maximum plausible speed (m/s); a few times cruise
+  // speed is safe. 0 = disabled (default, preserves prior behavior).
+  double gnss_max_speed        = 0.0;
+  // Slack added to the max_speed * dt bound (m): covers GPS noise and the fact
+  // that the predicted position itself has some uncertainty. ~3-5 m is typical.
+  double gnss_max_speed_margin = 5.0;
+
   // Adaptive noise covariance
   // Whether to enable adaptive R estimation for each sensor
   bool adaptive_imu     = true;
@@ -233,6 +250,7 @@ enum class GnssRejectionReason {
   MIN_SATS        = 5,  // satellites < min_satellites
   CHI2_FAILED     = 6,  // Mahalanobis distance > threshold
   DELAY_TOO_LARGE = 7,  // measurement older than max_measurement_delay
+  IMPLAUSIBLE_JUMP = 8, // fix farther from prediction than max_speed*dt allows
 };
 
 // Per-fix observability data: populated by update_gnss() on every call.

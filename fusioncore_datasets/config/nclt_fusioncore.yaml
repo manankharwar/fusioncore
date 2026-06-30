@@ -42,6 +42,11 @@ fusioncore:
     outlier_threshold_gnss: 16.27   # chi2(3, 0.999)
     outlier_threshold_enc: 11.34    # chi2(3, 0.999)
     outlier_threshold_imu: 15.09    # chi2(6, 0.999)
+    gnss.max_speed: 3.0             # NCLT Segway cruises ~1.5 m/s; reject fixes implying
+                                    # more drift than max_speed*dt (catches the 2012-08-20
+                                    # 727m outlier cluster at the blackout boundary that a
+                                    # coast-relaxed chi2 gate admits). 2x cruise is safe.
+    gnss.max_speed_margin: 5.0      # slack for GPS noise + prediction uncertainty (m)
     gnss.coast_n: 3                 # consecutive rejections before coast mode
     gnss.coast_q_factor: 10.0       # Q_position multiplier during coast: enough for chi2 to accept genuine drift, small enough to reject extreme outliers
     gnss.coast_timeout_s: 30.0      # also coast if GPS silent for 30s (covers mode=2 outages)
