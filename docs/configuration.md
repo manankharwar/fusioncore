@@ -178,6 +178,19 @@ fusioncore:
     # Corrects for elliptical distortion in the magnetic field.
     # Estimated alongside hard iron using imu_calib or magneto.
 
+    magnetometer.field_strength: 0.0
+    # Local Earth total-field magnitude, in the SAME units as the incoming reading
+    # (e.g. ~0.48 for Gauss, ~48 for microtesla). A clean reading's corrected
+    # magnitude equals this; a nearby motor or steel structure distorts it and
+    # produces a wrong heading the chi2 gate cannot reliably catch. When the
+    # magnitude deviates by more than field_tolerance the reading is rejected.
+    # Look up the total field at https://www.ngdc.noaa.gov/geomag/calculators/magcalc.shtml
+    # 0.0 = disabled (no magnitude check).
+
+    magnetometer.field_tolerance: 0.2
+    # Allowed fractional deviation of the field magnitude before a reading is
+    # treated as locally disturbed. 0.2 = accept within +-20% of field_strength.
+
     # ── GPS coast mode ────────────────────────────────────────────────────────
     # During GPS blackouts, inflates process noise so P grows and the chi2 gate
     # relaxes by the time GPS resumes. Prevents the filter from rejecting its
