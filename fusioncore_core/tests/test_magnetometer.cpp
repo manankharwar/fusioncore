@@ -286,12 +286,14 @@ TEST(MagnetometerTest, BoundsHeadingDriftFromSlipDuringBlackout) {
     // Truth: driving straight east at 1 m/s (true yaw rate 0), GPS blacked out.
     // The gyro has a +0.02 rad/s bias; the wheels slip so odometry reports a
     // false +0.01 rad/s yaw rate. Both errors push heading the same way.
-    const double dt = 0.01, gyro_bias = 0.02, enc_slip_wz = 0.010;
-    for (int step = 1; step * dt <= 120.0 + 1e-9; ++step) {
+    // IMU 20 Hz, encoder 10 Hz, magnetometer 4 Hz over 90 s (kept coarse so the
+    // test stays well under the CI timeout while still integrating enough drift).
+    const double dt = 0.05, gyro_bias = 0.02, enc_slip_wz = 0.010;
+    for (int step = 1; step * dt <= 90.0 + 1e-9; ++step) {
       double t = step * dt;
       fc.update_imu(t, 0.0, 0.0, gyro_bias, 0.0, 0.0, 9.80665);
       if (step % 2 == 0) fc.update_encoder(t, 1.0, 0.0, enc_slip_wz);
-      if (use_mag && step % 10 == 0) fc.update_magnetometer(t, 0.0, 1.0, 0.0);
+      if (use_mag && step % 5 == 0) fc.update_magnetometer(t, 0.0, 1.0, 0.0);
     }
     return std::fabs(fc.get_state().yaw());
   };

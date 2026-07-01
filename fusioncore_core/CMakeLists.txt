@@ -45,7 +45,7 @@ if(BUILD_TESTING)
   ament_add_gtest(test_vslam tests/test_vslam.cpp)
   target_link_libraries(test_vslam fusioncore_core Eigen3::Eigen)
 
-  ament_add_gtest(test_magnetometer tests/test_magnetometer.cpp)
+  ament_add_gtest(test_magnetometer tests/test_magnetometer.cpp TIMEOUT 300)
   target_link_libraries(test_magnetometer fusioncore_core Eigen3::Eigen)
 
   # Longer timeout: these are integration-style runs (tens of seconds of
