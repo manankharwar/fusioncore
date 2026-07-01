@@ -25,6 +25,7 @@ Usage:
 
 import argparse
 import copy
+import json
 import os
 import sys
 from pathlib import Path
@@ -287,6 +288,29 @@ def write_markdown(filters, sequence: str, out_dir: str):
     print(f'  Results written to {md_path}')
 
 
+# ── machine-readable output (for regression tracking) ───────────────────────────
+
+def write_json(filters, sequence: str, poses: dict, out_dir: str):
+    """Dump per-filter metrics to metrics.json so a regression harness can diff
+    scores across commits instead of anyone eyeballing a markdown table."""
+    data = {'sequence': sequence, 'poses': poses, 'filters': {}}
+    for label, res, _ in filters:
+        ate = res['ate']
+        data['filters'][label] = {
+            'ate_rmse_3d': round(ate['rmse'], 3),
+            'ate_rmse_xy': round(ate['xy_rmse'], 3),
+            'within_5m':   round(ate['pct5'], 1),
+            'within_10m':  round(ate['pct10'], 1),
+            'path_length_ratio': round(res['plr'], 4),
+            'drift_m_per_km':    round(res['drift'], 2),
+            'rpe10_rmse':        round(res['rpe10']['rmse'], 3),
+        }
+    path = os.path.join(out_dir, 'metrics.json')
+    with open(path, 'w') as f:
+        json.dump(data, f, indent=2)
+    print(f'  Metrics JSON        -> {path}')
+
+
 # ── main ───────────────────────────────────────────────────────────────────────
 
 def main():
@@ -372,6 +396,9 @@ def main():
     save_error_distribution(filters, args.out_dir)
 
     write_markdown(filters, args.sequence, args.out_dir)
+    poses = {'FusionCore': len(fc.timestamps), 'RL-EKF': len(rl.timestamps),
+             'GT': len(gt.timestamps)}
+    write_json(filters, args.sequence, poses, args.out_dir)
     print(f'\nDone. Results in {args.out_dir}/\n')
 
 
