@@ -9,6 +9,17 @@
 
 **ROS 2 UKF sensor fusion for robots that run in the real world. IMU + wheel encoders + GPS at 100 Hz. Handles bad calibration, timestamp jitter, delayed GPS, wheel slip, and ARM hardware out of the box. Apache 2.0.**
 
+
+<img width="1080" height="608" alt="586785007-e1e07cfb-74e0-48b9-9bfd-32b68ee5a6ef" src="https://github.com/user-attachments/assets/d59b74ec-af94-4cb1-ab19-e5310a5d138b" />
+
+
+
+
+
+
+
+
+
 <p align="center">
   <img width="800" height="384" alt="FusionCore running on a real robot" src="https://github.com/user-attachments/assets/9ef42175-6525-4e72-b8d0-a35b0cc5a09d"/>
 </p>
@@ -36,6 +47,8 @@ bash tools/quick_test.sh
 ```
 
 Starts FusionCore with fake sensors and checks all outputs in about 15 seconds. Prints `[PASS]` / `[FAIL]` for each check.
+
+<img width="1900" height="1069" alt="fig5_architecture" src="https://github.com/user-attachments/assets/c06af5c4-dcd5-48ca-8871-d13ba969d573" />
 
 ### **Option B: Docker (no ROS install required)**
 
@@ -104,9 +117,13 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 | 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
 | 2013-04-05 | Spring | 68 min | **12.1 m** | 268.9 m | FC +96% |
 
+<img width="1422" height="1245" alt="fig_trajectory" src="https://github.com/user-attachments/assets/7f78474b-e70b-4b38-95ef-c759e1fcea02" />
+
 > **Note:** these numbers are a snapshot pending a controlled full-suite re-run on current `main`. The 10/12 result holds, but the 2013-04-05 figure (12.1 m) is stale: it has since regressed to ~19.4 m (still a 93% win). See `tools/benchmark_regression.md`.
 
 RL-UKF diverges with NaN on all twelve sequences. FusionCore wins 10/12 sequences. RL-EKF's losses trace to a single root cause: the GPS driver reports 3m sigma, but measured against RTK ground truth, actual p95 noise is 9.7-53.1m depending on the day. RL's gate is calibrated to the stated 3m and rejects valid fixes on bad-GPS days. FusionCore's adaptive noise estimation (`adaptive.gnss: true`) keeps chi2 statistics calibrated in real time.
+
+<img width="1485" height="1035" alt="fig_adaptive_noise" src="https://github.com/user-attachments/assets/97c7b12d-8b93-48d1-bab1-3e03d21ea02f" />
 
 The two FC losses are driven by a GPS data quality issue on 2012-08-20 (105 corrupt mode-3 fixes in a 24-second window at a blackout boundary) and accumulated heading error during a 462-second GPS blackout on 2012-06-15. See [benchmarks/README.md](benchmarks/README.md) for full per-sequence analysis including root causes and path-to-fix.
 
@@ -137,6 +154,9 @@ Real engineers, real robots, real sensor data. Not demos.
 
 Running FusionCore on your robot? Drop a note in [Discussions #22](https://github.com/manankharwar/fusioncore/discussions/22) and I will add you here.
 
+<img width="1431" height="1127" alt="fig_bias_estimation" src="https://github.com/user-attachments/assets/da189e76-bb54-4d90-b0a7-48926060b86a" />
+
+
 ---
 
 ## In the ecosystem
@@ -153,6 +173,8 @@ Running FusionCore on your robot? Drop a note in [Discussions #22](https://githu
 
 FusionCore is a drop-in replacement for the robot_localization + navsat_transform stack. The migration guide covers the YAML and launch file changes: [manankharwar.github.io/fusioncore/migration_from_robot_localization](https://manankharwar.github.io/fusioncore/migration_from_robot_localization/)
 
+<img width="1008" height="334" alt="demo_plot" src="https://github.com/user-attachments/assets/4fdec6e5-f827-4111-bd91-912992ab17fb" />
+
 The architectural differences that matter in practice:
 
 | Problem | How FusionCore handles it |
@@ -165,6 +187,8 @@ The architectural differences that matter in practice:
 | IMU mounted off-axis or with a broken frame name | TF lookup on every message. `imu.frame_id` override for drivers that publish wrong frame names. |
 | navsat_transform node adds CPU load and startup ordering complexity | No navsat_transform node. ECEF conversion is one matrix multiply per GPS fix inside the filter. |
 
+<img width="1109" height="1035" alt="fig_mahalanobis" src="https://github.com/user-attachments/assets/702427fe-9685-49f9-be2a-7c27db45691d" />
+<img width="1967" height="1087" alt="fig3_two_outcomes" src="https://github.com/user-attachments/assets/792430dd-b86a-44e7-b51b-7a462cd8538d" />
 ---
 
 ## Documentation
