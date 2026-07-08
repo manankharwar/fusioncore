@@ -12,13 +12,7 @@
 
 <img width="1080" height="608" alt="586785007-e1e07cfb-74e0-48b9-9bfd-32b68ee5a6ef" src="https://github.com/user-attachments/assets/d59b74ec-af94-4cb1-ab19-e5310a5d138b" />
 
-
-
-
-
-
-
-
+<img width="1900" height="1069" alt="fig5_architecture" src="https://github.com/user-attachments/assets/c06af5c4-dcd5-48ca-8871-d13ba969d573" />
 
 <p align="center">
   <img width="800" height="384" alt="FusionCore running on a real robot" src="https://github.com/user-attachments/assets/9ef42175-6525-4e72-b8d0-a35b0cc5a09d"/>
@@ -47,8 +41,6 @@ bash tools/quick_test.sh
 ```
 
 Starts FusionCore with fake sensors and checks all outputs in about 15 seconds. Prints `[PASS]` / `[FAIL]` for each check.
-
-<img width="1900" height="1069" alt="fig5_architecture" src="https://github.com/user-attachments/assets/c06af5c4-dcd5-48ca-8871-d13ba969d573" />
 
 ### **Option B: Docker (no ROS install required)**
 
@@ -96,6 +88,9 @@ Most sensor fusion tutorials assume clean data. Real robots don't have clean dat
 | **GPS drops out in tunnels or canopy** | Inertial coast mode maintains position integrity during sustained GPS dropout. Outlier gate relaxes automatically to reacquire when GPS returns. |
 | **Robot sits still for minutes** | ZUPT (zero velocity update) fuses a zero-velocity pseudo-measurement when encoder speed and angular rate are both below threshold. Prevents IMU noise from integrating into position drift during idle periods. |
 
+<img width="1200" height="675" alt="fusioncore_demo_hmm" src="https://github.com/user-attachments/assets/89e9134d-3ec1-4cd9-898b-e3a9c62852dd" />
+
+
 ---
 
 ## Benchmark
@@ -120,6 +115,9 @@ FusionCore vs robot_localization on the [NCLT dataset](http://robots.engin.umich
 <img width="1422" height="1245" alt="fig_trajectory" src="https://github.com/user-attachments/assets/7f78474b-e70b-4b38-95ef-c759e1fcea02" />
 
 > **Note:** these numbers are a snapshot pending a controlled full-suite re-run on current `main`. The 10/12 result holds, but the 2013-04-05 figure (12.1 m) is stale: it has since regressed to ~19.4 m (still a 93% win). See `tools/benchmark_regression.md`.
+
+<img width="1200" height="960" alt="fusioncore_demo" src="https://github.com/user-attachments/assets/1d6975a0-2f9b-400d-a47c-457568c01586" />
+
 
 RL-UKF diverges with NaN on all twelve sequences. FusionCore wins 10/12 sequences. RL-EKF's losses trace to a single root cause: the GPS driver reports 3m sigma, but measured against RTK ground truth, actual p95 noise is 9.7-53.1m depending on the day. RL's gate is calibrated to the stated 3m and rejects valid fixes on bad-GPS days. FusionCore's adaptive noise estimation (`adaptive.gnss: true`) keeps chi2 statistics calibrated in real time.
 
