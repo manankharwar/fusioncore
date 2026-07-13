@@ -8,6 +8,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`fusioncore.launch.py` and `fusioncore_duatic.launch.py` now bring the node up automatically.** FusionCore is a lifecycle node, but these two launch files started the process and never triggered the initial CONFIGURE transition, so the node sat in `unconfigured` doing nothing: no error, no data, just silence. A first-time user following the README would reasonably conclude FusionCore was broken. Both launch files now emit CONFIGURE and then ACTIVATE, the same pattern `fusioncore_nav2.launch.py` and the Gazebo demo already used. Adds an `autoconfigure` launch argument (default `true`); set it to `false` when a lifecycle manager such as `nav2_lifecycle_manager` drives the node.
+
 ---
 
 ## [0.3.2]: 2026-07-06
