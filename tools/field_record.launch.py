@@ -19,12 +19,17 @@ from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
+    EmitEvent,
     ExecuteProcess,
     OpaqueFunction,
+    RegisterEventHandler,
     TimerAction,
 )
 from launch.substitutions import LaunchConfiguration
-from launch_ros.actions import Node
+from launch_ros.actions import LifecycleNode
+from launch_ros.event_handlers import OnStateTransition
+from launch_ros.events.lifecycle import ChangeState
+from lifecycle_msgs.msg import Transition
 
 
 RECORD_TOPICS = [
@@ -49,21 +54,52 @@ def _make_nodes(context, *args, **kwargs):
     if env:
         params.append(env)
 
-    fusioncore = Node(
+    # The launch drives the lifecycle, so switch off the node's own self-activate
+    # or both fire and you get a double-activate.
+    params.append({"autostart": False})
+
+    fusioncore = LifecycleNode(
         package="fusioncore_ros",
         executable="fusioncore_node",
         name="fusioncore",
+        namespace="",
         output="screen",
         parameters=params,
     )
 
+    # Without this the node sits in `unconfigured` and publishes nothing, so the
+    # bag would come back from the field with raw sensors but no filter output.
+    configure = TimerAction(period=2.0, actions=[
+        EmitEvent(event=ChangeState(
+            lifecycle_node_matcher=lambda a: a is fusioncore,
+            transition_id=Transition.TRANSITION_CONFIGURE,
+        )),
+    ])
+
+    activate = RegisterEventHandler(OnStateTransition(
+        target_lifecycle_node=fusioncore,
+        start_state="configuring",
+        goal_state="inactive",
+        entities=[EmitEvent(event=ChangeState(
+            lifecycle_node_matcher=lambda a: a is fusioncore,
+            transition_id=Transition.TRANSITION_ACTIVATE,
+        ))],
+    ))
+
+    # Start recording only after FusionCore is active, otherwise the first
+    # seconds of the bag have no /fusion topics in them.
     bag_dir = os.path.join(os.getcwd(), bag_prefix)
     recorder = ExecuteProcess(
         cmd=["ros2", "bag", "record", "-o", bag_dir] + RECORD_TOPICS,
         output="screen",
     )
 
-    return [fusioncore, TimerAction(period=3.0, actions=[recorder])]
+    return [
+        fusioncore,
+        configure,
+        activate,
+        TimerAction(period=6.0, actions=[recorder]),
+    ]
 
 
 def generate_launch_description():
