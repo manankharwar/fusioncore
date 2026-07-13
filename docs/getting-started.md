@@ -78,9 +78,15 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
   fusioncore_config:=/path/to/your_robot.yaml
 ```
 
-Or manually in a second terminal:
+Both launch files bring the node all the way up to `active` on their own. There is nothing else to run.
+
+If you would rather drive the lifecycle yourself (for example a `nav2_lifecycle_manager` owns it), pass `autoconfigure:=false` and do the transitions by hand:
 
 ```bash
+ros2 launch fusioncore_ros fusioncore.launch.py \
+  fusioncore_config:=/path/to/your_robot.yaml \
+  autoconfigure:=false
+
 ros2 lifecycle set /fusioncore configure
 ros2 lifecycle set /fusioncore activate
 ```
@@ -149,12 +155,10 @@ If you want to observe the filter behavior directly rather than run the automate
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash
 ros2 launch fusioncore_ros fusioncore.launch.py
 
-# Terminal 2: TF + lifecycle
+# Terminal 2: TF (the launch already brought the node up to active)
 source /opt/ros/jazzy/setup.bash && source ~/ros2_ws/install/setup.bash
 ros2 run tf2_ros static_transform_publisher --frame-id base_link --child-frame-id imu_link &
 ros2 run tf2_ros static_transform_publisher --frame-id odom --child-frame-id base_link &
-sleep 1 && ros2 lifecycle set /fusioncore configure
-sleep 1 && ros2 lifecycle set /fusioncore activate
 
 # Terminal 3: diagnostics
 ros2 topic echo /diagnostics --once

@@ -12,18 +12,18 @@ Quick answers to the most common problems. Each section states what you see, why
 ros2 lifecycle get /fusioncore
 ```
 
-If it says `unconfigured` or `inactive`, the lifecycle transitions didn't fire. Run them manually:
-
-```bash
-ros2 lifecycle set /fusioncore configure
-ros2 lifecycle set /fusioncore activate
-```
-
-Or use the provided launch file which wires this automatically:
+It should say `active`. The launch files bring the node up on their own, so if you started it with one, this is already done:
 
 ```bash
 ros2 launch fusioncore_ros fusioncore.launch.py \
   fusioncore_config:=/path/to/your_robot.yaml
+```
+
+If it says `unconfigured` or `inactive`, you either started `fusioncore_node` directly (a bare `ros2 run` does not transition a lifecycle node), or you passed `autoconfigure:=false`. Drive it by hand:
+
+```bash
+ros2 lifecycle set /fusioncore configure
+ros2 lifecycle set /fusioncore activate
 ```
 
 **Check 2: Is the filter initialized?**
