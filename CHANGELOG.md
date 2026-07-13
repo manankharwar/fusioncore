@@ -8,6 +8,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`rowcrop_rtk.yaml` config** for outdoor row-crop rovers running RTK GPS + IMU + wheel odometry (weeders, sprayers, scouts, seeders). Sets the RTK noise floor, the physical-plausibility gate (`gnss.max_speed`), gap-gated coast, and GPS-track heading for slow field speeds, and documents the dual-antenna heading options inline. The only per-robot values are the antenna lever arm and the rover's top speed.
+
 ### Fixed
 - **`tools/field_record.launch.py` recorded bags with no filter output.** The field-day recording launch started FusionCore with a plain `Node()` and never triggered the lifecycle CONFIGURE transition, so the node sat in `unconfigured` and published nothing. The bag still captured the raw sensor topics, but `/fusion/odom`, `/fusion/debug/gnss_status`, and `/fusion/debug/filter_health` came back empty, which is only discovered after the field day is over. The launch now configures and activates the node, and waits until it is active before starting the recorder so the first seconds of the bag are not missing the `/fusion` topics.
 - **`fusioncore.launch.py` and `fusioncore_duatic.launch.py` now bring the node up automatically.** FusionCore is a lifecycle node, but these two launch files started the process and never triggered the initial CONFIGURE transition, so the node sat in `unconfigured` doing nothing: no error, no data, just silence. A first-time user following the README would reasonably conclude FusionCore was broken. Both launch files now emit CONFIGURE and then ACTIVATE, the same pattern `fusioncore_nav2.launch.py` and the Gazebo demo already used. Adds an `autoconfigure` launch argument (default `true`); set it to `false` when a lifecycle manager such as `nav2_lifecycle_manager` drives the node.

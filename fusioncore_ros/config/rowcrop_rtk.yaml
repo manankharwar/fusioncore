@@ -1,0 +1,165 @@
+# Row-crop RTK rover
+#
+# For an outdoor row-crop robot running RTK GPS + IMU + wheel odometry:
+# weeders, sprayers, scouts, seeders. Open fields, long straight rows, headland
+# turns, and multipath wherever there are tree lines, buildings, or parked
+# equipment.
+#
+# The two things you MUST set for your robot are the lever arm (measure it) and
+# gnss.max_speed (your rover's actual top speed). Everything else has a sane
+# default and a note explaining when to move it.
+#
+# Requires FusionCore 0.3.2 or newer.
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+
+    # Differential drive. Use "Ackermann" if you steer like a car, or "CVA" if
+    # the robot can slide sideways.
+    motion_model: "DifferentialDrive"
+
+    # ---------------------------------------------------------------
+    # GNSS: RTK
+    # ---------------------------------------------------------------
+    # base_noise_xy is a FLOOR, not a ceiling. Adaptive noise raises it on its
+    # own when the receiver is actually noisier than it claims to be.
+    #
+    # RTK-FIXED most of the time: 0.05 is right.
+    # Dropping to FLOAT out in the fields: raise to 0.3 - 0.5, otherwise the
+    # filter trusts float fixes more than it should.
+    gnss.base_noise_xy: 0.05        # m
+    gnss.base_noise_z: 0.10         # m
+
+    # 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
+    # 3 accepts float and fixed. Set 4 to require a fixed solution and reject
+    # everything else (safer, but you go blind whenever RTK drops).
+    gnss.min_fix_type: 3
+    gnss.max_hdop: 5.0
+    gnss.min_satellites: 6
+
+    # Antenna position relative to base_link. MEASURE THIS, do not guess.
+    # A wrong lever arm shows up as a heading error that grows with turn rate.
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.60          # antenna on a mast, ~60cm above base_link
+
+    # --- Dual antenna (absolute heading without a magnetometer) ---
+    # If you run two receivers this is the best heading source you can have:
+    # absolute, works standing still, never drifts.
+    #
+    # Option A: the receiver already publishes a heading message.
+    #   gnss.heading_topic: "/gnss/heading"
+    #
+    # Option B: feed the second receiver's fix and its own lever arm, and
+    # FusionCore derives the baseline heading itself.
+    #   gnss.fix2_topic: "/gnss/fix2"
+    #   gnss.lever_arm2_x: -0.50     # second antenna, measured from base_link
+    #   gnss.lever_arm2_y: 0.0
+    #   gnss.lever_arm2_z: 0.60
+    gnss.heading_topic: ""
+    gnss.fix2_topic: ""
+
+    # --- Physical plausibility gate ---
+    # Rejects any fix farther from the filter's own prediction than the robot
+    # could possibly have moved: max_speed * gap_seconds + max_speed_margin.
+    # This is a per-platform kinematic spec, not a tuning knob. Set max_speed to
+    # your rover's real top speed. Off by default (0.0) elsewhere.
+    gnss.max_speed: 3.0             # m/s, your rover's top speed
+    gnss.max_speed_margin: 5.0      # m, slack for GNSS noise
+
+    # --- GPS-track heading ---
+    # With a single antenna, heading comes from the direction of travel, so it
+    # needs some straight-line motion to be trustworthy. With RTK the jitter is
+    # low, so you can lower min_speed if you want heading to lock in sooner at
+    # slow field speeds.
+    gnss.track_heading_enabled: true
+    gnss.track_heading_min_speed: 0.2     # m/s, lower this if you crawl on RTK
+    gnss.track_heading_max_yaw_rate: 0.3  # rad/s, heading is unobservable while spinning
+    gnss.track_heading_min_dist: 5.0      # m of travel before track heading is trusted
+
+    # ---------------------------------------------------------------
+    # Outlier rejection: the part that matters near tree lines and equipment
+    # ---------------------------------------------------------------
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.999)
+    outlier_threshold_imu:  15.09   # chi2(6, 0.999)
+    outlier_threshold_enc:  11.34   # chi2(3, 0.999)
+
+    # Coast mode: dead-reckon on IMU + wheels through a GPS dropout.
+    # coast_min_gap_s is the important one: coast only fires if the rejection
+    # streak began AFTER a real GPS gap. That way a persistent multipath spike
+    # stays rejected instead of eventually widening the gate and sneaking into
+    # the estimate. These defaults are good, leave them unless you have a reason.
+    gnss.coast_n: 5
+    gnss.coast_min_gap_s: 1.0
+    gnss.coast_q_factor: 20.0
+
+    # ---------------------------------------------------------------
+    # IMU
+    # ---------------------------------------------------------------
+    # Set these from your IMU's datasheet:
+    #   gyro_noise ~= ARW_deg_per_sqrt_hr * (pi/180) / 60 * sqrt(sample_rate)
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.005           # rad/s
+    imu.accel_noise: 0.15           # m/s^2, loosen if the ride is rough
+    imu.remove_gravitational_acceleration: false   # true if your driver already removes g
+
+    # Magnetometer heading. Off by default: a mag near motors and steel is
+    # usually worse than useless. If yours is clean, enable it and set the local
+    # field strength so disturbed readings get rejected.
+    magnetometer.enabled: false
+    # magnetometer.field_strength: 50.0   # microtesla, your local Earth field
+    # magnetometer.field_tolerance: 0.2   # reject readings off by more than 20%
+
+    # ---------------------------------------------------------------
+    # Wheel odometry
+    # ---------------------------------------------------------------
+    # Loosen vel_noise if you slip in mud or on wet ground. Slip that the filter
+    # trusts is the quiet way a rover walks off its row.
+    encoder.vel_noise: 0.05         # m/s
+    encoder.yaw_noise: 0.02         # rad/s
+
+    # ---------------------------------------------------------------
+    # Adaptive noise: this is why there is no covariance to hand-tune
+    # ---------------------------------------------------------------
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ---------------------------------------------------------------
+    # Process noise
+    # ---------------------------------------------------------------
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+    ukf.q_encoder_wz_bias: 1.0e-7
+
+    # ---------------------------------------------------------------
+    # Frames
+    # ---------------------------------------------------------------
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true
+
+# Run it:
+#
+# ros2 launch fusioncore_ros fusioncore.launch.py \
+#   fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/rowcrop_rtk.yaml \
+#   --ros-args \
+#   -r /imu/data:=/your/imu/data \
+#   -r /gnss/fix:=/your/gnss/fix \
+#   -r /odom/wheels:=/your/wheel/odom
+#
+# Worth plotting on the first run:
+#   /fusion/debug/gnss_status    per-fix accept/reject with the exact reason
+#   /fusion/debug/filter_health  innovation norms, position/heading sigma, coast state
