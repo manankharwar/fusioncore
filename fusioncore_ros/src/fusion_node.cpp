@@ -1198,14 +1198,30 @@ private:
         init_win_az_ += msg->linear_acceleration.z;
         ++init_win_n_;
 
-        // Accumulate orientation if available
+        // Accumulate orientation if the driver provides one.
+        //
+        // This has to agree with fuse_imu_orientation_if_valid(). Per the
+        // sensor_msgs/Imu spec only a NEGATIVE covariance means "no orientation
+        // data"; all-zeros means "covariance unknown", and plenty of drivers
+        // publish exactly that alongside a perfectly good quaternion.
+        //
+        // Requiring a positive covariance here silently discarded orientation
+        // from 9-axis IMUs whose driver leaves the covariance at zero. That
+        // matters more than it sounds: without an orientation the accel bias
+        // below is never initialised, so whatever slice of gravity the IMU's
+        // mounting tilt produces stays in the acceleration channel, and a
+        // constant acceleration error double-integrates straight into position.
         const auto& ocov = msg->orientation_covariance;
-        bool has_orient = (ocov[0] > 0.0 || ocov[4] > 0.0 || ocov[8] > 0.0);
+        const auto& q    = msg->orientation;
+        const double q_norm_sq = q.w*q.w + q.x*q.x + q.y*q.y + q.z*q.z;
+        // A driver with nothing to report may leave the quaternion all-zero,
+        // which is not a rotation. Anything normalised passes.
+        const bool has_orient = (ocov[0] >= 0.0) && (q_norm_sq > 0.5);
         if (has_orient) {
-          init_win_qw_ += msg->orientation.w;
-          init_win_qx_ += msg->orientation.x;
-          init_win_qy_ += msg->orientation.y;
-          init_win_qz_ += msg->orientation.z;
+          init_win_qw_ += q.w;
+          init_win_qx_ += q.x;
+          init_win_qy_ += q.y;
+          init_win_qz_ += q.z;
           ++init_win_orient_n_;
         }
 
@@ -1244,8 +1260,18 @@ private:
                 initial.x[fusioncore::B_GX], initial.x[fusioncore::B_GY], initial.x[fusioncore::B_GZ],
                 initial.x[fusioncore::B_AX], initial.x[fusioncore::B_AY], initial.x[fusioncore::B_AZ]);
             } else {
-              RCLCPP_INFO(get_logger(),
-                "Bias window done (gyro only, no orientation): gyro=[%.4f,%.4f,%.4f]",
+              // No usable orientation, so the accel bias stays at zero and the
+              // filter starts level. That is fine for a 6-axis IMU mounted flat
+              // (the UKF observes gravity and converges), but if the IMU is
+              // tilted the uncompensated gravity component behaves like a
+              // constant acceleration and integrates into position. Warn rather
+              // than log quietly: on a 9-axis IMU this almost always means the
+              // driver is not publishing what FusionCore expects.
+              RCLCPP_WARN(get_logger(),
+                "Bias window done (gyro only, no orientation): gyro=[%.4f,%.4f,%.4f]. "
+                "Accel bias left at zero. If your IMU does report orientation, check that "
+                "orientation_covariance[0] is not negative and the quaternion is non-zero, "
+                "otherwise a tilted IMU mount will leak gravity into position.",
                 initial.x[fusioncore::B_GX], initial.x[fusioncore::B_GY], initial.x[fusioncore::B_GZ]);
             }
           } else {

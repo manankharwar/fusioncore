@@ -48,6 +48,8 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_proj_axis_order tests/test_proj_axis_order.cpp)
   target_link_libraries(test_proj_axis_order PROJ::proj)
+
+  ament_add_gtest(test_imu_orientation_validity tests/test_imu_orientation_validity.cpp)
 endif()
 
 ament_auto_package()
