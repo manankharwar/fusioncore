@@ -168,7 +168,7 @@ def generate_launch_description():
                 "use_sim_time":      True,
                 "world_name":        "fusioncore_outdoor",
                 "spike_at_s":        LaunchConfiguration("spike_at_s"),
-                "spike_duration_s":  8.0,
+                "spike_duration_s":  3.0,
                 "spike_dx_m":        LaunchConfiguration("spike_dx_m"),
                 "spike_dy_m":        0.0,
                 "outage_at_s":       LaunchConfiguration("outage_at_s"),

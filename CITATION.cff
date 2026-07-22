@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use FusionCore in your research, please cite it as below."
 title: "FusionCore: A ROS 2 UKF Sensor Fusion Library for Outdoor Mobile Robots"
-version: 0.3.2
-date-released: 2026-07-06
+version: 0.3.3
+date-released: 2026-07-22
 license: Apache-2.0
 repository-code: "https://github.com/manankharwar/fusioncore"
 url: "https://manankharwar.github.io/fusioncore/"
