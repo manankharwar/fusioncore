@@ -227,30 +227,52 @@ velocity_smoother:
 
 FusionCore subscribes to these topics by default:
 
-| Input | Default topic | Your topic | Remap needed? |
-|---|---|---|---|
-| IMU | `/imu/data` | probably the same | usually no |
-| Wheel odometry | `/odom/wheels` | often different | likely yes |
-| GPS fix | `/gnss/fix` | often `/fix` | often yes |
+| Input | Parameter | Default topic | Your topic | Change needed? |
+|---|---|---|---|---|
+| IMU | `imu.topic` | `/imu/data` | probably the same | usually no |
+| Wheel odometry | `encoder.topic` | `/odom/wheels` | often different | likely yes |
+| GPS fix | `gnss.fix_topic` | `/gnss/fix` | often `/fix` | often yes |
 
-If your wheel odom topic or GPS topic is different, add remaps to your launch command:
+The wheel odometry default is `/odom/wheels`, not the conventional `/odom`. That is
+deliberate: FusionCore publishes its own fused odometry, so defaulting to `/odom` would
+invite a feedback loop with its own output. Expect to set this one.
+
+If your topics differ, set them in your config YAML:
+
+```yaml
+fusioncore:
+  ros__parameters:
+    encoder.topic:  "/your/wheel/odom/topic"
+    gnss.fix_topic: "/fix"
+```
+
+**Clearpath Husky example** (odom at `/husky_velocity_controller/odom`, GPS at `/fix`):
+
+```yaml
+fusioncore:
+  ros__parameters:
+    encoder.topic:  "/husky_velocity_controller/odom"
+    gnss.fix_topic: "/fix"
+```
+
+ROS 2 remaps also still work if you prefer them, and apply on top of whatever the
+parameter resolves to:
 
 ```bash
 ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
   fusioncore_config:=your_robot.yaml \
   --ros-args \
-  -r /odom/wheels:=/your/wheel/odom/topic \
+  -r /odom/wheels:=/husky_velocity_controller/odom \
   -r /gnss/fix:=/fix
 ```
 
-**Clearpath Husky example** (odom at `/husky_velocity_controller/odom`, GPS at `/fix`):
+Either way, check the startup log to confirm what it actually subscribed to. Pointing at a
+topic that does not exist fails silently: the filter still runs and publishes, it just never
+fuses that sensor.
 
-```bash
-ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
-  fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/clearpath_husky.yaml \
-  --ros-args \
-  -r /odom/wheels:=/husky_velocity_controller/odom \
-  -r /gnss/fix:=/fix
+```
+[INFO] [fusioncore]: Encoder topic: /husky_velocity_controller/odom
+[INFO] [fusioncore]: GNSS topic: /fix (sensor_msgs/NavSatFix)
 ```
 
 FusionCore publishes to `/fusion/odom`. Any downstream node that was reading `/odometry/filtered` needs to be updated to read `/fusion/odom`: the bundled nav2_params.yaml already handles this for Nav2.
@@ -272,7 +294,7 @@ FusionCore publishes to `/fusion/odom`. Any downstream node that was reading `/o
 | `smooth_lagged_data` | automatic | FC replays buffered IMU for delayed GPS |
 | `history_length` | automatic | FC uses a 1-second IMU ring buffer |
 | `imu0` (topic name) | remap `/imu/data` | FC subscribes to `/imu/data` by default |
-| `odom0` (topic name) | remap `/odom/wheels` | FC subscribes to `/odom/wheels` by default |
+| `odom0` (topic name) | `encoder.topic` | defaults to `/odom/wheels`; set it or remap |
 | `imu0_config` | not needed | FC fuses all available IMU axes automatically |
 | `odom0_config` | not needed | FC fuses linear velocity and yaw rate from odometry |
 | `imu0_differential` | not needed | FC handles this internally |

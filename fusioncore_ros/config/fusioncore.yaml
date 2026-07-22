@@ -54,6 +54,11 @@ fusioncore:
 
     # ── Wheel encoder ─────────────────────────────────────────────────────────
 
+    # Primary wheel odometry topic (nav_msgs/Odometry; the twist is what gets fused).
+    # The default is intentionally not /odom: FusionCore publishes its own fused
+    # odometry, so subscribing to /odom would invite a loop with its own output.
+    # Point this at your driver's topic (/odom, /diff_drive_controller/odom, ...).
+    encoder.topic: "/odom/wheels"
     encoder.vel_noise: 0.05    # m/s: 1-sigma forward velocity noise
     encoder.yaw_noise: 0.02    # rad/s: 1-sigma angular velocity noise
 
@@ -74,6 +79,11 @@ fusioncore:
     encoder2.yaw_noise: 0.02   # rad/s: fallback when message covariance is zero
 
     # ── GNSS position ─────────────────────────────────────────────────────────
+
+    # Primary GNSS fix topic. Read as sensor_msgs/NavSatFix, or gps_msgs/GPSFix
+    # when gnss.use_gps_fix is true. Set this to your driver's topic
+    # (/fix, /ublox/fix, /gps/fix, ...) instead of writing a launch remap.
+    gnss.fix_topic: "/gnss/fix"
 
     gnss.base_noise_xy: 1.0    # meters: base position noise sigma, scaled by HDOP
     gnss.base_noise_z: 2.0     # meters: altitude noise sigma, scaled by VDOP

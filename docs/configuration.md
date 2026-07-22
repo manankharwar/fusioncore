@@ -61,6 +61,11 @@ fusioncore:
     imu2.remove_gravitational_acceleration: false
 
     # ── Wheel encoders ────────────────────────────────────────────────────────
+    # Wheel odometry topic (nav_msgs/Odometry; only the twist is fused).
+    # The default is deliberately NOT the conventional /odom: FusionCore publishes
+    # its own fused odometry, so subscribing to /odom would invite a feedback loop
+    # with its own output. Point this at your driver's topic instead.
+    encoder.topic: "/odom/wheels"   # e.g. "/odom" or "/diff_drive_controller/odom"
     encoder.vel_noise: 0.05     # m/s
     encoder.yaw_noise: 0.02     # rad/s
 
@@ -81,6 +86,11 @@ fusioncore:
     encoder2.yaw_noise: 0.02    # rad/s fallback when message covariance is zero
 
     # ── GPS ───────────────────────────────────────────────────────────────────
+    # Primary GPS fix topic. Read as sensor_msgs/NavSatFix, or gps_msgs/GPSFix
+    # when gnss.use_gps_fix is true (below). Set this to your driver's topic
+    # rather than writing a launch remap.
+    gnss.fix_topic: "/gnss/fix"  # e.g. "/fix", "/ublox/fix", "/gps/fix"
+
     gnss.base_noise_xy: 1.0     # m: baseline sigma at HDOP=1
                                 # scaled automatically by HDOP from the message
                                 # standard autonomous GPS: 1.0–2.5
@@ -96,7 +106,7 @@ fusioncore:
                                 # below if your receiver publishes gps_msgs/GPSFix.
 
     gnss.use_gps_fix: false     # Set true when your driver publishes gps_msgs/GPSFix
-                                # on /gnss/fix instead of sensor_msgs/NavSatFix.
+                                # on gnss.fix_topic instead of sensor_msgs/NavSatFix.
                                 # GPSFix unlocks RTK_FLOAT status, uses receiver-native
                                 # hdop/vdop values, satellites_used, and err_horz/err_vert
                                 # as a fallback covariance. Default false: NavSatFix works
@@ -492,7 +502,7 @@ reference.use_first_fix: true
 
 ## GPS receiver setup: NavSatFix vs GPSFix
 
-FusionCore supports two GPS message types on `/gnss/fix`. The default is `sensor_msgs/NavSatFix` because every ROS GPS driver publishes it. Set `gnss.use_gps_fix: true` to switch to `gps_msgs/GPSFix` if your driver supports it.
+FusionCore supports two GPS message types on `gnss.fix_topic` (default `/gnss/fix`). The default is `sensor_msgs/NavSatFix` because every ROS GPS driver publishes it. Set `gnss.use_gps_fix: true` to switch to `gps_msgs/GPSFix` if your driver supports it.
 
 | | `sensor_msgs/NavSatFix` | `gps_msgs/GPSFix` |
 |---|---|---|

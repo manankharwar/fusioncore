@@ -4,10 +4,10 @@
 
 | Topic | Type | Notes |
 |---|---|---|
-| `/imu/data` | `sensor_msgs/Imu` | Primary IMU angular velocity and linear acceleration |
+| `imu.topic` | `sensor_msgs/Imu` | Primary IMU angular velocity and linear acceleration (default `/imu/data`) |
 | `imu2.topic` | `sensor_msgs/Imu` | Second IMU (optional): fused as independent measurement of same state |
-| `/odom/wheels` | `nav_msgs/Odometry` | Wheel encoder velocity |
-| `/gnss/fix` | `sensor_msgs/NavSatFix` or `gps_msgs/GPSFix` | GPS position (optional). Default is NavSatFix. Set `gnss.use_gps_fix: true` to subscribe as GPSFix: unlocks RTK_FLOAT status, receiver-native HDOP/VDOP, and err_horz/err_vert covariance bounds. |
+| `encoder.topic` | `nav_msgs/Odometry` | Wheel encoder velocity (default `/odom/wheels`). Only the twist is fused; pose is ignored. |
+| `gnss.fix_topic` | `sensor_msgs/NavSatFix` or `gps_msgs/GPSFix` | GPS position (optional, default `/gnss/fix`). Message type is NavSatFix by default. Set `gnss.use_gps_fix: true` to subscribe as GPSFix: unlocks RTK_FLOAT status, receiver-native HDOP/VDOP, and err_horz/err_vert covariance bounds. |
 | `/gnss/heading` | `sensor_msgs/Imu` | Dual antenna heading (optional) |
 | `gnss.azimuth_topic` | `compass_msgs/Azimuth` | Azimuth heading (optional, preferred) |
 | `magnetometer.topic` | `sensor_msgs/MagneticField` | Raw 3-axis magnetometer (optional): tilt-compensated heading with hard/soft iron correction |
@@ -26,7 +26,24 @@
 
 The `fusioncore_ublox` package is a separate optional companion; FusionCore has no dependency on it. See [GNSS Doppler bridge](../configuration.md#gnss-doppler-velocity-bridge-ublox-f9p--m8u) for setup.
 
-Default topic names can be changed with ROS 2 remaps:
+### Changing the input topic names
+
+Every subscribed topic is a parameter, so the normal way to point FusionCore at your
+driver is to set it in your config YAML:
+
+```yaml
+fusioncore:
+  ros__parameters:
+    imu.topic:      "/camera/imu"
+    encoder.topic:  "/diff_drive_controller/odom"
+    gnss.fix_topic: "/ublox/fix"
+```
+
+Note the wheel odometry default is `/odom/wheels`, not the conventional `/odom`. That is
+deliberate: FusionCore publishes its own fused odometry, so subscribing to `/odom` would
+invite a feedback loop with its own output. Point `encoder.topic` at your driver instead.
+
+ROS 2 remaps still work and are applied on top of whatever name the parameter resolves to:
 
 ```bash
 ros2 launch fusioncore_ros fusioncore.launch.py \
@@ -34,6 +51,15 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
   --ros-args \
   -r /odom/wheels:=/your/wheel/odom \
   -r /gnss/fix:=/fix
+```
+
+FusionCore logs the topics it actually subscribed to at startup, so you can confirm the
+wiring without guessing:
+
+```
+[INFO] [fusioncore]: IMU topic: /imu/data
+[INFO] [fusioncore]: Encoder topic: /odom/wheels
+[INFO] [fusioncore]: GNSS topic: /gnss/fix (sensor_msgs/NavSatFix)
 ```
 
 ---

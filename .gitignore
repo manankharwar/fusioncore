@@ -110,6 +110,11 @@ fusioncore-100-deliverables-to-roscon.md
 # Local scratch working files: never commit
 scratchpad/
 
+# Hardware build: local rover notes + secrets (WiFi password, Pi IP, order numbers).
+# NEVER commit. Leading slash anchors to the repo root ONLY, so the public
+# docs/hardware/ directory stays tracked.
+/hardware/
+
 # Benchmark run outputs (trajectories/plots): reproducible, large, machine-local.
 # The verified numbers live in tools/benchmark_baseline.json, which IS tracked.
 **/results_fast/

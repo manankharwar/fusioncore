@@ -118,6 +118,13 @@ public:
     declare_parameter("imu2.frame_id", std::string(""));
     declare_parameter("imu2.remove_gravitational_acceleration", false);
 
+    // Primary wheel odometry topic (nav_msgs/Odometry, twist is what gets fused).
+    // The default is deliberately not the conventional /odom: FusionCore publishes
+    // its own fused odometry, and subscribing to /odom would invite a feedback loop
+    // with its own output. Most drivers publish somewhere else (/odom,
+    // /diff_drive_controller/odom, ...), so point this at yours rather than writing
+    // a launch remap. A remap still works and takes effect on whatever name is set here.
+    declare_parameter("encoder.topic", std::string("/odom/wheels"));
     declare_parameter("encoder.vel_noise", 0.05);
     declare_parameter("encoder.yaw_noise", 0.02);
 
@@ -162,6 +169,13 @@ public:
     // Set to empty string to disable dual antenna heading.
     declare_parameter("gnss.heading_topic", "");
 
+    // Primary GNSS fix topic. Applies to both message types: it is read as
+    // sensor_msgs/NavSatFix by default, or gps_msgs/GPSFix when gnss.use_gps_fix
+    // is true. Real drivers publish on /fix, /ublox/fix, /gps/fix, and so on, so
+    // set this instead of writing a launch remap (a remap still works and applies
+    // to whatever name is set here).
+    declare_parameter("gnss.fix_topic", std::string("/gnss/fix"));
+
     // Optional second GNSS receiver topic: set to empty string to disable
     declare_parameter("gnss.fix2_topic", "");
 
@@ -169,7 +183,7 @@ public:
     // Set to empty string to disable (use sensor_msgs/Imu heading instead)
     declare_parameter("gnss.azimuth_topic", "");
 
-    // Subscribe to /gnss/fix as gps_msgs/GPSFix instead of sensor_msgs/NavSatFix.
+    // Read gnss.fix_topic as gps_msgs/GPSFix instead of sensor_msgs/NavSatFix.
     // GPSFix carries RTK_FLOAT status (unreachable via NavSatFix), separate hdop/vdop
     // from the receiver, satellites_used, and err_horz/err_vert position bounds.
     // Required when your GNSS driver publishes gps_msgs/GPSFix (e.g. nmea_navsat_driver
@@ -354,6 +368,7 @@ public:
     force_2d_     = get_parameter("publish.force_2d").as_bool();
     publish_tf_   = get_parameter("publish.tf").as_bool();
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
+    gnss_fix_topic_ = get_parameter("gnss.fix_topic").as_string();
     gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
     azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
     use_gps_fix_    = get_parameter("gnss.use_gps_fix").as_bool();
@@ -402,6 +417,7 @@ public:
     nhc_auto_detect_    = get_parameter("encoder.nhc_auto_detect").as_bool();
     nhc_vy_auto_noise_  = config.encoder.vel_noise_x;  // VY noise proxy for holonomic robots
 
+    encoder_topic_      = get_parameter("encoder.topic").as_string();
     encoder2_topic_     = get_parameter("encoder2.topic").as_string();
     enc2_vel_noise_     = get_parameter("encoder2.vel_noise").as_double();
     enc2_yaw_noise_     = get_parameter("encoder2.yaw_noise").as_double();
@@ -660,11 +676,12 @@ public:
     }
 
     encoder_sub_ = create_subscription<nav_msgs::msg::Odometry>(
-      "/odom/wheels", sensor_qos,
+      encoder_topic_, sensor_qos,
       [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
         std::lock_guard<std::mutex> lock(fc_mutex_);
         encoder_callback(msg);
       }, sensor_opts);
+    RCLCPP_INFO(get_logger(), "Encoder topic: %s", encoder_topic_.c_str());
 
     // Second encoder-twist source (e.g. KISS-ICP LiDAR odometry). Created
     // lazily only when encoder2.topic is non-empty to keep the default
@@ -715,20 +732,22 @@ public:
 
     if (use_gps_fix_) {
       gps_fix_sub_ = create_subscription<gps_msgs::msg::GPSFix>(
-        "/gnss/fix", sensor_qos,
+        gnss_fix_topic_, sensor_qos,
         [this](const gps_msgs::msg::GPSFix::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gps_fix_callback(msg, 0);
         }, sensor_opts);
       RCLCPP_INFO(get_logger(),
-        "GNSS: using gps_msgs/GPSFix on /gnss/fix (RTK_FLOAT capable)");
+        "GNSS topic: %s (gps_msgs/GPSFix, RTK_FLOAT capable)", gnss_fix_topic_.c_str());
     } else {
       gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
-        "/gnss/fix", sensor_qos,
+        gnss_fix_topic_, sensor_qos,
         [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
           std::lock_guard<std::mutex> lock(fc_mutex_);
           gnss_callback(msg, 0);
         }, sensor_opts);
+      RCLCPP_INFO(get_logger(),
+        "GNSS topic: %s (sensor_msgs/NavSatFix)", gnss_fix_topic_.c_str());
     }
 
     // compass_msgs/Azimuth heading: optional, preferred over sensor_msgs/Imu
@@ -2814,10 +2833,12 @@ private:
   bool        publish_tf_  = true;
   bool        use_gps_fix_  = false;
   std::string heading_topic_;
+  std::string gnss_fix_topic_;
   std::string gnss2_topic_;
   std::string azimuth_topic_;
   std::string mag_topic_;
   bool        mag_enabled_ = false;
+  std::string encoder_topic_;
   std::string encoder2_topic_;
   double      enc2_vel_noise_ = 0.05;
   double      enc2_yaw_noise_ = 0.02;
