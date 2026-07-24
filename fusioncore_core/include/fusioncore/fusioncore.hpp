@@ -317,6 +317,11 @@ struct FusionCoreStatus {
   // GPS coast mode state
   bool gnss_in_coast           = false;
   int  gnss_consecutive_rejects = 0;
+
+  // Reason the most recent GNSS fix was rejected (NOT_PROCESSED until the first
+  // rejection). Quality-gate rejects (HDOP/VDOP/fix-type/sats) and delay rejects
+  // do NOT increment gnss_outliers, so this is the only place they are reported.
+  GnssRejectionReason gnss_last_rejection_reason = GnssRejectionReason::NOT_PROCESSED;
 };
 
 class FusionCore {
@@ -510,6 +515,8 @@ private:
   // Inertial coast mode tracking
   int  gnss_consecutive_rejects_ = 0;
   bool gnss_in_coast_            = false;
+  // Persists the reason of the last rejected GNSS fix, for status reporting.
+  GnssRejectionReason last_gnss_rejection_reason_ = GnssRejectionReason::NOT_PROCESSED;
   // Whether the current rejection sequence began after a GPS gap. Captured at
   // the first rejection of a sequence and used to gate rejection-triggered
   // coast so a continuous outlier (spike) cannot inflate P to defeat the gate.

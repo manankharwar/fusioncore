@@ -149,6 +149,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
 
   // Reset observability state
   gnss_debug_                    = GnssFixDebug{};
+  last_gnss_rejection_reason_    = GnssRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
   last_encoder_innovation_norm_  = 0.0;
@@ -184,6 +185,7 @@ void FusionCore::reset() {
   ukf_.set_gyro_bias_noise_scale(1.0);
 
   gnss_debug_                   = GnssFixDebug{};
+  last_gnss_rejection_reason_   = GnssRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
   last_encoder_innovation_norm_ = 0.0;
@@ -766,6 +768,7 @@ bool FusionCore::update_gnss(
       gnss_debug_.reason = GnssRejectionReason::VDOP_HIGH;
     else
       gnss_debug_.reason = GnssRejectionReason::MIN_SATS;
+    last_gnss_rejection_reason_ = gnss_debug_.reason;
     return false;
   }
 
@@ -786,7 +789,10 @@ bool FusionCore::update_gnss(
       gnss_debug_.accepted = false;
       gnss_debug_.reason   = GnssRejectionReason::DELAY_TOO_LARGE;
     }
-    if (!applied || !gnss_fused) return false;
+    if (!applied || !gnss_fused) {
+      last_gnss_rejection_reason_ = gnss_debug_.reason;
+      return false;
+    }
     update_distance_traveled(fix.x, fix.y, pre_update_speed_delayed);
     last_gnss_time_ = timestamp_seconds;
     ++update_count_;
@@ -797,7 +803,10 @@ bool FusionCore::update_gnss(
   double pre_update_speed = std::sqrt(
     ukf_.state().x[VX] * ukf_.state().x[VX] +
     ukf_.state().x[VY] * ukf_.state().x[VY]);
-  if (!apply_gnss_update(timestamp_seconds, fix)) return false;
+  if (!apply_gnss_update(timestamp_seconds, fix)) {
+    last_gnss_rejection_reason_ = gnss_debug_.reason;
+    return false;
+  }
   update_distance_traveled(fix.x, fix.y, pre_update_speed);
   last_gnss_time_ = timestamp_seconds;
   ++update_count_;
@@ -1132,6 +1141,7 @@ FusionCoreStatus FusionCore::get_status() const {
   // GPS coast mode
   status.gnss_in_coast           = gnss_in_coast_;
   status.gnss_consecutive_rejects = gnss_consecutive_rejects_;
+  status.gnss_last_rejection_reason = last_gnss_rejection_reason_;
 
   return status;
 }

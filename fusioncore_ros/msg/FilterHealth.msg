@@ -23,6 +23,12 @@ string heading_source  # NONE | GPS_TRACK | IMU_ORIENTATION | DUAL_ANTENNA | MAG
 bool  gnss_in_coast
 int32 gnss_consecutive_rejects
 
+# Reason the most recent GNSS fix was rejected (empty until the first rejection):
+# FIX_TYPE_LOW | HDOP_HIGH | VDOP_HIGH | MIN_SATS | CHI2_FAILED | DELAY_TOO_LARGE |
+# IMPLAUSIBLE_JUMP. Quality-gate and delay rejects do NOT count toward
+# gnss_outlier_count, so this is the only field that reveals why a fix was dropped.
+string gnss_last_reject_reason
+
 # Distance traveled since init (meters): heading observable above 5m
 float64 distance_traveled_m
 

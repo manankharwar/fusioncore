@@ -251,6 +251,47 @@ TEST(GNSSTest, StefanConfigurationFullFusion) {
   EXPECT_GT(status.update_count,   0);
 }
 
+// ─── Rejection reason surfaces in status (field + offline observability) ─────
+// Quality-gate rejects (HDOP/VDOP/fix-type/sats) and delay rejects do NOT
+// increment gnss_outliers, so before this the only signal was a throttled log
+// line. The reason of the last rejected fix must reach get_status() so it lands
+// in filter_health for live field debugging and offline bag analysis. Grounded
+// in a real hardware session where an M9N was silently rejected on VDOP.
+TEST(GNSSTest, RejectionReasonSurfacesInStatus) {
+  FusionCoreConfig config;                 // defaults: max_hdop 4, max_vdop 6, min_sats 4
+  FusionCore fc(config);
+
+  State initial;
+  initial.x = StateVector::Zero();
+  initial.P = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  // Fresh filter: nothing rejected yet.
+  EXPECT_EQ(fc.get_status().gnss_last_rejection_reason,
+            GnssRejectionReason::NOT_PROCESSED);
+
+  // Horizontally fine, vertically poor: must report VDOP_HIGH. This is the exact
+  // case the rover's M9N hit, which used to fail silently.
+  GnssFix vbad;
+  vbad.fix_type   = GnssFixType::GPS_FIX;
+  vbad.satellites = 10;
+  vbad.hdop       = 1.0;
+  vbad.vdop       = 20.0;                  // > max_vdop 6.0
+  EXPECT_FALSE(fc.update_gnss(1.0, vbad));
+  EXPECT_EQ(fc.get_status().gnss_last_rejection_reason,
+            GnssRejectionReason::VDOP_HIGH);
+
+  // Too few satellites: must report MIN_SATS.
+  GnssFix sbad;
+  sbad.fix_type   = GnssFixType::GPS_FIX;
+  sbad.satellites = 2;                     // < min_satellites 4
+  sbad.hdop       = 1.0;
+  sbad.vdop       = 1.0;
+  EXPECT_FALSE(fc.update_gnss(2.0, sbad));
+  EXPECT_EQ(fc.get_status().gnss_last_rejection_reason,
+            GnssRejectionReason::MIN_SATS);
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

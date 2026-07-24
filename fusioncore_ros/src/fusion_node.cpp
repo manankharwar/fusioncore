@@ -2670,6 +2670,21 @@ private:
       return "Unknown";
     };
 
+    auto gnss_reject_str = [](fusioncore::GnssRejectionReason r) -> std::string {
+      switch (r) {
+        case fusioncore::GnssRejectionReason::NOT_PROCESSED:    return "";
+        case fusioncore::GnssRejectionReason::ACCEPTED:         return "";
+        case fusioncore::GnssRejectionReason::FIX_TYPE_LOW:     return "FIX_TYPE_LOW";
+        case fusioncore::GnssRejectionReason::HDOP_HIGH:        return "HDOP_HIGH";
+        case fusioncore::GnssRejectionReason::VDOP_HIGH:        return "VDOP_HIGH";
+        case fusioncore::GnssRejectionReason::MIN_SATS:         return "MIN_SATS";
+        case fusioncore::GnssRejectionReason::CHI2_FAILED:      return "CHI2_FAILED";
+        case fusioncore::GnssRejectionReason::DELAY_TOO_LARGE:  return "DELAY_TOO_LARGE";
+        case fusioncore::GnssRejectionReason::IMPLAUSIBLE_JUMP: return "IMPLAUSIBLE_JUMP";
+      }
+      return "";
+    };
+
     uint8_t filter_level = diagnostic_msgs::msg::DiagnosticStatus::OK;
     std::string filter_msg = "Running";
     if (!status.heading_validated) {
@@ -2711,6 +2726,7 @@ private:
 
       fh.gnss_in_coast           = status.gnss_in_coast;
       fh.gnss_consecutive_rejects = status.gnss_consecutive_rejects;
+      fh.gnss_last_reject_reason = gnss_reject_str(status.gnss_last_rejection_reason);
 
       fh.distance_traveled_m = status.distance_traveled;
 
