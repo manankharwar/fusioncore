@@ -89,6 +89,9 @@ fusioncore:
     gnss.base_noise_z: 2.0     # meters: altitude noise sigma, scaled by VDOP
     gnss.heading_noise: 0.02   # radians: dual-antenna heading noise sigma
     gnss.max_hdop: 4.0         # fixes with hdop above this are dropped before chi2
+    gnss.max_vdop: 6.0         # same for vertical DOP. Raise it (e.g. 20+) on a ground
+                               # robot with publish.force_2d: a horizontally good fix should
+                               # not be rejected just because the altitude is uncertain.
     gnss.min_satellites: 4     # minimum satellites required
     # 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
     # Note: sensor_msgs/NavSatFix cannot express RTK_FLOAT (status 2 = RTK_FIXED).

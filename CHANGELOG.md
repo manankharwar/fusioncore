@@ -8,6 +8,9 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`gnss.max_vdop` parameter.** The vertical DOP gate was hardcoded at 6.0 while `gnss.max_hdop` was configurable, an asymmetry with a real cost: a fix can be horizontally excellent yet vertically poor (satellite geometry, sky obstructed by buildings or trees), and a ground robot running `publish.force_2d` does not care about altitude at all. There was no way to stop a good horizontal fix being rejected purely on vertical precision, and the rejection is silent to the filter (`VDOP_HIGH`), so GPS quietly stops fusing in exactly the obstructed-sky conditions where you most need it. `gnss.max_vdop` now mirrors `gnss.max_hdop`, defaulting to the previous 6.0 (no behaviour change) and settable higher (e.g. 20) on a 2D ground robot. Found on real hardware: an M9N indoors reported hdop ~3.3 (accepted) but vdop over 6 (rejected), with the fix otherwise usable.
+
 ---
 
 ## [0.3.3]: 2026-07-22

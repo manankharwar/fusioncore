@@ -158,6 +158,11 @@ public:
     declare_parameter("gnss.base_noise_z",   2.0);
     declare_parameter("gnss.heading_noise",  0.02);
     declare_parameter("gnss.max_hdop",       4.0);
+    // Vertical DOP gate. Kept configurable and separate from max_hdop because a fix can
+    // be horizontally excellent yet vertically poor (satellite geometry, obstructed sky),
+    // and a ground robot with publish.force_2d cares only about the horizontal fix. Set
+    // high (or leave the default) so vertical precision does not veto a usable 2D fix.
+    declare_parameter("gnss.max_vdop",       6.0);
     declare_parameter("gnss.min_satellites", 4);
     // Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
     // Note: NavSatFix status only goes up to 2 (GBAS) which maps to RTK_FIXED.
@@ -429,6 +434,7 @@ public:
     config.gnss.base_noise_z   = get_parameter("gnss.base_noise_z").as_double();
     config.gnss.heading_noise  = get_parameter("gnss.heading_noise").as_double();
     config.gnss.max_hdop       = get_parameter("gnss.max_hdop").as_double();
+    config.gnss.max_vdop       = get_parameter("gnss.max_vdop").as_double();
     config.gnss.min_satellites = get_parameter("gnss.min_satellites").as_int();
     min_fix_type_ = static_cast<fusioncore::sensors::GnssFixType>(
         get_parameter("gnss.min_fix_type").as_int());
