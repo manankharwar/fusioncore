@@ -37,3 +37,11 @@ int32 gnss_outlier_count
 int32 imu_outlier_count
 int32 encoder_outlier_count
 int32 mag_outlier_count
+
+# Stale-measurement rejections from inter-sensor clock skew: the sensor's stamps
+# run more than max_measurement_delay behind the filter clock while another
+# sensor's stamps drive it ahead (sensors not on a common time base). A climbing
+# count means that sensor is NOT being fused at all; fix the drivers' clocks.
+# These are not outliers: the data may be perfect, the timestamps disagree.
+int32 imu_stale_reject_count
+int32 encoder_stale_reject_count

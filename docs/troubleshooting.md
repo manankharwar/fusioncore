@@ -257,6 +257,35 @@ Do **not** lower outlier thresholds below their chi-squared critical values. At 
 
 ---
 
+## Fusion output far worse than raw wheel odometry (position runs away)
+
+**Symptom:** your wheel odometry alone is reasonable (drives 6 m, reads ~6 m), but the fused output diverges wildly: position climbing tens or hundreds of meters, orientation matching neither the IMU nor the odometry.
+
+**Most likely cause: your sensors are not on a common clock.** A filter fuses measurements *ordered by their timestamps*. If one driver stamps with a different clock (an IMU on a companion board, a sensor on a second machine without NTP, a driver stamping with its own epoch), that sensor's stamps can run seconds ahead of the others. The filter clock rides the leading sensor, and every message from the lagging sensors arrives looking seconds old and **cannot be fused at all**.
+
+**How to check, in 30 seconds:**
+
+```bash
+ros2 topic echo /your/imu/topic --field header.stamp --once
+ros2 topic echo /your/odom/topic --field header.stamp --once
+```
+
+The two stamps should agree within milliseconds. If they differ by more than `max_measurement_delay` (0.5 s default), that is the whole problem. FusionCore also tells you directly:
+
+- At startup: `IMU header.stamp is +3.14s from this node's clock...`
+- At runtime: `STALE sensor rejections climbing (imu=0 encoder=412)... IMU stamp minus encoder stamp is currently +3.14s`
+- On the health topic: `ros2 topic echo /fusion/debug/filter_health --field encoder_stale_reject_count` climbing means the encoder is not being fused, at all.
+
+**The fix is in the sensor driver, not the filter:**
+
+- Stamp messages with the node clock (`this->get_clock()->now()` / `node.get_clock().now()`) instead of a device or companion-board clock.
+- If sensors live on different machines, sync the clocks with chrony or NTP.
+- If a sensor has a genuinely large, known latency (not skew), raise `max_measurement_delay`, but understand this widens the retrodiction window for everyone.
+
+Versions before 0.3.4 did not reject the skewed sensor: they repeatedly re-based the filter clock backward and re-integrated the offset window at the fast sensor's rate, which is what produced the runaway. Upgrade if you see this signature on an older build.
+
+---
+
 ## `init.stationary_window` aborted immediately
 
 The encoder is publishing non-zero velocity during the window. Either the robot is moving, or the wheel odometry driver publishes a non-zero initial value even when stationary.

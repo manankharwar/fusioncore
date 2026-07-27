@@ -53,6 +53,9 @@ if(BUILD_TESTING)
   # default 60s ctest timeout on a slower Debug CI build.
   ament_add_gtest(test_gnss_coast tests/test_gnss_coast.cpp TIMEOUT 300)
   target_link_libraries(test_gnss_coast fusioncore_core Eigen3::Eigen)
+
+  ament_add_gtest(test_clock_skew tests/test_clock_skew.cpp TIMEOUT 300)
+  target_link_libraries(test_clock_skew fusioncore_core Eigen3::Eigen)
 endif()
 
 ament_export_targets(fusioncore_core_targets HAS_LIBRARY_TARGET)

@@ -154,6 +154,17 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_imu_innovation_norm_      = 0.0;
   last_encoder_innovation_norm_  = 0.0;
 
+  // Reset clock-skew tracking
+  last_imu_raw_stamp_    = -1.0;
+  last_orient_raw_stamp_ = -1.0;
+  last_enc_raw_stamp_    = -1.0;
+  last_mag_raw_stamp_    = -1.0;
+  last_hdg_raw_stamp_    = -1.0;
+  imu_stale_rejects_ = 0;
+  enc_stale_rejects_ = 0;
+  mag_stale_rejects_ = 0;
+  hdg_stale_rejects_ = 0;
+
   // Initialize adaptive noise matrices
   init_adaptive_R();
 }
@@ -189,6 +200,16 @@ void FusionCore::reset() {
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
   last_encoder_innovation_norm_ = 0.0;
+
+  last_imu_raw_stamp_    = -1.0;
+  last_orient_raw_stamp_ = -1.0;
+  last_enc_raw_stamp_    = -1.0;
+  last_mag_raw_stamp_    = -1.0;
+  last_hdg_raw_stamp_    = -1.0;
+  imu_stale_rejects_ = 0;
+  enc_stale_rejects_ = 0;
+  mag_stale_rejects_ = 0;
+  hdg_stale_rejects_ = 0;
 }
 
 void FusionCore::save_snapshot() {
@@ -334,6 +355,47 @@ double FusionCore::compute_heading_sigma_rad() const {
   return std::sqrt(std::max(yaw_var, 0.0));
 }
 
+// Inter-sensor clock-skew guard for the direct (non-retrodicted) update paths.
+//
+// When one sensor's stamps run far ahead of another's (an IMU driver stamping
+// with a skewed companion-board clock, two machines without NTP), the filter
+// clock rides the leading sensor. Every message from the lagging sensor then
+// arrives more than max_measurement_delay behind last_timestamp_. Before this
+// guard, predict_to() treated that as a time-base reset and re-based the clock
+// BACKWARD, after which the leading sensor's next message re-integrated the
+// whole offset window forward through the motion model again, at its full
+// rate. A 3 s offset re-integrated 50 times per second turns a 0.4 m/s robot
+// into ~10 m/s of position divergence (issue #73: perfect wheel odometry in,
+// runaway fusion out).
+//
+// The discriminator between the two legitimate interpretations is the sensor's
+// OWN stream:
+//   - Its own stamps still advance monotonically -> the sensor is simply on a
+//     clock that lags the one driving the filter. Fusing is impossible without
+//     corrupting the clock, so REJECT the measurement as stale and count it
+//     loudly (the data may be perfect; the timestamps disagree).
+//   - Its own stamps jumped backward too -> a genuine time-base reset (bag
+//     replay restart, clock correction). Fall through and let predict_to()
+//     re-base, which is the ff16c65 behavior and stays correct because after a
+//     real reset EVERY stream arrives on the new base and no oscillation forms.
+// A stream with no history yet is treated as skew (reject): its clock is
+// unproven, and committing a re-base on it is what created the oscillation.
+bool FusionCore::reject_stale_from_skew(double timestamp_seconds,
+                                        double& last_raw_stamp,
+                                        int& stale_counter)
+{
+  double behind = last_timestamp_ - timestamp_seconds;
+  bool own_stream_advancing =
+    (last_raw_stamp < 0.0) || (timestamp_seconds > last_raw_stamp);
+  if (behind > config_.max_measurement_delay && own_stream_advancing) {
+    ++stale_counter;
+    last_raw_stamp = timestamp_seconds;
+    return true;
+  }
+  last_raw_stamp = timestamp_seconds;
+  return false;
+}
+
 void FusionCore::predict_to(double timestamp_seconds) {
   // Enter coast mode on GPS timeout: receiver went silent (mode=2, tunnel,
   // power loss) rather than publishing rejectable fixes. Consecutive-reject
@@ -438,6 +500,9 @@ void FusionCore::update_imu(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_imu() called before init()");
 
+  if (reject_stale_from_skew(timestamp_seconds, last_imu_raw_stamp_, imu_stale_rejects_))
+    return;
+
   predict_to(timestamp_seconds);
 
   sensors::ImuMeasurement z;
@@ -509,6 +574,11 @@ void FusionCore::update_imu_orientation(
 ) {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_imu_orientation() called before init()");
+
+  // Counts into the IMU stale counter: the node feeds this from the same
+  // message (and therefore the same clock) as update_imu().
+  if (reject_stale_from_skew(timestamp_seconds, last_orient_raw_stamp_, imu_stale_rejects_))
+    return;
 
   predict_to(timestamp_seconds);
 
@@ -606,6 +676,9 @@ void FusionCore::update_encoder(
 ) {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_encoder() called before init()");
+
+  if (reject_stale_from_skew(timestamp_seconds, last_enc_raw_stamp_, enc_stale_rejects_))
+    return;
 
   predict_to(timestamp_seconds);
 
@@ -719,6 +792,12 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
 
 void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
   if (!initialized_) return;
+
+  // ZUPT is an opportunistic pseudo-measurement triggered by another sensor's
+  // stamp. If that stamp lags the filter clock (inter-sensor skew), skip it
+  // rather than let predict_to re-base the clock backward.
+  if ((last_timestamp_ - timestamp_seconds) > config_.max_measurement_delay)
+    return;
 
   predict_to(timestamp_seconds);
 
@@ -1038,6 +1117,9 @@ bool FusionCore::update_gnss_heading(
 
   if (!heading.valid) return false;
 
+  if (reject_stale_from_skew(timestamp_seconds, last_hdg_raw_stamp_, hdg_stale_rejects_))
+    return false;
+
   predict_to(timestamp_seconds);
 
   sensors::GnssHdgMeasurement z;
@@ -1143,6 +1225,12 @@ FusionCoreStatus FusionCore::get_status() const {
   status.gnss_consecutive_rejects = gnss_consecutive_rejects_;
   status.gnss_last_rejection_reason = last_gnss_rejection_reason_;
 
+  // Inter-sensor clock-skew rejections
+  status.imu_stale_rejects     = imu_stale_rejects_;
+  status.encoder_stale_rejects = enc_stale_rejects_;
+  status.mag_stale_rejects     = mag_stale_rejects_;
+  status.hdg_stale_rejects     = hdg_stale_rejects_;
+
   return status;
 }
 
@@ -1240,6 +1328,9 @@ bool FusionCore::update_magnetometer(
 {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_magnetometer() called before init()");
+
+  if (reject_stale_from_skew(timestamp_seconds, last_mag_raw_stamp_, mag_stale_rejects_))
+    return false;
 
   predict_to(timestamp_seconds);
 

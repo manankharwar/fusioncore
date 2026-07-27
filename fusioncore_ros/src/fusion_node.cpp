@@ -233,6 +233,14 @@ public:
     declare_parameter("reference.y",                       0.0);
     declare_parameter("reference.z",                       0.0);
 
+    // Retrodiction window AND inter-sensor staleness threshold: a measurement
+    // stamped more than this many seconds behind the filter clock cannot be
+    // fused (GNSS/VSLAM replay through the IMU buffer up to this age; other
+    // sensors are rejected as stale). Raise only if a sensor has a genuinely
+    // large, known latency; if stale rejections climb, fix the sensor clocks
+    // instead.
+    declare_parameter("max_measurement_delay",  0.5);
+
     declare_parameter("outlier_rejection",      true);
     declare_parameter("outlier_threshold_gnss", 16.27);
     declare_parameter("outlier_threshold_imu",  15.09);
@@ -493,6 +501,7 @@ public:
       RCLCPP_INFO(get_logger(), "PROJ: using first GPS fix as local reference origin");
     }
 
+    config.max_measurement_delay  = get_parameter("max_measurement_delay").as_double();
     config.outlier_rejection      = get_parameter("outlier_rejection").as_bool();
     config.outlier_threshold_gnss = get_parameter("outlier_threshold_gnss").as_double();
     config.gnss_max_speed         = get_parameter("gnss.max_speed").as_double();
@@ -1128,9 +1137,35 @@ private:
     return out;
   }
 
+  // One-time per sensor: compare the first message's header.stamp against the
+  // node clock. A stamp far from now() means the driver stamps with a different
+  // clock (companion board, second machine without NTP). On its own that is
+  // survivable, but the moment a SECOND sensor uses a different base, whichever
+  // runs ahead drives the filter clock and everything else is rejected as stale
+  // (issue #73: an IMU stamping 3s in the future starved the encoder and GPS).
+  // Warn at the door so the log names it before fusion even starts.
+  void check_sensor_clock(const char* name, double stamp_sec, bool& checked)
+  {
+    if (checked) return;
+    double now_sec = this->now().seconds();
+    if (now_sec < 1.0) return;  // clock not running yet (sim time before /clock)
+    checked = true;
+    double skew = stamp_sec - now_sec;
+    if (std::abs(skew) > 1.0) {
+      RCLCPP_WARN(get_logger(),
+        "%s header.stamp is %+.2fs from this node's clock. If any other sensor "
+        "stamps with a different clock, the sensor that runs ahead will drive "
+        "the filter clock and the rest will be rejected as stale (watch the "
+        "stale_reject counts in /fusion/debug/filter_health). Fix the driver's "
+        "timestamps: stamp with node time, or sync machine clocks (chrony/NTP).",
+        name, skew);
+    }
+  }
+
   void imu_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
     double t = rclcpp::Time(msg->header.stamp).seconds();
+    check_sensor_clock("IMU", t, imu_clock_checked_);
 
     // Lazy init: initialize the filter on the first IMU message using the
     // message timestamp. This avoids a large dead prediction step when
@@ -1575,6 +1610,8 @@ private:
     if (!fc_->is_initialized()) return;
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
+    check_sensor_clock("Encoder", t, enc_clock_checked_);
+    last_enc_stamp_sec_ = t;
 
     // Extract per-axis variances from the Odometry twist covariance (6x6, row-major).
     // Indices: vx=0, vy=7, wz=35 (diagonal elements for linear.x, linear.y, angular.z).
@@ -2735,6 +2772,28 @@ private:
       fh.encoder_outlier_count = status.enc_outliers;
       fh.mag_outlier_count     = status.mag_outliers;
 
+      fh.imu_stale_reject_count     = status.imu_stale_rejects;
+      fh.encoder_stale_reject_count = status.encoder_stale_rejects;
+
+      // A climbing stale count means a sensor is not being fused AT ALL because
+      // its stamps lag the filter clock: the classic symptom of sensors on
+      // different time bases (issue #73). Say so in plain words, with the
+      // measured inter-sensor offset, instead of letting it fail silently.
+      if (status.encoder_stale_rejects > prev_enc_stale_ ||
+          status.imu_stale_rejects     > prev_imu_stale_) {
+        prev_enc_stale_ = status.encoder_stale_rejects;
+        prev_imu_stale_ = status.imu_stale_rejects;
+        double offset = (last_imu_time_ > 0.0 && last_enc_stamp_sec_ > 0.0)
+                          ? (last_imu_time_ - last_enc_stamp_sec_) : 0.0;
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
+          "STALE sensor rejections climbing (imu=%d encoder=%d): the lagging "
+          "sensor is NOT being fused. IMU stamp minus encoder stamp is "
+          "currently %+.2fs; sensors must share a time base. Fix the sensor "
+          "drivers' clocks (stamp with node time, or chrony/NTP across "
+          "machines).",
+          status.imu_stale_rejects, status.encoder_stale_rejects, offset);
+      }
+
       filter_health_pub_->publish(fh);
     }
   }
@@ -2869,6 +2928,13 @@ private:
   rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr         diag_pub_;
   rclcpp::Publisher<fusioncore_ros::msg::GnssStatus>::SharedPtr               gnss_status_pub_;
   rclcpp::Publisher<fusioncore_ros::msg::FilterHealth>::SharedPtr             filter_health_pub_;
+
+  // Inter-sensor clock-skew detection state (issue #73)
+  bool   imu_clock_checked_  = false;
+  bool   enc_clock_checked_  = false;
+  double last_enc_stamp_sec_ = -1.0;
+  int    prev_imu_stale_     = 0;
+  int    prev_enc_stale_     = 0;
   rclcpp::TimerBase::SharedPtr                                                publish_timer_;
   rclcpp::TimerBase::SharedPtr                                                diag_timer_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr                          reset_srv_;

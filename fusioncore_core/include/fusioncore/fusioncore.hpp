@@ -322,6 +322,17 @@ struct FusionCoreStatus {
   // rejection). Quality-gate rejects (HDOP/VDOP/fix-type/sats) and delay rejects
   // do NOT increment gnss_outliers, so this is the only place they are reported.
   GnssRejectionReason gnss_last_rejection_reason = GnssRejectionReason::NOT_PROCESSED;
+
+  // Stale-measurement rejections from inter-sensor clock skew: this sensor's
+  // stamps run more than max_measurement_delay behind the filter clock while
+  // another sensor's stamps drive it ahead (sensors not on a common time base).
+  // A climbing counter here means that sensor is NOT being fused at all and the
+  // sensor drivers' clocks need fixing. These are not outliers: the data may be
+  // perfect, it is the timestamps that disagree.
+  int imu_stale_rejects     = 0;
+  int encoder_stale_rejects = 0;
+  int mag_stale_rejects     = 0;
+  int hdg_stale_rejects     = 0;
 };
 
 class FusionCore {
@@ -517,6 +528,25 @@ private:
   bool gnss_in_coast_            = false;
   // Persists the reason of the last rejected GNSS fix, for status reporting.
   GnssRejectionReason last_gnss_rejection_reason_ = GnssRejectionReason::NOT_PROCESSED;
+
+  // Inter-sensor clock-skew protection. Raw per-stream stamps (recorded whether
+  // or not the measurement was accepted, unlike last_*_time_ which only tracks
+  // fused updates) let reject_stale_from_skew() tell a sensor that lags the
+  // filter clock (its own stream still advances: skew, reject) from a genuine
+  // time-base reset (its own stream jumped backward too: fall through and let
+  // predict_to re-base). -1 = no history yet.
+  double last_imu_raw_stamp_    = -1.0;
+  double last_orient_raw_stamp_ = -1.0;
+  double last_enc_raw_stamp_    = -1.0;
+  double last_mag_raw_stamp_    = -1.0;
+  double last_hdg_raw_stamp_    = -1.0;
+  int imu_stale_rejects_     = 0;   // update_imu + update_imu_orientation combined
+  int enc_stale_rejects_     = 0;
+  int mag_stale_rejects_     = 0;
+  int hdg_stale_rejects_     = 0;
+  bool reject_stale_from_skew(double timestamp_seconds,
+                              double& last_raw_stamp,
+                              int& stale_counter);
   // Whether the current rejection sequence began after a GPS gap. Captured at
   // the first rejection of a sequence and used to gate rejection-triggered
   // coast so a continuous outlier (spike) cannot inflate P to defeat the gate.
