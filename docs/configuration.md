@@ -283,6 +283,19 @@ fusioncore:
     # it active during straight/gentle-curve driving where it genuinely helps.
     # Rule of thumb: lever_arm_m * sin(threshold_rad) should be < GPS noise sigma.
 
+    # ── Measurement timing ────────────────────────────────────────────────────
+    max_measurement_delay: 0.5
+    # How far behind the filter clock (seconds) a measurement can be and still be
+    # used. GPS and VSLAM within this window are retrodicted: the filter rewinds
+    # to the measurement's timestamp, fuses, and replays the buffered IMU forward.
+    # Other sensors arriving older than this are rejected as stale, because fusing
+    # them would require moving the filter clock backward.
+    # Raise it only for a sensor with a genuinely large, KNOWN latency. If the
+    # stale_reject counters in /fusion/debug/filter_health climb, the cause is
+    # almost always sensors on different clocks, not a too-small window: check
+    # that every sensor's header.stamp agrees (see the troubleshooting guide) and
+    # fix the drivers rather than widening this.
+
     # ── Outlier rejection ─────────────────────────────────────────────────────
     outlier_rejection: true
     outlier_threshold_gnss: 16.27   # chi2(3, 0.999): 3D GPS position

@@ -8,6 +8,12 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [0.3.4]: 2026-07-27
+
+Three fixes found by running FusionCore on real hardware: one from a user's field report (issue #73) and two from a self-built GPS test rover. All three share a theme: a sensor stops being fused and nothing says so. Each is now both fixed and visible on `/fusion/debug/filter_health`.
+
 ### Fixed
 - **Sensors on different clocks no longer make the filter diverge (issue #73).** A field report showed perfect wheel odometry going in and a ~10 m/s position runaway coming out. Root cause: the user's IMU driver stamped messages ~3 s ahead of the encoder's (correct) clock. The filter clock rode the IMU; every encoder message then arrived looking 3 s old; the backward-time-jump guard re-based the clock backward to fuse it; and the next IMU message re-integrated the entire 3 s window forward through the motion model again, at the IMU rate. Re-integrating a 3 s window 50 times per second turns any small velocity estimate into tens of meters per second of divergence. The fix distinguishes the two cases by the sensor's own stream: stamps that still advance while lagging the filter clock mean the sensor is on a slower clock (inter-sensor skew), so the measurement is rejected as stale and counted, keeping the clock monotonic; stamps that jump backward within their own stream mean a genuine time-base reset (bag replay restart, clock correction), which still re-bases exactly as before. Adds `imu_stale_reject_count` and `encoder_stale_reject_count` to `/fusion/debug/filter_health`, a startup warning when a sensor's `header.stamp` is more than 1 s from the node clock, and a throttled runtime warning naming the measured inter-sensor offset when stale rejections climb, so a clock mismatch is called out in plain words instead of failing silently. Adds `test_clock_skew` (3 tests: the reported scenario stays bounded, a true clock reset still re-bases, sub-window latency still fuses).
 

@@ -24,12 +24,12 @@ docker pull ghcr.io/manankharwar/fusioncore:latest
 To pin a specific version (see [Releases](https://github.com/manankharwar/fusioncore/releases) for available tags):
 
 ```bash
-docker pull ghcr.io/manankharwar/fusioncore:0.3.3
+docker pull ghcr.io/manankharwar/fusioncore:0.3.4
 ```
 
 !!! note "Available tags"
     - `latest` — built from the latest commit on `main`
-    - `0.3.3`, `0.3.2`, `0.3.1`, … — semantic version tags matching GitHub Releases
+    - `0.3.4`, `0.3.3`, `0.3.2`, … — semantic version tags matching GitHub Releases
     - `<commit-sha>` — one tag per commit that triggered the CI build
 
 ---
