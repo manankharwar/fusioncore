@@ -2034,10 +2034,15 @@ private:
     const auto& dbg = fc_->get_gnss_debug();
 
     if (!accepted) {
+      // Print vdop too: a VDOP_HIGH rejection that only shows hdop sends the user
+      // hunting in the wrong place (field report, issue #73 follow-up). For NavSatFix
+      // input these are pseudo-DOPs derived from the message covariance, sqrt(var) in
+      // meters, since NavSatFix carries no true DOP fields.
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-        "GNSS fix rejected: %s (hdop=%.2f, d2=%.1f, threshold=%.1f)",
+        "GNSS fix rejected: %s (hdop=%.2f, vdop=%.2f, d2=%.1f, threshold=%.1f)",
         gnss_reason_str(dbg.reason).c_str(),
         fix.hdop,
+        fix.vdop,
         dbg.mahalanobis_sq,
         dbg.chi2_threshold);
     }
