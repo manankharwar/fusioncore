@@ -353,6 +353,22 @@ Know these before you migrate:
 | Published filtered GPS | `publish_filtered_gps: true` | not currently supported |
 | navsat datum from ROS service | `/datum` service | not currently supported |
 
+### Services
+
+FusionCore advertises four services: `/fromLL`, `~/reset`, `~/save_checkpoint` and `~/load_checkpoint`. The comparison against robot_localization:
+
+| Service | robot_localization | FusionCore |
+|---|---|---|
+| `/fromLL` (lat/lon to map frame) | `robot_localization/srv/FromLL` | **supported**, same type, since 0.3.5 |
+| `/fromLLArray` (batch conversion) | yes | not supported |
+| `/toLL` (map frame back to lat/lon) | yes | not supported |
+| `/set_datum` | yes | not supported, use `reference.x/y/z` at configure time |
+| `/set_pose` (jump the filter to a given pose) | yes | not supported, `~/reset` re-initialises instead |
+| `/toggle_filter_processing` | yes | not supported |
+| Save and restore filter state | no | `~/save_checkpoint`, `~/load_checkpoint` |
+
+`/fromLL` is the one Nav2's GPS waypoint follower needs, and it is deliberately advertised with robot_localization's own type so `followGpsWaypoints` binds to it. See [Nav2 integration](nav2.md) for why that matters and for a known issue with the bundled Nav2 launch.
+
 ---
 
 Questions? Open a [GitHub Discussion](https://github.com/manankharwar/fusioncore/discussions).
