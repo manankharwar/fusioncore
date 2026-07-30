@@ -1,8 +1,21 @@
-# Convert GPS lat/lon/alt to map frame x/y/z.
-# Identical fields to robot_localization/srv/FromLL for drop-in compatibility.
-# Returns the point in the local ENU frame anchored at the first GPS fix (or
-# the configured reference.x/y/z origin). Returns zeros if the GPS reference
-# has not been set yet (no fix received since node start or last reset).
+# DEPRECATED since 0.3.5, and no longer served by fusioncore_node.
+#
+# This type is kept only so that packages built against 0.3.4 or earlier still
+# compile. Nothing advertises it. Use robot_localization/srv/FromLL instead:
+#
+#   ros2 service call /fromLL robot_localization/srv/FromLL
+#     "{ll_point: {latitude: 43.2589, longitude: -79.9132, altitude: 0.0}}"
+#
+# Why the switch: having identical fields is not enough. ROS 2 matches services
+# on name AND type, so nav2_waypoint_follower (which hardcodes the
+# robot_localization type) never saw the service it was waiting for and hung with
+# no error. Matching the field layout but not the type name made the /fromLL
+# service unusable by the one client that needed it. See issue #73.
+#
+# Convert GPS lat/lon/alt to map frame x/y/z. Returns the point in the local ENU
+# frame anchored at the first GPS fix (or the configured reference.x/y/z origin).
+# Returns zeros if the GPS reference has not been set yet (no fix received since
+# node start or last reset).
 geographic_msgs/GeoPoint ll_point
 ---
 geometry_msgs/Point map_point

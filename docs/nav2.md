@@ -42,12 +42,24 @@ ros2 launch fusioncore_ros fusioncore_nav2.launch.py \
 
 ## GPS waypoint navigation
 
-Once FusionCore has a GPS fix, the `fromLL` service converts lat/lon to the local map frame for Nav2:
+FusionCore advertises `/fromLL`, which converts lat/lon/alt into the local map frame. This is the service `nav2_waypoint_follower` calls when you send a `FollowGPSWaypoints` goal, so GPS waypoint navigation works against FusionCore with no bridge node and no robot_localization instance running.
+
+Convert a single point by hand:
 
 ```bash
-ros2 service call /fromLL fusioncore_ros/srv/FromLL \
+ros2 service call /fromLL robot_localization/srv/FromLL \
   "{ll_point: {latitude: 43.2557, longitude: -79.8711, altitude: 0.0}}"
 ```
+
+The service returns the point in the local ENU frame anchored at the first GPS fix (or at `reference.x/y/z` if you set an explicit origin). Until a fix arrives the reference is unset, so it returns zeros and logs a warning: wait for `/fusion/odom` before sending waypoints.
+
+!!! note "The service type is `robot_localization/srv/FromLL`, deliberately"
+
+    `nav2_waypoint_follower` has that type compiled into its header, and ROS 2 matches services on name **and** type. A service with identical fields under a different type name is invisible to Nav2's client, which then waits forever without ever reporting an error.
+
+    So FusionCore advertises the type Nav2 expects. Only the interface definition is shared; no robot_localization code is linked or executed, and you do not run a robot_localization node. This is what makes FusionCore a drop-in replacement here rather than a migration that quietly breaks your waypoint following.
+
+    **Versions before 0.3.5** advertised `/fromLL` as `fusioncore_ros/srv/FromLL`. Manual `ros2 service call` worked (you supply the type yourself) but `followGpsWaypoints` hung on `waiting for service to appear`. If you are on 0.3.4 or earlier, upgrade. `fusioncore_ros/srv/FromLL` still exists so old builds compile, but nothing serves it.
 
 ---
 

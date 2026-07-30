@@ -36,6 +36,15 @@
   <depend>std_srvs</depend>
   <depend>proj</depend>
 
+  <!-- For the srv/FromLL interface definition only. No robot_localization code is
+       linked or executed. nav2_waypoint_follower has robot_localization::srv::FromLL
+       compiled into its header, and ROS 2 matches services on name AND type, so the
+       /fromLL service has to be advertised with that exact type or Nav2's GPS
+       waypoint client waits forever for a service it cannot see. Nav2 already pulls
+       robot_localization in for the same reason, so anyone running GPS waypoints
+       has it installed regardless. -->
+  <depend>robot_localization</depend>
+
   <export>
     <build_type>ament_cmake</build_type>
   </export>

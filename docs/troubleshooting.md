@@ -273,8 +273,12 @@ ros2 topic echo /your/odom/topic --field header.stamp --once
 The two stamps should agree within milliseconds. If they differ by more than `max_measurement_delay` (0.5 s default), that is the whole problem. FusionCore also tells you directly:
 
 - At startup: `IMU header.stamp is +3.14s from this node's clock...`
-- At runtime: `STALE sensor rejections climbing (imu=0 encoder=412)... IMU stamp minus encoder stamp is currently +3.14s`
-- On the health topic: `ros2 topic echo /fusion/debug/filter_health --field encoder_stale_reject_count` climbing means the encoder is not being fused, at all.
+- At runtime: `Dropping stale sensor samples at 48.2/s (totals imu=0 encoder=412): that sensor is effectively NOT being fused. IMU stamp minus encoder stamp is +3.14s against a max_measurement_delay of 0.50s`
+- On the health topic: `ros2 topic echo /fusion/debug/filter_health --field encoder_stale_reject_count`
+
+**Read the rate, not the total.** A time-base mismatch rejects nearly every sample, so the rate lands near the sensor's publish rate (tens per second) and the totals climb without bound. A handful of drops over a whole run is a different thing: a late sample on a wireless link, harmless, and the filter keeps fusing everything else. The warning above only fires above 1 rejection per second sustained; below that the drop is logged at debug level. So `encoder_stale_reject_count: 2` after ten minutes of driving is not a problem, and `412` and climbing is.
+
+If the rate is low but nonzero and you want those stragglers fused rather than dropped, the offset is real transport latency rather than skew: raise `max_measurement_delay` above the offset you measured and retrodiction will rewind and fuse them at their true time.
 
 **The fix is in the sensor driver, not the filter:**
 
