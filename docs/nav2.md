@@ -66,26 +66,34 @@ The service returns the point in the local ENU frame anchored at the first GPS f
 
     **Versions before 0.3.5** advertised `/fromLL` as `fusioncore_ros/srv/FromLL`. Manual `ros2 service call` worked (you supply the type yourself) but `followGpsWaypoints` hung on `waiting for service to appear`. If you are on 0.3.4 or earlier, upgrade. `fusioncore_ros/srv/FromLL` still exists so old builds compile, but nothing serves it.
 
-Only the single-point `FromLL` service is provided. `FromLLArray`, `ToLL` (map frame back to lat/lon) and `SetDatum` are not. Nav2's GPS waypoint follower on Jazzy uses `FromLL` only, so this covers that path; see the [migration guide](migration_from_robot_localization.md) for the full service comparison.
+Only the single-point `FromLL` service is provided. `FromLLArray`, `ToLL` (map frame back to lat/lon) and `SetDatum` are not. Nav2's GPS waypoint follower uses `FromLL` only, so this covers that path; see the [migration guide](migration_from_robot_localization.md) for the full service comparison.
+
+!!! warning "Humble: Nav2 has no GPS waypoint following at all"
+
+    `FollowGPSWaypoints` does not exist in Humble's Nav2. It was added in Jazzy, and Humble's `nav2_waypoint_follower` neither depends on robot_localization nor calls `/fromLL`. So on Humble this section does not apply: FusionCore still advertises `/fromLL` and you can call it from your own code, but there is no Nav2 GPS waypoint action to plug it into.
+
+    FusionCore itself builds and runs normally on Humble. `robot_localization` is released there (3.5.4-1) with an identical `FromLL.srv`, so the dependency resolves.
 
 ---
 
-## Known issue: the collision monitor blocks bringup
+## Collision monitor
 
-**If you launch `fusioncore_nav2.launch.py` and the robot never moves, this is why.** Reported in [issue #73](https://github.com/manankharwar/fusioncore/issues/73).
+Worth knowing what the bundled `nav2_params.yaml` does here, because it is deliberate and it is not what it looks like.
 
-`fusioncore_nav2.launch.py` includes nav2_bringup's `navigation_launch.py`, which starts `collision_monitor` unconditionally (there is no launch argument to turn it off on Jazzy) and includes it in the set of nodes its lifecycle manager brings up. The bundled `nav2_params.yaml` has no `collision_monitor` section, and that node refuses to configure without one:
+nav2_bringup's `navigation_launch.py` starts `collision_monitor` unconditionally (Jazzy has no launch argument to turn it off) and lifecycle-manages it, and that node refuses to configure without an `observation_sources` parameter:
 
 ```
 [ERROR] [collision_monitor]: Error while getting parameters:
         parameter 'observation_sources' is not initialized
 ```
 
-That matters more than a normal missing-config error, because the collision monitor sits **in the command path**: it subscribes to `cmd_vel_smoothed` and republishes to `cmd_vel`, which is the topic your base controller listens to. If it never activates, planning and control run fine and produce velocities that never reach the wheels.
+That is not a cosmetic failure. The collision monitor sits **in the command path**: it subscribes to `cmd_vel_smoothed` and republishes `cmd_vel`, which is the topic your base controller listens to. If it never activates, planning and control run fine, produce velocities, and nothing reaches the wheels. This is what a user hit in [issue #73](https://github.com/manankharwar/fusioncore/issues/73), and before 0.3.5 the bundled config had no `collision_monitor` section at all.
 
-`observation_sources` is mandatory and cannot be empty, so a lidar-less GPS robot has no valid pass-through configuration to fall back on. Until this ships fixed, the workaround is to bring Nav2 up without the collision monitor: copy `navigation_launch.py`, delete the `collision_monitor` Node and its entry in `lifecycle_nodes`, and point `fusioncore_nav2.launch.py` at your copy. If you do have a laser, the other option is to copy the `collision_monitor` block from `nav2_bringup`'s own `nav2_params.yaml` into yours and set `base_frame_id` to `base_link`.
+The config now ships one, but read what it actually is:
 
-This is a defect in the bundled Nav2 configuration, not in the filter. FusionCore itself is unaffected: `/fusion/odom` and the TF are published normally throughout.
+**It is a pass-through and it provides no obstacle protection.** `observation_sources` and `polygons` are both mandatory and an empty list is rejected by the parameter parser, so there is no way to declare "no sources". Instead one polygon and one source are declared and then disabled, which lets the node activate and hand velocity through untouched. Verified: 0.42 m/s published on `cmd_vel_smoothed` comes out of `cmd_vel` unchanged.
+
+That matches the rest of the bundled config, which targets GPS navigation with no map and no lidar. But do not mistake a running `collision_monitor` for a working one. **If you have a laser**, set both `enabled: True` in the `collision_monitor` section, point `scan.topic` at your real scan topic, and size the polygon radius to your robot. nav2_bringup's own `nav2_params.yaml` has a fuller example using a footprint-approach polygon.
 
 ---
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(fusioncore_ros VERSION 0.3.4)
+project(fusioncore_ros VERSION 0.3.5)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -50,6 +50,20 @@ if(BUILD_TESTING)
   target_link_libraries(test_proj_axis_order PROJ::proj)
 
   ament_add_gtest(test_imu_orientation_validity tests/test_imu_orientation_validity.cpp)
+
+  ament_add_gtest(test_stale_rate tests/test_stale_rate.cpp)
+  target_include_directories(test_stale_rate PRIVATE include)
+
+  # Launches the real node and asserts /fromLL is advertised with the type
+  # nav2_waypoint_follower binds. A different-but-identical type is invisible to
+  # Nav2 and only a real typed client catches it, which is how issue #73 shipped
+  # from v0.2.1 through 0.3.4 with nothing complaining.
+  find_package(launch_testing_ament_cmake QUIET)
+  if(launch_testing_ament_cmake_FOUND)
+    add_launch_test(tests/test_from_ll_service.py TIMEOUT 180)
+  else()
+    message(WARNING "launch_testing_ament_cmake not found: skipping the /fromLL service type test")
+  endif()
 endif()
 
 ament_auto_package()

@@ -2,7 +2,7 @@
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
   <name>fusioncore_ros</name>
-  <version>0.3.4</version>
+  <version>0.3.5</version>
   <description>ROS 2 UKF sensor fusion for IMU, wheel encoders, GPS, and visual SLAM pose. 23-state filter with ECEF-native GPS handling, online gyro/accel/encoder bias estimation, adaptive noise covariance, chi-squared outlier rejection on every sensor, and map reinitialization recovery for GPS-denied operation. Drop-in robot_localization alternative. Benchmarked on 12 full-length NCLT sequences: wins 10 of 12 vs robot_localization EKF.</description>
   <maintainer email="manan.kharwar@ansys.com">Manan Kharwar</maintainer>
   <license>Apache-2.0</license>
@@ -44,6 +44,10 @@
        robot_localization in for the same reason, so anyone running GPS waypoints
        has it installed regardless. -->
   <depend>robot_localization</depend>
+
+  <test_depend>ament_cmake_gtest</test_depend>
+  <test_depend>launch_testing_ament_cmake</test_depend>
+  <test_depend>launch_testing_ros</test_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

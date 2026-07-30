@@ -28,6 +28,7 @@
 // Nav2 interop: nav2_waypoint_follower hardcodes this service type for GPS
 // waypoint conversion, so /fromLL must be served with it. Interface only.
 #include "robot_localization/srv/from_ll.hpp"
+#include "fusioncore_ros/stale_rate_tracker.hpp"
 #include "fusioncore_ros/msg/gnss_status.hpp"
 #include "fusioncore_ros/msg/filter_health.hpp"
 #include <lifecycle_msgs/msg/transition.hpp>
@@ -2790,34 +2791,21 @@ private:
       fh.imu_stale_reject_count     = status.imu_stale_rejects;
       fh.encoder_stale_reject_count = status.encoder_stale_rejects;
 
-      // Stale rejections mean a sample's stamp lagged the filter clock by more
-      // than max_measurement_delay, so it could not be retrodicted and was NOT
-      // fused. The raw count cannot tell the two causes apart: a few stragglers
-      // on a wireless link are harmless, while a genuine time-base mismatch
-      // rejects essentially every sample. So key the alarm off the RATE and
-      // leave the bare count at debug. Reported in issue #73, where a total of
-      // 2 rejections in a whole run produced the same warning as a broken clock.
-      const int    new_stale  = (status.imu_stale_rejects - prev_imu_stale_) +
-                                (status.encoder_stale_rejects - prev_enc_stale_);
-      const double eval_now   = now().seconds();
-      if (new_stale < 0) {
-        // Counters went backward, so the filter was reset under us. Re-sync, or
-        // prev_ stays above the live count and real rejections stay invisible
-        // until they climb back past the pre-reset total.
-        prev_imu_stale_  = status.imu_stale_rejects;
-        prev_enc_stale_  = status.encoder_stale_rejects;
-        stale_eval_time_ = eval_now;
-      } else if (new_stale > 0) {
-        const double span = (stale_eval_time_ > 0.0) ? (eval_now - stale_eval_time_) : 0.0;
-        const double rate = (span > 1e-6) ? (new_stale / span) : 0.0;
-        prev_imu_stale_  = status.imu_stale_rejects;
-        prev_enc_stale_  = status.encoder_stale_rejects;
-        stale_eval_time_ = eval_now;
+      // How loudly to report stale rejections is decided by StaleRateTracker, so
+      // the policy can be unit tested (tests/test_stale_rate.cpp) rather than
+      // only existing inside this callback. See issue #73: warning on the raw
+      // count made 2 drops in a whole run look like a broken clock.
+      double stale_rate = 0.0;
+      const auto alarm = stale_tracker_.update(
+        status.imu_stale_rejects, status.encoder_stale_rejects,
+        now().seconds(), stale_rate);
+
+      if (alarm != fusioncore_ros::StaleAlarm::None) {
         const double offset = (last_imu_time_ > 0.0 && last_enc_stamp_sec_ > 0.0)
                                 ? (last_imu_time_ - last_enc_stamp_sec_) : 0.0;
         // Read live rather than cached so the hint reflects a runtime override.
         const double max_delay = get_parameter("max_measurement_delay").as_double();
-        if (rate >= kStaleRateWarnHz) {
+        if (alarm == fusioncore_ros::StaleAlarm::Warn) {
           RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10000,
             "Dropping stale sensor samples at %.1f/s (totals imu=%d encoder=%d): "
             "that sensor is effectively NOT being fused. IMU stamp minus encoder "
@@ -2825,7 +2813,7 @@ private:
             "drivers are on different clocks (stamp with node time, or run "
             "chrony/NTP across machines), or the link adds real latency, in which "
             "case raise max_measurement_delay above the offset.",
-            rate, status.imu_stale_rejects, status.encoder_stale_rejects,
+            stale_rate, status.imu_stale_rejects, status.encoder_stale_rejects,
             offset, max_delay);
         } else {
           RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 10000,
@@ -2833,8 +2821,8 @@ private:
             "offset %+.2fs vs max_measurement_delay %.2fs). Occasional drops are "
             "normal; only a sustained rate above %.1f/s means a sensor is not "
             "being fused.",
-            rate, status.imu_stale_rejects, status.encoder_stale_rejects,
-            offset, max_delay, kStaleRateWarnHz);
+            stale_rate, status.imu_stale_rejects, status.encoder_stale_rejects,
+            offset, max_delay, stale_tracker_.warn_rate_hz());
         }
       }
 
@@ -2977,13 +2965,8 @@ private:
   bool   imu_clock_checked_  = false;
   bool   enc_clock_checked_  = false;
   double last_enc_stamp_sec_ = -1.0;
-  int    prev_imu_stale_     = 0;
-  int    prev_enc_stale_     = 0;
-  // When the stale counts were last sampled, so new rejections can be turned into
-  // a rate. A sustained rate this high or above means a sensor is being dropped
-  // wholesale rather than losing the occasional late sample.
-  double stale_eval_time_    = 0.0;
-  static constexpr double kStaleRateWarnHz = 1.0;
+  // Turns the running stale counts into a rate and decides warn vs debug.
+  fusioncore_ros::StaleRateTracker stale_tracker_{1.0};
   rclcpp::TimerBase::SharedPtr                                                publish_timer_;
   rclcpp::TimerBase::SharedPtr                                                diag_timer_;
   rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr                          reset_srv_;

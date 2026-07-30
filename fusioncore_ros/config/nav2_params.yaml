@@ -207,7 +207,62 @@ behavior_server:
     min_rotational_vel: 0.1
     rotational_acc_lim: 1.5
 
+# ── Collision monitor ─────────────────────────────────────────────────────────
+# This section has to exist even though this config targets a robot with no
+# laser. nav2_bringup's navigation_launch.py starts collision_monitor
+# unconditionally (there is no launch argument to turn it off) and lifecycle
+# manages it, and the node refuses to configure without observation_sources:
+#
+#   [ERROR] [collision_monitor]: Error while getting parameters:
+#           parameter 'observation_sources' is not initialized
+#
+# That is not a cosmetic failure. The collision monitor sits IN the command
+# path: it subscribes to cmd_vel_smoothed and republishes cmd_vel, which is the
+# topic the base controller listens to. If it never activates, planning and
+# control run normally, produce velocities, and nothing reaches the wheels.
+#
+# WHAT THIS CONFIGURATION DOES: nothing. Both the polygon and the observation
+# source are declared (both parameters are mandatory and an empty list is
+# rejected by the parameter parser) and then disabled, so the node activates and
+# passes velocity straight through. Verified: 0.42 m/s published on
+# cmd_vel_smoothed comes out of cmd_vel unchanged.
+#
+# SO THERE IS NO OBSTACLE PROTECTION HERE. That matches the rest of this file,
+# which assumes GPS navigation with no map and no lidar, but do not mistake a
+# running collision_monitor for a working one. If you have a laser: set both
+# `enabled: True`, point `scan.topic` at your real scan topic, and size the
+# polygon to your robot. nav2_bringup's own nav2_params.yaml has a fuller
+# example using a footprint-approach polygon.
+collision_monitor:
+  ros__parameters:
+    use_sim_time: false
+    base_frame_id: "base_link"
+    odom_frame_id: "odom"
+    cmd_vel_in_topic: "cmd_vel_smoothed"
+    cmd_vel_out_topic: "cmd_vel"
+    state_topic: "collision_monitor_state"
+    transform_tolerance: 0.5
+    source_timeout: 1.0
+    base_shift_correction: False
+    stop_pub_timeout: 2.0
+    polygons: ["PolygonStop"]
+    PolygonStop:
+      type: "circle"
+      radius: 0.3          # size to your robot before enabling
+      action_type: "stop"
+      min_points: 4
+      visualize: False
+      enabled: False       # <-- True only once you have a real scan source
+    observation_sources: ["scan"]
+    scan:
+      type: "scan"
+      topic: "scan"        # point at your real scan topic before enabling
+      enabled: False       # <-- True when you have a laser
+
 # ── Lifecycle managers ────────────────────────────────────────────────────────
+# navigation_launch.py overrides node_names with its own list, which also
+# includes collision_monitor, so the section above is required no matter what
+# is listed here.
 lifecycle_manager_navigation:
   ros__parameters:
     use_sim_time: false
@@ -218,3 +273,4 @@ lifecycle_manager_navigation:
       - behavior_server
       - bt_navigator
       - velocity_smoother
+      - collision_monitor

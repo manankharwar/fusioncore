@@ -58,7 +58,7 @@ colcon test --packages-select fusioncore_core
 colcon test-result --verbose
 ```
 
-Expected: `102 tests, 0 errors, 0 failures, 0 skipped`
+Expected: `114 tests, 0 errors, 0 failures, 0 skipped`
 
 ---
 
