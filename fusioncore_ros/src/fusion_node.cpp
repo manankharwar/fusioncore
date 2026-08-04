@@ -2066,7 +2066,11 @@ private:
         "Heading not yet validated: lever arm inactive. "
         "Distance traveled: %.1fm (need %.1fm), or provide dual antenna / IMU orientation.",
         fc_status.distance_traveled,
-        5.0);
+        // Report the CONFIGURED distance, not a literal. This was hardcoded to
+        // 5.0, so raising gnss.track_heading_min_dist left the log insisting the
+        // old value was still in force, which reads exactly like a config that
+        // failed to load. Cost a real debugging session on the rover.
+        get_parameter("gnss.track_heading_min_dist").as_double());
     }
   }
 
@@ -2238,7 +2242,11 @@ private:
         "Heading not yet validated: lever arm inactive. "
         "Distance traveled: %.1fm (need %.1fm), or provide dual antenna / IMU orientation.",
         fc_status.distance_traveled,
-        5.0);
+        // Report the CONFIGURED distance, not a literal. This was hardcoded to
+        // 5.0, so raising gnss.track_heading_min_dist left the log insisting the
+        // old value was still in force, which reads exactly like a config that
+        // failed to load. Cost a real debugging session on the rover.
+        get_parameter("gnss.track_heading_min_dist").as_double());
     }
   }
 
