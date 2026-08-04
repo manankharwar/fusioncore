@@ -37,6 +37,17 @@ void UKF::compute_weights() {
   int n_sigma = 2 * n_aug_ + 1;
   Wm_.resize(n_sigma);
   Wc_.resize(n_sigma);
+  // WARNING: with 23 states and the default alpha=0.1 this gives Wm[0] = -99 and
+  // Wi = +2.17, so every mean is reconstructed as a difference of huge nearly
+  // cancelling numbers and any floating-point asymmetry is amplified about 100x.
+  // The generate_sigma_points() comment below records this already causing
+  // orientation drift once. Measured 2026-08-03 on a real field bag: raising
+  // alpha to 0.5 (Wm[0] = -3.0) cut spurious position motion by 23 percent.
+  //
+  // It is NOT the whole story: alpha=1.0, which gives a perfectly conditioned
+  // Wm[0] = 0, is worse again, so this is a U-curve rather than a cancellation
+  // collapse. Raising alpha is still worth doing, but it changes every filter
+  // output and must go through tools/check_benchmark_regression.py first.
   Wm_[0] = lambda_ / (n_aug_ + lambda_);
   Wc_[0] = Wm_[0] + (1.0 - params_.alpha * params_.alpha + params_.beta);
   double w = 0.5 / (n_aug_ + lambda_);
