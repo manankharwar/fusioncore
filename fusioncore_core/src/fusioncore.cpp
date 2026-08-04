@@ -971,6 +971,12 @@ bool FusionCore::apply_gnss_update(
         ++gnss_outliers_;
         gnss_debug_.accepted = false;
         gnss_debug_.reason   = GnssRejectionReason::IMPLAUSIBLE_JUMP;
+        // Record it for get_status() too, not just the per-fix debug struct.
+        // Without this the status topic reports NOT_PROCESSED, the enum's
+        // initial value, so a user watching gnss_last_reject_reason sees a fix
+        // vanish for no stated reason. On the 2026-08-03 field run this hid 158
+        // rejections behind a meaningless label while the outlier counter rose.
+        last_gnss_rejection_reason_ = gnss_debug_.reason;
         return false;  // do not touch the coast counters: an outlier must not relax the gate
       }
     }
@@ -979,6 +985,7 @@ bool FusionCore::apply_gnss_update(
       ++gnss_outliers_;
       gnss_debug_.accepted = false;
       gnss_debug_.reason   = GnssRejectionReason::CHI2_FAILED;
+      last_gnss_rejection_reason_ = gnss_debug_.reason;
 
       if (config_.gnss_coast_n > 0) {
         // At the start of a rejection sequence, decide whether GPS was
