@@ -207,6 +207,23 @@ If transforms are printing, the error is a race condition at startup: the downst
 ros2 topic echo /fusion/debug/filter_health --field gnss_last_reject_reason
 ```
 
+!!! warning "If every fix is rejected and you are on a NavSatFix"
+
+    `sensor_msgs/NavSatFix` carries no DOP fields. FusionCore derives the fix
+    quality from `position_covariance`, which is **metres**, and gates it with
+    `gnss.max_sigma_xy` / `gnss.max_sigma_z`.
+
+    Until this was fixed, those metres were compared against `gnss.max_hdop` (4.0) and
+    `gnss.max_vdop` (6.0). Those read like dimensionless DOP limits, so they
+    looked generous while actually meaning "reject anything worse than 4 m
+    horizontal, 6 m vertical". Real receivers fail that constantly. Measured on
+    a u-blox NEO-M9N over a 500-fix outdoor run: horizontal sigma 3.6 to 6.0 m,
+    vertical 14.4 to 24.0 m, so **all 500 fixes were rejected** and the filter
+    dead-reckoned the entire way with no error raised anywhere.
+
+    If you are on an older release and your GPS never seems to be used, set
+    `gnss.max_hdop: 25.0` and `gnss.max_vdop: 60.0` and it will start working.
+
 Do not rely on `gnss_outlier_count` alone to tell you GPS is being rejected: that counter only counts chi2 and physical-plausibility rejects. Quality-gate rejects (`HDOP_HIGH`, `VDOP_HIGH`, `FIX_TYPE_LOW`, `MIN_SATS`) and `DELAY_TOO_LARGE` leave it at zero, so a filter dropping every fix on vertical DOP shows `gnss_outlier_count: 0` while `gnss_last_reject_reason: VDOP_HIGH`.
 
 **For the full per-fix detail**, look at the structured debug firehose (one message per fix, accepted or not):
@@ -241,9 +258,10 @@ Common causes and fixes:
 
 | Reason | Cause | Fix |
 |---|---|---|
+| `SIGMA_XY_HIGH` | Reported horizontal 1-sigma exceeds `gnss.max_sigma_xy` (default 25 m) | Genuinely poor signal. Check antenna placement and ground plane before raising it |
+| `SIGMA_Z_HIGH` | Reported vertical 1-sigma exceeds `gnss.max_sigma_z` (default 50 m) | Vertical is always worse than horizontal. On a `publish.force_2d` robot it does not matter, so raise it freely |
 | `HDOP_HIGH` at startup | Open sky not acquired yet | Normal: clears within 30–60 s once the receiver locks |
-| `HDOP_HIGH` persistently | Consumer receiver near buildings/trees; `gnss.max_hdop` (default 4.0) too strict | Raise `gnss.max_hdop` (e.g. 8.0). The DOP already scales the fix noise, so a marginal fix is down-weighted, not trusted blindly |
-| `VDOP_HIGH` | Fix is horizontally fine but vertically poor (obstructed sky); irrelevant to a 2D ground robot | Raise `gnss.max_vdop` (e.g. 20.0). On a `publish.force_2d` robot vertical precision does not matter |
+| `HDOP_HIGH` / `VDOP_HIGH` persistently | Receiver reports genuine DOP and the geometry is poor | Raise `gnss.max_hdop` / `gnss.max_vdop`. Note these apply **only** when the fix carries no covariance; with a NavSatFix the sigma gate above is what runs |
 | `FIX_TYPE_LOW` | `gnss.min_fix_type` set above what the receiver provides (e.g. RTK required on a non-RTK M9N) | Lower `gnss.min_fix_type` to `1` (GPS) for a consumer receiver |
 | `MIN_SATS` | Fewer satellites than `gnss.min_satellites` | Move to more open sky; lower `gnss.min_satellites` only if you understand the accuracy cost |
 | `DELAY_TOO_LARGE` | Fix arrived older than `max_measurement_delay` (default 0.5 s). Two distinct causes: a clock-sync/timestamp problem, or real transport latency (fix stamped correctly but delivered late) | First compare each sensor's `header.stamp` to the node clock (clock problem). If stamps are fine, the messages are arriving late: on WiFi links (hotspots especially) disable power save (`iw wlan0 set power_save off`) and set `ROS_AUTOMATIC_DISCOVERY_RANGE=LOCALHOST` when all nodes share one host, so DDS stays off the wireless interface. A moderately late fix is still valuable: raising `max_measurement_delay` (e.g. 2.0) lets the snapshot/IMU-replay retrodiction rewind and fuse it at its true time. Field case: a hotspot's power-save latency delivered every fix 1 to 3 s late and all were discarded; at 2.0 s the same data fused to ~2 m sigma |

@@ -98,7 +98,16 @@ fusioncore:
     gnss.base_noise_z: 2.0      # m
     gnss.heading_noise: 0.02    # rad: for dual antenna heading
 
-    gnss.max_hdop: 4.0          # reject fixes with HDOP worse than this
+    # Quality gate. Which pair applies depends on what your receiver publishes,
+    # and getting this wrong is silent: rejected fixes leave the filter dead
+    # reckoning with nothing but a throttled log line to say so.
+    gnss.max_sigma_xy: 25.0     # m of reported 1-sigma. THIS is the gate that runs
+    gnss.max_sigma_z: 50.0      # for sensor_msgs/NavSatFix, which carries no DOP.
+                                # A standalone receiver reports 2-8 m horizontal and
+                                # 10-25 m vertical in normal conditions, all usable.
+    gnss.max_hdop: 4.0          # dimensionless DOP. Only applies when the fix has no
+    gnss.max_vdop: 6.0          # covariance at all, i.e. gps_msgs/GPSFix reporting
+                                # receiver-native DOP.
     gnss.min_satellites: 4
     gnss.min_fix_type: 1        # 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
                                 # NavSatFix: status=2 maps to RTK_FIXED. RTK_FLOAT (3)
