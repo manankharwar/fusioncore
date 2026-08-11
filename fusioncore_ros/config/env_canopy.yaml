@@ -17,8 +17,10 @@ fusioncore:
     gnss.base_noise_xy: 2.0         # m (default 1.0)
     gnss.base_noise_z: 4.0          # m
 
-    # Moderate geometry gate: under canopy, good HDOP is rare but not impossible
-    gnss.max_hdop: 3.0
+    # Moderate gate: under canopy a clean fix is rare but not impossible.
+    gnss.max_sigma_xy: 18.0
+    gnss.max_sigma_z: 40.0
+    gnss.max_hdop: 3.0              # DOP path only (gps_msgs/GPSFix without covariance)
     gnss.min_satellites: 5
 
     # Outlier rejection: moderate: signal comes through gaps, occasional reflections

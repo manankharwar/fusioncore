@@ -839,11 +839,20 @@ bool FusionCore::update_gnss(
   if (!fix.is_valid(config_.gnss)) {
     gnss_debug_.accepted       = false;
     gnss_debug_.mahalanobis_sq = -1.0;
+    // Order matches is_valid() so the reported reason is the gate that
+    // actually fired. Naming the wrong gate sends people tuning a parameter
+    // that was never involved, which is what happened on issue #73.
     if (fix.fix_type < config_.gnss.min_fix_type)
       gnss_debug_.reason = GnssRejectionReason::FIX_TYPE_LOW;
-    else if (fix.hdop > config_.gnss.max_hdop)
+    else if (fix.satellites < config_.gnss.min_satellites)
+      gnss_debug_.reason = GnssRejectionReason::MIN_SATS;
+    else if (fix.has_sigma() && fix.sigma_xy > config_.gnss.max_sigma_xy)
+      gnss_debug_.reason = GnssRejectionReason::SIGMA_XY_HIGH;
+    else if (fix.has_sigma() && fix.sigma_z > config_.gnss.max_sigma_z)
+      gnss_debug_.reason = GnssRejectionReason::SIGMA_Z_HIGH;
+    else if (!fix.has_sigma() && fix.hdop > config_.gnss.max_hdop)
       gnss_debug_.reason = GnssRejectionReason::HDOP_HIGH;
-    else if (fix.vdop > config_.gnss.max_vdop)
+    else if (!fix.has_sigma() && fix.vdop > config_.gnss.max_vdop)
       gnss_debug_.reason = GnssRejectionReason::VDOP_HIGH;
     else
       gnss_debug_.reason = GnssRejectionReason::MIN_SATS;

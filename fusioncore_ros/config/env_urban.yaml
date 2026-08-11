@@ -17,8 +17,11 @@ fusioncore:
     gnss.base_noise_xy: 3.0         # m (default 1.0: trust GPS much less)
     gnss.base_noise_z: 6.0          # m (vertical GPS is especially bad between buildings)
 
-    # Only accept fixes with good geometry: building masking ruins HDOP fast
-    gnss.max_hdop: 2.5              # stricter than default 4.0
+    # Stricter than default: building masking ruins the fix fast. Expressed in
+    # metres of reported 1-sigma, which is what the gate reads for a NavSatFix.
+    gnss.max_sigma_xy: 12.0         # stricter than the 25.0 default
+    gnss.max_sigma_z: 30.0
+    gnss.max_hdop: 2.5              # DOP path only (gps_msgs/GPSFix without covariance)
     gnss.min_satellites: 6          # need more sats to compensate for blockage
 
     # Outlier rejection: tight: multipath causes large position jumps

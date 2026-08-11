@@ -245,12 +245,14 @@ enum class GnssRejectionReason {
   NOT_PROCESSED   = 0,  // update_gnss not yet called
   ACCEPTED        = 1,
   FIX_TYPE_LOW    = 2,  // fix_type < min_fix_type
-  HDOP_HIGH       = 3,  // hdop > max_hdop
-  VDOP_HIGH       = 4,  // vdop > max_vdop
+  HDOP_HIGH       = 3,  // hdop > max_hdop (dimensionless DOP path only)
+  VDOP_HIGH       = 4,  // vdop > max_vdop (dimensionless DOP path only)
   MIN_SATS        = 5,  // satellites < min_satellites
   CHI2_FAILED     = 6,  // Mahalanobis distance > threshold
   DELAY_TOO_LARGE = 7,  // measurement older than max_measurement_delay
   IMPLAUSIBLE_JUMP = 8, // fix farther from prediction than max_speed*dt allows
+  SIGMA_XY_HIGH   = 9,  // reported horizontal sigma in METRES > max_sigma_xy
+  SIGMA_Z_HIGH    = 10, // reported vertical sigma in METRES > max_sigma_z
 };
 
 // Per-fix observability data: populated by update_gnss() on every call.
@@ -416,6 +418,10 @@ public:
   );
 
   const State&       get_state()      const;
+
+  // Diagnostic passthrough: metres the last measurement update moved position.
+  // See UKF::last_position_correction().
+  double last_position_correction() const { return ukf_.last_position_correction(); }
   FusionCoreStatus   get_status()     const;
   const GnssFixDebug& get_gnss_debug() const { return gnss_debug_; }
   void               reset();

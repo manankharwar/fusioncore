@@ -292,6 +292,121 @@ TEST(GNSSTest, RejectionReasonSurfacesInStatus) {
             GnssRejectionReason::MIN_SATS);
 }
 
+
+// ─── The issue #73 gate: metres must not be judged against DOP thresholds ────
+//
+// A NavSatFix carries no DOP. The node derives sqrt(variance) from the message
+// covariance, which is METRES, and that used to be compared against max_hdop
+// (4.0) and max_vdop (6.0). Those read like dimensionless DOP limits, so they
+// looked generous while actually meaning "reject anything worse than 4 m
+// horizontal". A working RTK setup had every fix vetoed as VDOP_HIGH and the
+// filter silently dead-reckoned. Reported by JR-pT on issue #73.
+
+TEST(GNSSTest, SigmaGateAcceptsOrdinaryStandaloneGps) {
+  GnssParams params;   // defaults: max_sigma_xy 25 m, max_sigma_z 50 m
+
+  // Exactly what a healthy standalone receiver reports, and precisely the
+  // numbers from issue #73: 2 m horizontal, 8 m vertical. Both of these
+  // exceed max_hdop 4.0 / max_vdop 6.0 if misread as DOP.
+  GnssFix fix;
+  fix.fix_type   = GnssFixType::GPS_FIX;
+  fix.satellites = 8;
+  fix.hdop       = 2.0;   // metres, kept for the noise scale factor
+  fix.vdop       = 8.0;
+  fix.sigma_xy   = 2.0;   // metres, what the gate must read
+  fix.sigma_z    = 8.0;
+
+  EXPECT_TRUE(fix.has_sigma());
+  EXPECT_TRUE(fix.is_valid(params))
+      << "a 2 m / 8 m fix is ordinary standalone GPS and must be fused";
+}
+
+TEST(GNSSTest, SigmaGateStillRejectsGarbage) {
+  GnssParams params;
+
+  GnssFix wide;
+  wide.fix_type   = GnssFixType::GPS_FIX;
+  wide.satellites = 8;
+  wide.hdop = wide.sigma_xy = 40.0;   // 40 m horizontal: not usable
+  wide.vdop = wide.sigma_z  = 10.0;
+  EXPECT_FALSE(wide.is_valid(params));
+
+  GnssFix tall;
+  tall.fix_type   = GnssFixType::GPS_FIX;
+  tall.satellites = 8;
+  tall.hdop = tall.sigma_xy = 3.0;
+  tall.vdop = tall.sigma_z  = 80.0;   // 80 m vertical
+  EXPECT_FALSE(tall.is_valid(params));
+}
+
+TEST(GNSSTest, SigmaPathIgnoresDopThresholds) {
+  GnssParams params;
+  params.max_hdop = 0.1;   // absurdly strict, must not apply
+  params.max_vdop = 0.1;
+
+  GnssFix fix;
+  fix.fix_type   = GnssFixType::GPS_FIX;
+  fix.satellites = 8;
+  fix.hdop = fix.sigma_xy = 3.0;
+  fix.vdop = fix.sigma_z  = 5.0;
+
+  EXPECT_TRUE(fix.is_valid(params))
+      << "when a covariance is present the DOP limits are the wrong units "
+         "and must be bypassed entirely";
+}
+
+TEST(GNSSTest, DopGateStillAppliesWithoutCovariance) {
+  // Regression guard: a receiver reporting genuine DOP and no covariance must
+  // keep the original behaviour, so max_hdop/max_vdop stay meaningful.
+  GnssParams params;
+
+  GnssFix fix;
+  fix.fix_type   = GnssFixType::GPS_FIX;
+  fix.satellites = 8;
+  fix.hdop       = 5.0;    // > max_hdop 4.0
+  fix.vdop       = 2.0;
+  EXPECT_FALSE(fix.has_sigma());
+  EXPECT_FALSE(fix.is_valid(params));
+}
+
+TEST(GNSSTest, SigmaRejectionNamesTheGateThatFired) {
+  FusionCoreConfig config;
+  FusionCore fc(config);
+
+  State initial;
+  initial.x = StateVector::Zero();
+  initial.P = StateMatrix::Identity() * 0.1;
+  fc.init(initial, 0.0);
+
+  // Wide horizontally: must say SIGMA_XY_HIGH, not HDOP_HIGH. Naming the wrong
+  // gate is what sent issue #73 tuning a parameter that was never involved.
+  GnssFix wide;
+  wide.fix_type   = GnssFixType::GPS_FIX;
+  wide.satellites = 8;
+  wide.hdop = wide.sigma_xy = 40.0;
+  wide.vdop = wide.sigma_z  = 5.0;
+  EXPECT_FALSE(fc.update_gnss(1.0, wide));
+  EXPECT_EQ(fc.get_status().gnss_last_rejection_reason,
+            GnssRejectionReason::SIGMA_XY_HIGH);
+
+  GnssFix tall;
+  tall.fix_type   = GnssFixType::GPS_FIX;
+  tall.satellites = 8;
+  tall.hdop = tall.sigma_xy = 2.0;
+  tall.vdop = tall.sigma_z  = 90.0;
+  EXPECT_FALSE(fc.update_gnss(2.0, tall));
+  EXPECT_EQ(fc.get_status().gnss_last_rejection_reason,
+            GnssRejectionReason::SIGMA_Z_HIGH);
+
+  // And a good one gets through, so the gate is not simply rejecting everything.
+  GnssFix ok;
+  ok.fix_type   = GnssFixType::GPS_FIX;
+  ok.satellites = 8;
+  ok.hdop = ok.sigma_xy = 2.0;
+  ok.vdop = ok.sigma_z  = 8.0;
+  EXPECT_TRUE(fc.update_gnss(3.0, ok));
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

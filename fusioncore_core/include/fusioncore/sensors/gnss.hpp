@@ -62,8 +62,28 @@ struct GnssParams {
   double base_noise_xy = 1.0;
   double base_noise_z  = 2.0;
   double heading_noise = 0.02;
+
+  // Quality gate on receiver-reported DOP. These are DIMENSIONLESS geometry
+  // factors and only apply when the receiver actually publishes DOP, which in
+  // practice means gps_msgs/GPSFix with no covariance. A NavSatFix carries no
+  // DOP at all, so for that input the sigma gate below is what runs.
   double max_hdop      = 4.0;
   double max_vdop      = 6.0;
+
+  // Quality gate on reported position uncertainty, in METRES of one sigma.
+  // Used whenever the fix carries a covariance, which is every NavSatFix with
+  // position_covariance_type >= 1, so this is the gate most users actually hit.
+  //
+  // These are deliberately loose. A gate in absolute metres cannot tell a
+  // genuinely broken fix from ordinary noise unless it sits well outside the
+  // receiver's normal spread, and the chi-squared test is the real outlier
+  // defence. Field-measured 2026-08: a standalone u-blox M9N reports 2 to 8 m
+  // horizontal sigma in the open and worse near buildings, all of it usable.
+  // Values that merely look strict (4 m, 6 m) silently veto working GPS and
+  // leave the filter dead-reckoning with no error surfaced anywhere.
+  double max_sigma_xy  = 25.0;
+  double max_sigma_z   = 50.0;
+
   int    min_satellites = 4;
 
   // Minimum fix type required for fusion (default: any fix accepted).
@@ -92,8 +112,27 @@ struct GnssFix {
   double y = 0.0;
   double z = 0.0;
 
+  // Receiver DOP if the driver reports it, otherwise a stand-in derived from
+  // the covariance. Read the comment on sigma_xy below before using this for
+  // anything: in the covariance case the number here is METRES, not DOP.
   double hdop = 99.0;
   double vdop = 99.0;
+
+  // Reported one-sigma position uncertainty in METRES. Zero means the fix
+  // carried no covariance and only DOP is available.
+  //
+  // This exists because hdop/vdop are overloaded. When a driver publishes a
+  // covariance (every NavSatFix with position_covariance_type >= 1) the node
+  // has metres, not DOP, and it puts sqrt(variance) into hdop so the noise
+  // model can use it as a scale factor on base_noise_xy. That works for noise
+  // but it silently broke the quality gate, which compared metres against a
+  // threshold everyone reads as a dimensionless DOP. Reported as issue #73:
+  // a working RTK setup had every fix vetoed as VDOP_HIGH.
+  //
+  // So the gate now reads these fields when they are set, and hdop/vdop keep
+  // their existing meaning for the noise model. Set both or neither.
+  double sigma_xy = 0.0;
+  double sigma_z  = 0.0;
 
   int         satellites = 0;
   GnssFixType fix_type   = GnssFixType::NO_FIX;
@@ -114,11 +153,16 @@ struct GnssFix {
   bool has_full_covariance = false;
   Eigen::Matrix3d full_covariance = Eigen::Matrix3d::Identity();
 
+  // True when the fix reported a covariance, so the quality gate has metres to
+  // work with and must not compare them against the DOP thresholds.
+  bool has_sigma() const { return sigma_xy > 0.0 && sigma_z > 0.0; }
+
   bool is_valid(const GnssParams& p) const {
-    return fix_type >= p.min_fix_type
-        && hdop <= p.max_hdop
-        && vdop <= p.max_vdop
-        && satellites >= p.min_satellites;
+    if (fix_type < p.min_fix_type)      return false;
+    if (satellites < p.min_satellites)  return false;
+    if (has_sigma())
+      return sigma_xy <= p.max_sigma_xy && sigma_z <= p.max_sigma_z;
+    return hdop <= p.max_hdop && vdop <= p.max_vdop;
   }
 };
 

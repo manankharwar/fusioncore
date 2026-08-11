@@ -166,6 +166,18 @@ public:
     // and a ground robot with publish.force_2d cares only about the horizontal fix. Set
     // high (or leave the default) so vertical precision does not veto a usable 2D fix.
     declare_parameter("gnss.max_vdop",       6.0);
+    // Quality gate in METRES of reported one-sigma, used whenever the fix carries a
+    // covariance. That covers every NavSatFix with position_covariance_type >= 1, so on
+    // most setups this is the gate that runs and max_hdop/max_vdop never fire at all.
+    //
+    // Deliberately loose. Before this existed the metres were compared against max_hdop
+    // and max_vdop, which read like dimensionless DOP limits, so 4.0 and 6.0 looked
+    // reasonable while actually meaning "reject anything worse than 4 m horizontal".
+    // A standalone receiver fails that constantly and the GPS silently stops being
+    // fused (issue #73). The chi-squared test is the real outlier defence; this gate
+    // only needs to catch a receiver reporting nonsense.
+    declare_parameter("gnss.max_sigma_xy",   25.0);
+    declare_parameter("gnss.max_sigma_z",    50.0);
     declare_parameter("gnss.min_satellites", 4);
     // Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
     // Note: NavSatFix status only goes up to 2 (GBAS) which maps to RTK_FIXED.
@@ -446,6 +458,10 @@ public:
     config.gnss.heading_noise  = get_parameter("gnss.heading_noise").as_double();
     config.gnss.max_hdop       = get_parameter("gnss.max_hdop").as_double();
     config.gnss.max_vdop       = get_parameter("gnss.max_vdop").as_double();
+    config.gnss.max_sigma_xy   = get_parameter("gnss.max_sigma_xy").as_double();
+    config.gnss.max_sigma_z    = get_parameter("gnss.max_sigma_z").as_double();
+    max_sigma_xy_              = config.gnss.max_sigma_xy;
+    max_sigma_z_               = config.gnss.max_sigma_z;
     config.gnss.min_satellites = get_parameter("gnss.min_satellites").as_int();
     min_fix_type_ = static_cast<fusioncore::sensors::GnssFixType>(
         get_parameter("gnss.min_fix_type").as_int());
@@ -2011,8 +2027,14 @@ private:
         if (cov(2,2) < kMinVarZ)  cov(2,2) = kMinVarZ;
         fix.has_full_covariance = true;
         fix.full_covariance = cov;
-        fix.hdop = std::sqrt((cov(0,0) + cov(1,1)) / 2.0);  // for validity check
+        // hdop/vdop stay as sqrt(variance) because the core's fallback noise
+        // model multiplies base_noise_xy by hdop, so this doubles as a scale
+        // factor. sigma_xy/sigma_z carry the same metres for the quality gate,
+        // which must not compare them against the DOP thresholds. See #73.
+        fix.hdop = std::sqrt((cov(0,0) + cov(1,1)) / 2.0);
         fix.vdop = std::sqrt(cov(2,2));
+        fix.sigma_xy = fix.hdop;
+        fix.sigma_z  = fix.vdop;
         fix.satellites = 4;  // Fix 10: honest minimum: was hardcoded 6, always passed quality gate
       } else {
         fix.hdop = 1.5;
@@ -2028,6 +2050,8 @@ private:
       if (var_xy > 0.0 && var_z > 0.0) {
         fix.hdop = std::sqrt(var_xy);
         fix.vdop = std::sqrt(var_z);
+        fix.sigma_xy = fix.hdop;   // metres, for the quality gate
+        fix.sigma_z  = fix.vdop;
         fix.satellites = 4;  // Fix 10
       } else {
         fix.hdop = 1.5;
@@ -2045,17 +2069,26 @@ private:
     const auto& dbg = fc_->get_gnss_debug();
 
     if (!accepted) {
-      // Print vdop too: a VDOP_HIGH rejection that only shows hdop sends the user
-      // hunting in the wrong place (field report, issue #73 follow-up). For NavSatFix
-      // input these are pseudo-DOPs derived from the message covariance, sqrt(var) in
-      // meters, since NavSatFix carries no true DOP fields.
-      RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-        "GNSS fix rejected: %s (hdop=%.2f, vdop=%.2f, d2=%.1f, threshold=%.1f)",
-        gnss_reason_str(dbg.reason).c_str(),
-        fix.hdop,
-        fix.vdop,
-        dbg.mahalanobis_sq,
-        dbg.chi2_threshold);
+      // Report the quantity the gate actually compared, with units and the limit
+      // it failed against. NavSatFix carries no DOP, so saying "VDOP_HIGH" and
+      // printing a bare number sent a user tuning max_vdop when the value was
+      // metres of covariance (issue #73). Name the parameter to change.
+      if (fix.has_sigma()) {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+          "GNSS fix rejected: %s (reported sigma_xy=%.2f m limit %.1f, "
+          "sigma_z=%.2f m limit %.1f, d2=%.1f, chi2 threshold=%.1f). "
+          "NavSatFix has no DOP: this gate reads gnss.max_sigma_xy / "
+          "gnss.max_sigma_z in metres, not gnss.max_hdop / gnss.max_vdop.",
+          gnss_reason_str(dbg.reason).c_str(),
+          fix.sigma_xy, max_sigma_xy_,
+          fix.sigma_z,  max_sigma_z_,
+          dbg.mahalanobis_sq, dbg.chi2_threshold);
+      } else {
+        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+          "GNSS fix rejected: %s (hdop=%.2f, vdop=%.2f, d2=%.1f, threshold=%.1f)",
+          gnss_reason_str(dbg.reason).c_str(),
+          fix.hdop, fix.vdop, dbg.mahalanobis_sq, dbg.chi2_threshold);
+      }
     }
 
     publish_gnss_status(rclcpp::Time(msg->header.stamp));
@@ -2178,8 +2211,12 @@ private:
         if (cov(2,2) < kMinVarZ)  cov(2,2) = kMinVarZ;
         fix.has_full_covariance = true;
         fix.full_covariance = cov;
+        // See the NavSatFix path: metres in hdop/vdop for the noise scale,
+        // and the same metres in sigma_* so the gate compares like with like.
         fix.hdop = std::sqrt((cov(0,0) + cov(1,1)) / 2.0);
         fix.vdop = std::sqrt(cov(2,2));
+        fix.sigma_xy = fix.hdop;
+        fix.sigma_z  = fix.vdop;
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
@@ -2192,6 +2229,8 @@ private:
       if (var_xy > 0.0 && var_z > 0.0) {
         fix.hdop = std::sqrt(var_xy);
         fix.vdop = std::sqrt(var_z);
+        fix.sigma_xy = fix.hdop;
+        fix.sigma_z  = fix.vdop;
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
@@ -2212,6 +2251,8 @@ private:
       fix.full_covariance = cov;
       fix.hdop = std::sqrt(var_xy);
       fix.vdop = std::sqrt(var_z);
+      fix.sigma_xy = fix.hdop;
+      fix.sigma_z  = fix.vdop;
     } else if (msg->hdop > 0.0 && msg->vdop > 0.0) {
       // Receiver-native dimensionless DOP: used directly by the core noise model
       // (sigma_xy = base_noise_xy * hdop, sigma_z = base_noise_z * vdop).
@@ -2403,8 +2444,16 @@ private:
       case fusioncore::GnssRejectionReason::MIN_SATS:        return "MIN_SATS";
       case fusioncore::GnssRejectionReason::CHI2_FAILED:     return "CHI2_FAILED";
       case fusioncore::GnssRejectionReason::DELAY_TOO_LARGE: return "DELAY_TOO_LARGE";
-      default:                                                return "NOT_PROCESSED";
+      // These three were missing, so every fix the jump gate or the sigma gate
+      // rejected was published as NOT_PROCESSED on /fusion/debug/gnss_status.
+      // A user watching that topic saw fixes vanish with no stated cause, and
+      // so did our own live_monitor.py during the 2026-08-03 field run.
+      case fusioncore::GnssRejectionReason::IMPLAUSIBLE_JUMP: return "IMPLAUSIBLE_JUMP";
+      case fusioncore::GnssRejectionReason::SIGMA_XY_HIGH:   return "SIGMA_XY_HIGH";
+      case fusioncore::GnssRejectionReason::SIGMA_Z_HIGH:    return "SIGMA_Z_HIGH";
+      case fusioncore::GnssRejectionReason::NOT_PROCESSED:   return "NOT_PROCESSED";
     }
+    return "NOT_PROCESSED";
   }
 
   // Publishes /fusion/debug/gnss_status from the debug struct the core just populated.
@@ -2742,6 +2791,8 @@ private:
         case fusioncore::GnssRejectionReason::CHI2_FAILED:      return "CHI2_FAILED";
         case fusioncore::GnssRejectionReason::DELAY_TOO_LARGE:  return "DELAY_TOO_LARGE";
         case fusioncore::GnssRejectionReason::IMPLAUSIBLE_JUMP: return "IMPLAUSIBLE_JUMP";
+        case fusioncore::GnssRejectionReason::SIGMA_XY_HIGH:    return "SIGMA_XY_HIGH";
+        case fusioncore::GnssRejectionReason::SIGMA_Z_HIGH:     return "SIGMA_Z_HIGH";
       }
       return "";
     };
@@ -2996,6 +3047,10 @@ private:
   std::string encoder2_topic_;
   double      enc2_vel_noise_ = 0.05;
   double      enc2_yaw_noise_ = 0.02;
+  // Cached so the GNSS rejection warning can name the limit it failed against.
+  // Defaults mirror the declare_parameter values.
+  double      max_sigma_xy_ = 25.0;
+  double      max_sigma_z_  = 50.0;
   std::string vslam_topic_;
   std::string vslam_frame_override_;
   // VSLAM map-to-odom frame offset: applied to every VSLAM measurement.
