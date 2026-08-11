@@ -88,9 +88,23 @@ struct FusionCoreConfig {
   // Set to the platform's maximum plausible speed (m/s); a few times cruise
   // speed is safe. 0 = disabled (default, preserves prior behavior).
   double gnss_max_speed        = 0.0;
-  // Slack added to the max_speed * dt bound (m): covers GPS noise and the fact
-  // that the predicted position itself has some uncertainty. ~3-5 m is typical.
+  // Fixed slack added to the max_speed * dt bound (m), covering prediction error
+  // that is not explained by the receiver's own noise.
   double gnss_max_speed_margin = 5.0;
+  // Multiples of the receiver's REPORTED horizontal sigma added to the bound.
+  //
+  // Without this the whole bound is absolute metres, and a fixed margin cannot
+  // tell an impossible jump from ordinary noise unless it happens to sit well
+  // outside the receiver's spread. Measured 2026-08-03 on a u-blox M9N: the
+  // bound worked out to 7 m at 1 Hz while the receiver's own sigma was ~6 m, so
+  // the gate sat inside the noise distribution and rejected 157 of 500 perfectly
+  // good fixes, turning a 2.62 m loop closure into 7.27 m.
+  //
+  // Deliberately scaled by the RECEIVER's sigma and not by the filter's P. The
+  // entire point of this gate is to catch an outlier cluster that a coast-relaxed
+  // chi2 would admit, and chi2 is already the P-scaled test. Scaling this one by
+  // P too would just be a second chi2 and would reopen the hole it exists to plug.
+  double gnss_max_speed_sigma_k = 5.0;
 
   // Adaptive noise covariance
   // Whether to enable adaptive R estimation for each sensor

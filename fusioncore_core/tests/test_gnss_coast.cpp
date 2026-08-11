@@ -170,6 +170,105 @@ TEST(GnssCoastTest, LegitRecoveryAfterGapAccepted) {
   EXPECT_TRUE(accepted) << "legitimate recovery fix was wrongly rejected";
 }
 
+
+// ─── The jump gate must not sit inside the receiver's own noise ──────────────
+//
+// Measured 2026-08-03 on a u-blox M9N at 1 Hz with gnss.max_speed = 2.0: the
+// bound worked out to 2*1 + 5 = 7 m while the receiver's reported sigma was ~6 m,
+// so ordinary noise routinely exceeded it. 157 of 500 good fixes were rejected
+// and the loop closure went from 2.62 m to 7.27 m. The bound now adds
+// max_speed_sigma_k multiples of the RECEIVER's reported sigma.
+
+namespace {
+// Same as make_fix but reporting a realistic standalone-GPS uncertainty, which
+// is what puts the fix on the sigma-aware branch of the gate.
+sensors::GnssFix make_noisy_fix(double x, double y, double sigma) {
+  sensors::GnssFix fix = make_fix(x, y);
+  fix.hdop = sigma;          // metres, as the ROS node derives from covariance
+  fix.vdop = sigma;
+  fix.sigma_xy = sigma;
+  fix.sigma_z  = sigma;
+  return fix;
+}
+
+// Drive east at 1 m/s to `until_s`, feeding GPS at 1 Hz with the given sigma.
+void drive_with_gps(FusionCore& fc, double until_s, double sigma) {
+  const double dt = 0.01, speed = 1.0, g = 9.80665;
+  for (int step = 1; step * dt <= until_s + 1e-9; ++step) {
+    double t = step * dt, tx = speed * t;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
+    if (step % 100 == 0) fc.update_gnss(t, make_noisy_fix(tx, 0.0, sigma));
+  }
+}
+} // namespace
+
+TEST(GnssCoastTest, JumpGateToleratesOrdinaryReceiverNoise) {
+  FusionCoreConfig cfg = demo_config();
+  cfg.gnss_max_speed = 2.0;      // the rover's setting
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  const double sigma = 6.0;      // what the M9N actually reports
+  drive_with_gps(fc, 10.0, sigma);
+
+  // A fix 15 m off truth: 2.5 sigma for this receiver, i.e. ordinary noise.
+  // Old bound was 2*1 + 5 = 7 m, so this was rejected. New bound is
+  // 2*1 + 5 + 5*6 = 37 m, so it must be fused.
+  bool accepted = fc.update_gnss(11.0, make_noisy_fix(11.0 + 15.0, 0.0, sigma));
+  EXPECT_TRUE(accepted)
+      << "the jump gate rejected ordinary noise from a 6 m-sigma receiver; "
+      << "reason=" << static_cast<int>(fc.get_gnss_debug().reason);
+}
+
+TEST(GnssCoastTest, JumpGateStillCatchesRealSpikeOnNoisyReceiver) {
+  // The noise term must not become a loophole: widening the bound for a noisy
+  // receiver still has to leave a genuine multipath spike outside it.
+  FusionCoreConfig cfg = demo_config();
+  cfg.gnss_max_speed = 2.0;
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  const double sigma = 6.0;
+  drive_with_gps(fc, 10.0, sigma);
+
+  // 700 m east. Bound is 37 m even with the noise term, so this is impossible.
+  bool accepted = fc.update_gnss(11.0, make_noisy_fix(11.0 + 700.0, 0.0, sigma));
+  EXPECT_FALSE(accepted);
+  EXPECT_EQ(fc.get_gnss_debug().reason, GnssRejectionReason::IMPLAUSIBLE_JUMP);
+  EXPECT_LT(fc.get_state().x[X], 11.0 + 50.0)
+      << "filter lurched toward the spike";
+}
+
+TEST(GnssCoastTest, JumpGateNoiseTermIsIndependentOfFilterCovariance) {
+  // The gate exists to catch what a coast-relaxed chi2 admits, so its bound must
+  // NOT grow with P. Same fix, same gap, but one filter has been coasting and has
+  // a much larger P: the verdict must be identical.
+  auto verdict = [](double outage_s) {
+    FusionCoreConfig cfg = demo_config();
+    cfg.gnss_max_speed = 2.0;
+    FusionCore fc(cfg);
+    State s0; fc.init(s0, 0.0);
+    const double dt = 0.01, speed = 1.0, g = 9.80665;
+    // 5 s of drive-up, not 10: five GPS fixes is plenty to converge and to set
+    // last_gnss_time_, and this helper runs twice so the saving is doubled.
+    drive_with_gps(fc, 5.0, 6.0);
+    for (int step = 501; step * dt <= 5.0 + outage_s + 1e-9; ++step) {
+      double t = step * dt;
+      fc.update_imu(t, 0, 0, 0, 0, 0, g);
+      if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
+    }
+    // 700 m off truth. Physics says impossible regardless of how lost we feel.
+    double t = 5.0 + outage_s, tx = speed * t;
+    fc.update_gnss(t, make_noisy_fix(tx + 700.0, 0.0, 6.0));
+    return fc.get_gnss_debug().reason;
+  };
+  EXPECT_EQ(verdict(1.0),  GnssRejectionReason::IMPLAUSIBLE_JUMP);
+  EXPECT_EQ(verdict(10.0), GnssRejectionReason::IMPLAUSIBLE_JUMP)
+      << "a long coast inflated P enough to let a 700 m outlier through, which is "
+         "exactly the hole this gate exists to plug";
+}
+
 int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();

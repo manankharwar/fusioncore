@@ -974,8 +974,18 @@ bool FusionCore::apply_gnss_update(
       double gap_s = timestamp_seconds - last_gnss_time_;
       double offset_xy = std::sqrt(innovation_pre[0]*innovation_pre[0] +
                                    innovation_pre[1]*innovation_pre[1]);
+      // Three terms, and each one is a different thing the offset can legitimately
+      // contain: how far the robot could physically have moved, a fixed allowance
+      // for prediction error, and the receiver's own noise. The last term is what
+      // was missing: without it the bound is pure absolute metres and cannot tell
+      // an impossible jump from ordinary noise on a receiver whose sigma happens
+      // to be comparable to the bound. See the config comment for the numbers.
+      const double sigma_term = fix.has_sigma()
+        ? config_.gnss_max_speed_sigma_k * fix.sigma_xy
+        : 0.0;
       double max_offset = config_.gnss_max_speed * std::max(gap_s, 0.0) +
-                          config_.gnss_max_speed_margin;
+                          config_.gnss_max_speed_margin +
+                          sigma_term;
       if (offset_xy > max_offset) {
         ++gnss_outliers_;
         gnss_debug_.accepted = false;

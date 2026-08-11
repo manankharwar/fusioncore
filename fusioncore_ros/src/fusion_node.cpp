@@ -176,6 +176,13 @@ public:
     // A standalone receiver fails that constantly and the GPS silently stops being
     // fused (issue #73). The chi-squared test is the real outlier defence; this gate
     // only needs to catch a receiver reporting nonsense.
+    // Multiples of the receiver's reported horizontal sigma added to the max_speed
+    // jump bound. The bound used to be absolute metres only, which on a receiver
+    // with ~6 m of noise sat inside the noise distribution and rejected 157 of 500
+    // good fixes on a real run. Scaled by the RECEIVER's sigma deliberately, not by
+    // the filter's P: chi2 is already the P-scaled test, and this gate exists to
+    // catch what a coast-relaxed chi2 admits.
+    declare_parameter("gnss.max_speed_sigma_k", 5.0);
     declare_parameter("gnss.max_sigma_xy",   25.0);
     declare_parameter("gnss.max_sigma_z",    50.0);
     declare_parameter("gnss.min_satellites", 4);
@@ -525,6 +532,7 @@ public:
     config.outlier_threshold_gnss = get_parameter("outlier_threshold_gnss").as_double();
     config.gnss_max_speed         = get_parameter("gnss.max_speed").as_double();
     config.gnss_max_speed_margin  = get_parameter("gnss.max_speed_margin").as_double();
+    config.gnss_max_speed_sigma_k = get_parameter("gnss.max_speed_sigma_k").as_double();
     config.outlier_threshold_imu  = get_parameter("outlier_threshold_imu").as_double();
     config.outlier_threshold_enc   = get_parameter("outlier_threshold_enc").as_double();
     config.outlier_threshold_hdg   = get_parameter("outlier_threshold_hdg").as_double();
@@ -655,6 +663,27 @@ public:
     RCLCPP_INFO(get_logger(),
       "FusionCore configured. base_frame=%s odom_frame=%s rate=%.0fHz",
       base_frame_.c_str(), odom_frame_.c_str(), publish_rate_);
+
+    // Say out loud what the output frame's yaw is referenced to. The filter's
+    // state is local ENU (x=east, y=north), so with a 9-axis IMU the output is
+    // world-referenced from the first message, while wheel odometry uses
+    // "x = wherever the robot happened to face at boot". Those two frames differ
+    // by the boot heading, and comparing them looks exactly like an x/y swap.
+    // Issue #73 hit this and reasonably read it as a bug. It is correct
+    // behaviour, so the fix is to state it rather than to change it.
+    if (get_parameter("imu.has_magnetometer").as_bool()) {
+      RCLCPP_INFO(get_logger(),
+        "Output frame: local ENU (x=east, y=north). Yaw is absolute from the "
+        "first IMU message because imu.has_magnetometer is true. This will NOT "
+        "line up with a wheel-odometry frame unless the robot booted facing "
+        "east: expect a constant rotation equal to the boot heading.");
+    } else {
+      RCLCPP_INFO(get_logger(),
+        "Output frame: local ENU (x=east, y=north). Yaw starts relative and "
+        "becomes absolute once heading is validated (GPS track over "
+        "gnss.track_heading_min_dist, dual antenna, or a compass). Until then "
+        "the frame is aligned to the robot's starting heading.");
+    }
 
     autostart_ = get_parameter("autostart").as_bool();
     if (autostart_) {

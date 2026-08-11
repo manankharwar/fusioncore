@@ -1,6 +1,6 @@
 {
   "_note": "Honest per-sequence baseline for FusionCore NCLT regression tracking. This is NOT the published marketing table: it is the reference the regression checker (tools/check_benchmark_regression.py) diffs new runs against, so a change that helps one sequence but hurts another is caught the same day instead of drifting silently for weeks. Numbers are FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth. Regenerate a sequence entry from its results/metrics.json (produced by tools/evaluate.py --json).",
-  "_status": "PARTIAL. Only 3 of 12 NCLT sequences are staged on this machine, so only these are tracked. A controlled full-suite re-run on current main is still owed before any published number is updated. 'verified' marks a run confirmed on the recorded commit; 'provisional' entries were measured mid-investigation and should be re-run under a controlled current-main config before being trusted.",
+  "_status": "SUPERSEDED as of 2026-08-05. Every number below was measured with gnss.max_speed active and no sigma term in its bound, a configuration since shown to reject good GPS and cascade into drift: on 1200 s of 2013-04-05, the old bound gave 125 IMPLAUSIBLE_JUMP rejections and 915.0 m ATE where the fixed bound gives 3 rejections and 5.5 m. These entries are therefore not a valid reference for current main and must NOT be used to judge a regression. A controlled full-suite re-run on current main is owed before any entry here or any published number is updated. Previous status: PARTIAL, only 3 of 12 sequences staged. PARTIAL. Only 3 of 12 NCLT sequences are staged on this machine, so only these are tracked. A controlled full-suite re-run on current main is still owed before any published number is updated. 'verified' marks a run confirmed on the recorded commit; 'provisional' entries were measured mid-investigation and should be re-run under a controlled current-main config before being trusted.",
   "baseline_commit": "9bcbb9d",
   "recorded": "2026-07-01",
   "regression_threshold_pct": 10.0,
@@ -8,7 +8,7 @@
     "2013-04-05": {
       "fusioncore_ate_rmse_3d": 19.405,
       "fusioncore_ate_rmse_xy": 18.189,
-      "rl_ate_rmse_3d": 268.720,
+      "rl_ate_rmse_3d": 268.72,
       "verified": true,
       "measured": "2026-07-01",
       "commit": "9bcbb9d",

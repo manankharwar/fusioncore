@@ -47,6 +47,21 @@ fusioncore:
                                     # 727m outlier cluster at the blackout boundary that a
                                     # coast-relaxed chi2 gate admits). 2x cruise is safe.
     gnss.max_speed_margin: 5.0      # slack for GPS noise + prediction uncertainty (m)
+    # Pinned explicitly rather than inherited, so a change to the product default
+    # cannot silently move benchmark numbers. Set to 5.0 to MATCH the current
+    # default, because the benchmark should measure the configuration users
+    # actually get.
+    #
+    # Do not set this to 0.0, which is what the gate effectively did before the
+    # sigma term existed. Measured on 1200 s of 2013-04-05, everything else
+    # identical:
+    #     k=0.0   125 IMPLAUSIBLE_JUMP rejections   ATE 915.0 m
+    #     k=5.0     3 IMPLAUSIBLE_JUMP rejections   ATE   5.5 m
+    # The player stamps a fixed 3 m sigma and GPS arrives at ~4.5 Hz, so the old
+    # bound came to 3.0*0.22 + 5.0 = 5.7 m against 3 m of noise. It sat inside
+    # the noise distribution, rejected fixes, drifted, and the drift made the
+    # next fix look even more implausible.
+    gnss.max_speed_sigma_k: 5.0
     gnss.coast_n: 3                 # consecutive rejections before coast mode
     gnss.coast_q_factor: 10.0       # Q_position multiplier during coast: enough for chi2 to accept genuine drift, small enough to reject extreme outliers
     gnss.coast_timeout_s: 30.0      # also coast if GPS silent for 30s (covers mode=2 outages)

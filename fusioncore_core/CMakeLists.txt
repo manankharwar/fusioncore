@@ -48,10 +48,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_magnetometer tests/test_magnetometer.cpp TIMEOUT 300)
   target_link_libraries(test_magnetometer fusioncore_core Eigen3::Eigen)
 
-  # Longer timeout: these are integration-style runs (tens of seconds of
-  # simulated 100 Hz drive), which are fast in Release but can approach the
-  # default 60s ctest timeout on a slower Debug CI build.
-  ament_add_gtest(test_gnss_coast tests/test_gnss_coast.cpp TIMEOUT 300)
+  # Long timeout: these are integration-style runs (tens of seconds of simulated
+  # 100 Hz drive each), and the file now holds seven of them. Measured 186 s on a
+  # Release desktop build, so 300 left only 38% headroom and a slower CI runner
+  # would have started failing intermittently, which is worse than a slow test
+  # because nobody trusts a flaky suite. 600 gives 3x headroom.
+  ament_add_gtest(test_gnss_coast tests/test_gnss_coast.cpp TIMEOUT 600)
   target_link_libraries(test_gnss_coast fusioncore_core Eigen3::Eigen)
 
   ament_add_gtest(test_clock_skew tests/test_clock_skew.cpp TIMEOUT 300)

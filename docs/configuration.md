@@ -328,8 +328,20 @@ fusioncore:
     # platform's maximum plausible speed in m/s (a few times cruise is safe); this
     # is a per-robot spec like wheel radius, not per-run tuning. 0.0 = disabled.
     gnss.max_speed_margin: 5.0
-    # Slack (m) added to the max_speed * gap bound: covers GPS noise and the
-    # uncertainty in the predicted position. 3-5 m is typical.
+    # Fixed slack (m) added to the bound, covering prediction error that the
+    # receiver's own noise does not explain. 3-5 m is typical.
+    gnss.max_speed_sigma_k: 5.0
+    # Multiples of the receiver's REPORTED horizontal sigma also added to the
+    # bound, so the gate adapts to the receiver instead of being a fixed distance.
+    # This matters more than it looks. With sigma_k at 0 the whole bound is
+    # absolute metres: at 1 Hz with max_speed 2.0 and a 5 m margin it is 7 m,
+    # and a standalone receiver whose own sigma is ~6 m then trips it constantly.
+    # Measured on a u-blox M9N: 157 of 500 good fixes rejected, loop closure
+    # 2.62 m -> 7.27 m. The full bound is:
+    #     max_speed * gap  +  max_speed_margin  +  sigma_k * reported_sigma_xy
+    # Scaled by the RECEIVER's sigma deliberately, never by the filter's own
+    # covariance: chi2 is already the covariance-scaled test, and this gate exists
+    # precisely to catch what a coast-inflated chi2 lets through.
 
     # ── Adaptive noise ────────────────────────────────────────────────────────
     adaptive.imu: true
