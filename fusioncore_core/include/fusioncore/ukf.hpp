@@ -76,6 +76,17 @@ public:
   // Scale applied to position diagonal of Q during inertial coast mode.
   // 1.0 = normal operation; > 1.0 = inflated position uncertainty.
   void set_position_noise_scale(double s) { pos_noise_scale_ = s; }
+
+  // Diagnostic: how far the LAST measurement update moved the position estimate,
+  // in metres, i.e. the norm of the X/Y rows of K * innovation.
+  //
+  // Position should only move by integrating velocity. Anything an update adds
+  // is the P position/velocity cross-covariance dragging it sideways. On the
+  // 2026-08-03 field bag those corrections summed to more than the robot actually
+  // travelled (161 m of correction against 127 m of real motion) while the
+  // integrated velocity was accurate to 0.4 percent. Exposing it per update is
+  // what makes that attributable to a specific sensor instead of guessable.
+  double last_position_correction() const { return last_pos_correction_; }
   double position_noise_scale() const     { return pos_noise_scale_; }
 
   // Scale applied to gyro bias diagonal of Q during GPS coast mode.
@@ -100,6 +111,7 @@ public:
 
 private:
   UKFParams params_;
+  double last_pos_correction_ = 0.0;
   State state_;
   bool   initialized_           = false;
   double pos_noise_scale_       = 1.0;

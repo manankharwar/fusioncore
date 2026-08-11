@@ -239,7 +239,9 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   // when S is near-singular. K = Pxz * S^{-1} = (S^{-1} * Pxz^T)^T.
   auto S_ldlt = S.ldlt();
   PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
-  state_.x = normalize_state(state_.x + K * innovation);
+  const StateVector correction = K * innovation;
+  last_pos_correction_ = std::hypot(correction[X], correction[Y]);
+  state_.x = normalize_state(state_.x + correction);
   state_.P -= K * S * K.transpose();
   // Symmetrize after each update to prevent floating-point asymmetry from
   // accumulating across the ~100 Hz IMU + 1 Hz GPS update stream.
