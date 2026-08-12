@@ -538,9 +538,19 @@ reference.use_first_fix: true
 
 FusionCore supports two GPS message types on `gnss.fix_topic` (default `/gnss/fix`). The default is `sensor_msgs/NavSatFix` because every ROS GPS driver publishes it. Set `gnss.use_gps_fix: true` to switch to `gps_msgs/GPSFix` if your driver supports it.
 
+!!! note "`nmea_navsat_driver` does NOT publish `gps_msgs/GPSFix`"
+
+    An earlier version of this table listed it as a `GPSFix` source. That was
+    wrong, reported by a user on issue #73. Checked against the driver source:
+    it publishes `sensor_msgs/NavSatFix` on `fix`, `geometry_msgs/TwistStamped`
+    on `vel`, `geometry_msgs/QuaternionStamped` on `heading`, and
+    `sensor_msgs/TimeReference`. If you are on `nmea_navsat_driver`, leave
+    `gnss.use_gps_fix` at `false`. To get `GPSFix` from an NMEA receiver, run
+    `fix_translator` from `gps_umd`, which converts `NavSatFix` to `GPSFix`.
+
 | | `sensor_msgs/NavSatFix` | `gps_msgs/GPSFix` |
 |---|---|---|
-| Driver support | Universal | nmea_navsat_driver, ublox_dgnss, others |
+| Driver support | Universal | gpsd_client (gps_umd), septentrio_gnss_driver, swiftnav-ros2, KumarRobotics/ublox |
 | RTK_FLOAT status | Not expressible | Yes (status 20) |
 | Separate HDOP / VDOP | No | Yes |
 | Satellites used | No | Yes |
