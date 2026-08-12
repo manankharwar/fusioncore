@@ -21,7 +21,13 @@ fusioncore:
     # base_noise_xy=1.0: FC reads cov from message and uses sqrt(var_xy) * base_noise_xy
     gnss.base_noise_xy: 1.0
     gnss.base_noise_z: 1.0
-    gnss.max_hdop: 10.0        # lenient: NCLT doesn't publish HDOP, FC defaults to 1.0
+    # The player stamps a covariance on every fix, so the SIGMA gate is what runs
+    # here and max_hdop below never fires. Pinned explicitly, like sigma_k, so a
+    # change to a product default cannot silently move benchmark numbers.
+    # Player values are a fixed 3.0 m horizontal / 5.0 m vertical sigma.
+    gnss.max_sigma_xy: 25.0
+    gnss.max_sigma_z: 50.0
+    gnss.max_hdop: 10.0        # DOP path only; unused with the player's covariance
     gnss.min_satellites: 0     # NCLT doesn't publish satellite count
     gnss.min_fix_type: 1       # accept any valid fix (mode >= 2 already filtered in player)
     gnss.heading_topic: ""     # no dual-antenna in NCLT
