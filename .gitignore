@@ -118,3 +118,8 @@ scratchpad/
 # Benchmark run outputs (trajectories/plots): reproducible, large, machine-local.
 # The verified numbers live in tools/benchmark_baseline.json, which IS tracked.
 **/results_fast/
+
+# Analysis plots and social-post images written to the repo root. Machine-local,
+# regenerable from the bags, and often large. Leading slash anchors to the root
+# ONLY, so the four figures the docs actually use (docs/assets/*.png) stay tracked.
+/*.png
