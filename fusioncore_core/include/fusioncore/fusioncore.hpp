@@ -276,6 +276,11 @@ struct GnssFixDebug {
   GnssRejectionReason reason            = GnssRejectionReason::NOT_PROCESSED;
   double             mahalanobis_sq     = -1.0;  // -1 = not computed (quality gate failed first)
   double             chi2_threshold     = 0.0;
+  // Why GPS track heading did not fuse on this fix, when it did not.
+  // Silent skipping is how the original problem stayed invisible: the user saw a
+  // zig-zag path and had no way to tell which heading source caused it.
+  bool               track_heading_skipped_stronger_source = false;
+  bool               track_heading_skipped_motion          = false;
   double             hdop               = 0.0;
   double             vdop               = 0.0;
   int                satellites         = 0;

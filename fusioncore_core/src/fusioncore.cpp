@@ -933,6 +933,15 @@ bool FusionCore::apply_gnss_update(
       R(i,i) = std::max(R(i,i), R_gnss_(i,i));
   }
 
+  // Captured BEFORE the position update, because the GPS track-heading gates
+  // below must judge the motion the robot was actually doing over the baseline,
+  // not the velocity that this very fix just corrected. Same reasoning as Fix 8
+  // in update_distance_traveled().
+  const double pre_speed_for_hdg = std::sqrt(
+      ukf_.state().x[VX] * ukf_.state().x[VX] +
+      ukf_.state().x[VY] * ukf_.state().x[VY]);
+  const double pre_yaw_rate_for_hdg = std::abs(ukf_.state().x[WZ]);
+
   double heading_sigma_rad = compute_heading_sigma_rad();
   double heading_sigma_deg = heading_sigma_rad * 180.0 / M_PI;
   gnss_debug_.heading_sigma_deg = heading_sigma_deg;
@@ -1068,7 +1077,37 @@ bool FusionCore::apply_gnss_update(
   // Displacement accumulates across multiple GPS fixes (using a separate reference
   // position that only advances when a heading fusion fires) so the baseline is
   // always large enough for the uncertainty to be meaningful.
-  if (config_.gps_track_heading_enabled) {
+  // Two guards before any of this runs.
+  //
+  // (a) A stronger absolute heading source makes this one harmful, not merely
+  //     redundant. GPS track heading is course over ground, so on any curved
+  //     path it differs from body heading by a real bias, and a biased
+  //     measurement pulls the estimate wrong no matter how honest its R is.
+  //     A dual antenna, a magnetometer, or a 9-axis IMU orientation all beat
+  //     it outright, and the heading_source_ ladder already ranks them.
+  //     Reported on issue #73: a Nav2 path that was straight without GPS became
+  //     a zig-zag with it, on a robot with a perfectly good magnetometer.
+  //
+  // (b) The min_speed / max_yaw_rate parameters have always been documented as
+  //     guarding track heading, but they only ever gated distance_traveled_ and
+  //     the heading_validated_ flag in update_distance_traveled(). The fusion
+  //     itself ran unguarded, so a slow turning robot fused its turn radius as
+  //     a heading. Applying them here is what those parameters already promise.
+  const bool have_stronger_heading =
+      heading_validated_ && (heading_source_ == HeadingSource::DUAL_ANTENNA ||
+                             heading_source_ == HeadingSource::MAGNETOMETER ||
+                             heading_source_ == HeadingSource::IMU_ORIENTATION);
+  const bool motion_suits_track_heading =
+      (pre_speed_for_hdg    >= config_.gps_track_heading_min_speed) &&
+      (pre_yaw_rate_for_hdg <= config_.gps_track_heading_max_yaw_rate);
+
+  gnss_debug_.track_heading_skipped_stronger_source = have_stronger_heading;
+  gnss_debug_.track_heading_skipped_motion          =
+      !have_stronger_heading && !motion_suits_track_heading;
+
+  if (config_.gps_track_heading_enabled &&
+      !have_stronger_heading &&
+      motion_suits_track_heading) {
     if (!hdg_fix_set_) {
       // Initialize reference on first accepted fix; no heading yet.
       last_hdg_fix_x_ = fix.x;

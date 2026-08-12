@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <cmath>
 #include "fusioncore/ukf.hpp"
 #include "fusioncore/state.hpp"
 #include "fusioncore/sensors/gnss.hpp"
@@ -405,6 +406,118 @@ TEST(GNSSTest, SigmaRejectionNamesTheGateThatFired) {
   ok.hdop = ok.sigma_xy = 2.0;
   ok.vdop = ok.sigma_z  = 8.0;
   EXPECT_TRUE(fc.update_gnss(3.0, ok));
+}
+
+
+// ─── GPS track heading must not fight a better heading source (issue #73) ────
+//
+// GPS track heading is course over ground. On a curved path that differs from
+// body heading by a real bias, not just noise, so fusing it corrupts the
+// estimate no matter how honest its R is. A user on a Nav2 path reported a
+// straight route without GPS turning into a zig-zag with it, on a robot whose
+// magnetometer was perfectly stable.
+
+namespace {
+// Drive east in a straight line at `speed`, feeding GPS every `gps_every_s`.
+// Returns the filter so the caller can inspect what the heading fusion did.
+// Drive at `speed` with a constant `yaw_rate`, feeding GPS at 1 Hz. The GPS
+// track follows the SAME arc the robot is driving, so a turning case stays
+// physically consistent and the fix is not rejected as an outlier.
+// with_orientation: also call update_imu_orientation, which is what a 9-axis
+// driver does and what makes heading_source_ become IMU_ORIENTATION.
+void drive_arc(FusionCore& fc, double to_s, double speed,
+               double yaw_rate, bool with_orientation) {
+  const double dt = 0.01, g = 9.80665;
+  for (int step = 1; step * dt <= to_s + 1e-9; ++step) {
+    double t   = step * dt;
+    double yaw = yaw_rate * t;
+    fc.update_imu(t, 0, 0, yaw_rate, 0, 0, g);
+    if (with_orientation) fc.update_imu_orientation(t, 0.0, 0.0, yaw);
+    if (step % 2 == 0) fc.update_encoder(t, speed, 0.0, yaw_rate);
+    if (step % 100 == 0) {
+      // Exact arc: straight line degenerates correctly as yaw_rate -> 0.
+      double x, y;
+      if (std::abs(yaw_rate) < 1e-9) { x = speed * t;               y = 0.0; }
+      else                           { x = speed / yaw_rate * std::sin(yaw);
+                                       y = speed / yaw_rate * (1.0 - std::cos(yaw)); }
+      GnssFix f;
+      f.x = x; f.y = y; f.z = 0.0;
+      f.hdop = f.sigma_xy = 2.0;
+      f.vdop = f.sigma_z  = 3.0;
+      f.satellites = 10;
+      f.fix_type = GnssFixType::GPS_FIX;
+      fc.update_gnss(t, f);
+    }
+  }
+}
+} // namespace
+
+TEST(GNSSTest, TrackHeadingSkippedWhenImuOrientationIsAbsolute) {
+  // A 9-axis IMU makes heading_source_ IMU_ORIENTATION, which outranks
+  // GPS_TRACK. Track heading must then stand down entirely.
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = true;          // 9-axis: orientation IS a heading
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  drive_arc(fc, 20.0, 1.0, 0.0, /*with_orientation=*/true);
+
+  EXPECT_EQ(fc.get_status().heading_source, HeadingSource::IMU_ORIENTATION);
+  EXPECT_TRUE(fc.get_gnss_debug().track_heading_skipped_stronger_source)
+      << "GPS track heading fused on top of an absolute IMU heading";
+}
+
+TEST(GNSSTest, TrackHeadingStillRunsWithoutAnAbsoluteSource) {
+  // Regression guard for the opposite direction: a 6-axis IMU has no absolute
+  // heading, so GPS track heading is the only thing that can supply one and
+  // must keep working exactly as before.
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;         // 6-axis: gyro yaw drifts
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  drive_arc(fc, 20.0, 1.0, 0.0, /*with_orientation=*/false);
+
+  EXPECT_FALSE(fc.get_gnss_debug().track_heading_skipped_stronger_source);
+  EXPECT_TRUE(fc.get_status().heading_validated)
+      << "GPS track heading failed to validate heading on a 6-axis robot";
+  EXPECT_EQ(fc.get_status().heading_source, HeadingSource::GPS_TRACK);
+}
+
+TEST(GNSSTest, TrackHeadingSkippedWhileTurningHard) {
+  // gps_track_heading_max_yaw_rate has always been documented as guarding this
+  // fusion, but it only gated the heading_validated_ flag: the fusion itself ran
+  // unguarded, so a turning robot fused its course over ground as body heading.
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;         // no stronger source, so only the
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  cfg.gps_track_heading_max_yaw_rate = 0.3; // motion gate can be responsible
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  // Turning at 0.8 rad/s, well above the 0.3 limit, on a consistent arc.
+  drive_arc(fc, 20.0, 1.0, 0.8, /*with_orientation=*/false);
+
+  EXPECT_TRUE(fc.get_gnss_debug().track_heading_skipped_motion)
+      << "track heading fused while the robot was turning at 0.8 rad/s";
+}
+
+TEST(GNSSTest, TrackHeadingSkippedWhenTooSlowToHaveACourse) {
+  // Below min_speed the displacement is GPS noise, not travel, so its bearing
+  // is meaningless.
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  cfg.gps_track_heading_min_speed = 0.2;
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  drive_arc(fc, 20.0, 0.05, 0.0, /*with_orientation=*/false);  // 5 cm/s vs 0.2 limit
+
+  EXPECT_TRUE(fc.get_gnss_debug().track_heading_skipped_motion)
+      << "track heading fused a bearing derived from noise at 0.05 m/s";
 }
 
 int main(int argc, char** argv) {
