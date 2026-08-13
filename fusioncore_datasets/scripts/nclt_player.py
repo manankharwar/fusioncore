@@ -149,6 +149,7 @@ class NCLTPlayer(Node):
             f'({self._count("imu")} IMU, {self._count("gps")} GPS, '
             f'{self._count("odom")} odom)  rate={self._rate}x')
 
+        self._playback_done = False
         threading.Thread(target=self._play, daemon=True).start()
 
     # ── loaders ───────────────────────────────────────────────────────────────
@@ -354,6 +355,16 @@ class NCLTPlayer(Node):
 
         self.get_logger().info('Playback complete.')
 
+        # Actually exit, do not just say so. Playback runs on a daemon thread
+        # while main() sits in rclpy.spin(), so logging here left the process
+        # alive indefinitely: every other node and the bag recorder kept running
+        # against a frozen clock, appending to the bag until something killed
+        # them from outside. That made a run's contents depend on when the
+        # operator lost patience. Shutting down here lets the launch file's
+        # OnProcessExit handler fire and take the whole graph down cleanly.
+        self._playback_done = True
+        rclpy.shutdown()
+
     # ── publishers ────────────────────────────────────────────────────────────
 
     def _pub_imu(self, ros_time: Time, data: list):
@@ -430,9 +441,15 @@ def main():
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
+    except rclpy.executors.ExternalShutdownException:
+        pass          # _play() finished and shut us down; that is the happy path
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            node.destroy_node()
+        except Exception:
+            pass
+        if rclpy.ok():
+            rclpy.shutdown()
 
 
 if __name__ == '__main__':

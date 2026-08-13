@@ -30,7 +30,9 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import (DeclareLaunchArgument, ExecuteProcess,
-                             TimerAction, LogInfo)
+                             TimerAction, LogInfo, EmitEvent as EmitPlainEvent)
+from launch.event_handlers import OnProcessExit
+from launch.events import Shutdown
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node, LifecycleNode
 from launch_ros.event_handlers import OnStateTransition
@@ -176,21 +178,40 @@ def generate_launch_description():
     )
 
     # ── bag recorder ─────────────────────────────────────────────────────────
-    recorder = TimerAction(
-        period=6.0,
-        actions=[
-            ExecuteProcess(
-                cmd=[
-                    'ros2', 'bag', 'record',
-                    '-o', output_bag,
-                    '/fusion/odom',
-                    '/rl/odometry',
-                    '/gnss/fix',
-                    '/clock',
-                ],
-                output='screen',
-            )
+    record_proc = ExecuteProcess(
+        cmd=[
+            'ros2', 'bag', 'record',
+            '-o', output_bag,
+            '/fusion/odom',
+            '/rl/odometry',
+            '/gnss/fix',
+            '/clock',
         ],
+        output='screen',
+    )
+
+    recorder = TimerAction(period=6.0, actions=[record_proc])
+
+    # Shut the whole graph down when the player exits.
+    #
+    # Without this the launch never returns: nclt_player logs "Playback complete"
+    # and exits, and every other node plus the bag recorder keeps running against
+    # a frozen clock, appending to the bag until something kills them from
+    # outside. That made runs depend on when the operator lost patience, which is
+    # not a property a benchmark can have. Worse, an un-killed recorder outlives
+    # the run and records the NEXT one too: a bag came out of that with exactly
+    # double the GPS fixes and still evaluated to a plausible-looking number.
+    #
+    # Shutdown propagates SIGINT, which is also what the recorder needs in order
+    # to write metadata.yaml. SIGKILL leaves the bag unreadable.
+    stop_when_playback_done = RegisterEventHandler(
+        OnProcessExit(
+            target_action=nclt_player,
+            on_exit=[
+                LogInfo(msg='Playback finished, shutting the benchmark graph down.'),
+                EmitPlainEvent(event=Shutdown(reason='playback complete')),
+            ],
+        )
     )
 
     return LaunchDescription(args + [
@@ -204,4 +225,5 @@ def generate_launch_description():
         rl_ekf,
         navsat,
         recorder,
+        stop_when_playback_done,
     ])
