@@ -83,3 +83,41 @@ row and column destroys the cross-covariance a measurement needs to correct yaw,
 which broke `MagnetometerTest.UpdateMovesYawTowardMeasurement` and
 `ClockSkewTest.SkewedSensorPairDoesNotDiverge`. Bounded covariance may still be
 the right idea, but not implemented that way.
+
+## Gauss-Markov bias experiment (2026-08-13)
+
+`gauss_markov_experiment.patch` applies first-order decay to the bias states in
+`motion_model.cpp`, so they are bounded processes rather than pure random walks.
+It is a patch rather than shipped code because the version tested used
+file-static globals to hold the time constants, which is not per-instance and
+not thread-safe; FusionCore supports running two instances, so that would be a
+defect. Re-apply it with `git apply` to reproduce the numbers below.
+
+Truth after 60 s is x = 60.00, yaw = 0.00, accX = 0, biasAX = 0.
+
+```
+tau        x@60    yaw       accX     biasAX
+OFF         8.83   143.54    -0.707   -0.0575
+300 s       8.14   179.94    -0.009   -0.0553
+60 s        5.70   177.38    -0.004    0.0042
+10 s       21.20    -0.00     0.000   -0.0000
+2 s        42.74    -0.00     0.000    0.0000
+```
+
+**What it establishes.** Constraining the bias states fixes the state estimates
+completely: at tau = 2 s, yaw, accX and the accel bias are all exactly right, and
+position improves 4.8x. So the bias random-walk really is what destroys heading.
+
+**Why it is not the fix.** A physically realistic bias correlation time (300 s,
+typical for MEMS) does nothing at all. Only an unphysical 2 s helps, and a 2 s
+bias decay is not modelling a bias, it is suppressing the bias state. That points
+at a stronger conclusion: FusionCore probably should not estimate these bias
+states while they are unobservable, rather than decaying them aggressively.
+
+**And it is not sufficient.** Even at tau = 2 s with yaw estimated perfectly,
+position reaches only 42.74 of 60, i.e. 71%. Inverting `exp(-sigma^2/2) = 0.71`
+gives about 47 degrees of residual yaw UNCERTAINTY. That last 29% is the UKF
+sigma-point averaging itself: the position mean is the average of `R(q_i)*v*dt`
+over sigma points that face different directions, so it shrinks even when the
+best-estimate heading is exactly right. Fixing that is a filter-design decision
+about how the mean is propagated, not a tuning question.

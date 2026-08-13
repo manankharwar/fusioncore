@@ -1,0 +1,62 @@
+diff --git a/fusioncore_core/src/motion_model.cpp b/fusioncore_core/src/motion_model.cpp
+index 507e1e7..02e41f6 100644
+--- a/fusioncore_core/src/motion_model.cpp
++++ b/fusioncore_core/src/motion_model.cpp
+@@ -7,10 +7,57 @@ namespace fusioncore {
+ // Shared kinematics: position + orientation integration, common to all models.
+ // vy_body overrides the lateral velocity used in position integration.
+ // Pass x[VY] for the default (no constraint) or 0.0 for non-holonomic models.
++// First-order Gauss-Markov time constants for the bias states, in seconds.
++// 0 or negative disables decay for that group (pure random walk, the original
++// behaviour). Set from UKFParams by set_bias_tau() below.
++namespace {
++  double g_tau_gyro     = 0.0;
++  double g_tau_accel    = 0.0;
++  double g_tau_enc_wz   = 0.0;
++  inline double gm_decay(double dt, double tau) {
++    return (tau > 0.0) ? std::exp(-dt / tau) : 1.0;
++  }
++}
++
++void set_bias_tau(double tau_gyro, double tau_accel, double tau_enc_wz) {
++  g_tau_gyro   = tau_gyro;
++  g_tau_accel  = tau_accel;
++  g_tau_enc_wz = tau_enc_wz;
++}
++
+ static StateVector kinematic_predict(const StateVector& x, double dt, double vy_body)
+ {
+   StateVector x_new = x;
+ 
++  // Bias states as first-order Gauss-Markov processes rather than pure random
++  // walks. A random-walk bias has unbounded variance, and the yaw-rate trio
++  // (WZ, B_GZ, B_EWZ) is structurally unobservable (the gyro measures WZ+B_GZ,
++  // the encoder measures WZ+B_EWZ: two equations, three unknowns), so that
++  // unbounded direction is free to wander. Yaw then drifts, and because position
++  // is predicted as R(q)*v*dt averaged over the sigma points, an uncertain
++  // heading collapses the position mean: measured with a PERFECT encoder at
++  // 1 m/s, the filter reported vx = 1.000 while position went BACKWARDS
++  // (tools/repro/dr.cpp).
++  //
++  // Decaying toward zero bounds the bias variance at q*tau/2 instead of letting
++  // it grow forever, which is the standard INS treatment. Disabled by default
++  // (tau = 0) so behaviour is unchanged unless a config opts in.
++  if (g_tau_gyro > 0.0) {
++    const double d = gm_decay(dt, g_tau_gyro);
++    x_new[B_GX] = x[B_GX] * d;
++    x_new[B_GY] = x[B_GY] * d;
++    x_new[B_GZ] = x[B_GZ] * d;
++  }
++  if (g_tau_accel > 0.0) {
++    const double d = gm_decay(dt, g_tau_accel);
++    x_new[B_AX] = x[B_AX] * d;
++    x_new[B_AY] = x[B_AY] * d;
++    x_new[B_AZ] = x[B_AZ] * d;
++  }
++  if (g_tau_enc_wz > 0.0) {
++    x_new[B_EWZ] = x[B_EWZ] * gm_decay(dt, g_tau_enc_wz);
++  }
++
+   // Normalize quaternion before use: sigma points may not be exactly unit length.
+   double qnorm = std::sqrt(x[QW]*x[QW] + x[QX]*x[QX] + x[QY]*x[QY] + x[QZ]*x[QZ]);
+   double qw = x[QW]/qnorm, qx = x[QX]/qnorm, qy = x[QY]/qnorm, qz = x[QZ]/qnorm;
