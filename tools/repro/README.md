@@ -40,6 +40,28 @@ the true speed.
 The motion model itself is correct. The loss is in the weighted-mean
 reconstruction, and it happens under both motion models.
 
+## Which configurations are affected
+
+`scope.cpp` answers that directly. Truth is 60.00 m after 60 s:
+
+```
+configuration                                          x (m)    err (m)   yaw sigma
+encoder + 6-axis IMU     (wheels_indoor, f1tenth)    -114.06    174.06     348 deg  BROKEN
++ 2nd velocity source    (icp_indoor / ICP odom)     -144.09    204.09     419 deg  BROKEN
++ VSLAM pose             (vslam_imu)                   60.00      0.00       1 deg  OK
++ 9-axis IMU orientation (has_magnetometer: true)      59.99      0.01       1 deg  OK
+```
+
+**The rule: anything that observes YAW protects you; anything that only observes
+velocity does not.** VSLAM measures full 6-DOF pose including yaw, and a 9-axis
+IMU orientation does the same, so yaw sigma stays at 1 degree and position is
+exact. Adding a second velocity source makes it slightly WORSE (204 m vs 174 m),
+because it increases confidence in speed while leaving direction just as unknown.
+
+Exposed as shipped: `wheels_indoor.yaml`, `f1tenth_indoor.yaml`, and
+`icp_indoor.yaml` in either documented option (ICP is fed as a velocity source
+either way). Protected: VSLAM, 9-axis IMU, dual antenna, or continuous GPS.
+
 ## Useful arguments
 
 ```

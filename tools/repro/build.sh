@@ -3,7 +3,7 @@
 # dataset, no harness. Found 2026-08-12 while chasing an NCLT "regression" that
 # turned out to be a long-standing core bug.
 W="${ROS_WS:-$HOME/ros_ws}"
-for f in dr iso; do
+for f in dr iso scope; do
   g++ -O2 -std=c++17 "$(dirname "$0")/$f.cpp" -o "/tmp/$f" \
     -I"$W/install/fusioncore_core/include" \
     -I"$W/install/fusioncore_core/include/fusioncore_core" \
