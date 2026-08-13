@@ -13,6 +13,7 @@ int main(int argc, char** argv) {
   const double Q_ACC  = argc > 3 ? atof(argv[3]) : -1.0;   // <0 = leave default
   const double Q_BACC = argc > 4 ? atof(argv[4]) : -1.0;
   const double ALPHA  = argc > 5 ? atof(argv[5]) : -1.0;
+  const double Q_WZ   = argc > 6 ? atof(argv[6]) : -1.0;
 
   FusionCoreConfig cfg;
   cfg.imu.gyro_noise_x = cfg.imu.gyro_noise_y = cfg.imu.gyro_noise_z = 0.005;
@@ -26,6 +27,7 @@ int main(int argc, char** argv) {
   if (Q_ACC  >= 0.0) cfg.ukf.q_acceleration = Q_ACC;
   if (Q_BACC >= 0.0) cfg.ukf.q_accel_bias   = Q_BACC;
   if (ALPHA  >  0.0) cfg.ukf.alpha           = ALPHA;
+  if (Q_WZ   >= 0.0) cfg.ukf.q_angular_vel    = Q_WZ;
 
   FusionCore fc(cfg);
   State s0; fc.init(s0, 0.0);
