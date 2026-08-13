@@ -44,7 +44,7 @@ Starts FusionCore with fake sensors and checks all outputs in about 15 seconds. 
 
 ### **Option B: Docker (no ROS install required)**
 
-The easiest way to try FusionCore — no ROS 2 installation needed. The image is hosted on GitHub Container Registry (GHCR).
+The easiest way to try FusionCore: no ROS 2 installation needed. The image is hosted on GitHub Container Registry (GHCR).
 
 ```bash
 # Pull the image
@@ -177,7 +177,7 @@ The architectural differences that matter in practice:
 
 | Problem | How FusionCore handles it |
 |---|---|
-| GPS outliers corrupt the state | Chi-squared gate per sensor DOF rejects bad fixes before they reach the filter. Covariance bounded at every step — no NaN divergence. |
+| GPS outliers corrupt the state | Chi-squared gate per sensor DOF rejects bad fixes before they reach the filter. Covariance bounded at every step: no NaN divergence. |
 | UTM zone boundary near the operating area | GPS fused directly in ECEF. No UTM projection, no zone boundary edge case. |
 | Wheeled robot drifts laterally without GPS | Non-holonomic constraint (NHC) zeros lateral and vertical velocity as a virtual measurement on every encoder update. |
 | GPS fixes arrive 50–200 ms late | IMU ring buffer with retrodiction. Late fixes replay missed IMU steps and reconstruct the exact filter state at the GPS timestamp. |
