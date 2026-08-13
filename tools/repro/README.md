@@ -1,5 +1,7 @@
 # Position-vs-velocity reproduction
 
+**Start with `split.cpp`.** It is the one that isolates the mechanism completely.
+
 Two small programs that reproduce FusionCore's deepest known defect in about 30
 seconds, with no ROS, no dataset and no benchmark harness.
 
@@ -121,3 +123,70 @@ sigma-point averaging itself: the position mean is the average of `R(q_i)*v*dt`
 over sigma points that face different directions, so it shrinks even when the
 best-estimate heading is exactly right. Fixing that is a filter-design decision
 about how the mean is propagated, not a tuning question.
+
+
+---
+
+# THE MECHANISM, isolated by `split.cpp` (2026-08-13)
+
+GPS for 20 s, then a blackout. Truth is 1.0 m/s dead straight the whole time.
+`split.cpp` attributes every metre of position motion to either the predict step
+or to a specific measurement update.
+
+```
+   t          x      truth   predict_dx   update_dx      vx
+ 20.0      19.96     20.00       19.78        0.18    0.9997   GPS on
+ 50.0      11.66     50.00       49.67      -38.00    0.9998   blackout
+ 80.0    -115.08     80.00       79.64     -194.72    1.0000   blackout
+
+WHICH UPDATE MOVES POSITION (signed X, metres)
+  IMU update        :   -199.80     <- the entire error
+  encoder update    :      0.79
+  ground constraint :     -0.04
+  GNSS update       :      4.33
+```
+
+**Predict is correct to 0.45%** (79.64 m against a truth of 80.00). The motion
+model, quaternion handling and velocity integration are all sound. The IMU
+*update* subtracts 199.80 m. Encoder and ground constraint are innocent, and GPS
+was pulling forward, which is the only reason this stayed hidden.
+
+## Why an IMU update can move position at all
+
+Position does not appear in `imu_measurement_function` at all. The IMU reaches
+position purely through the covariance coupling, which is legitimate Kalman
+behaviour when the innovation is honest. It is not honest here:
+
+```
+   t      imu_innov      AX      B_AX     P(X,AX)     P(X,VX)
+ 10.0       -0.1115   -2.714   -0.824      0.0006       0.000
+ 40.0       -0.9452   -0.228   -1.708      0.3014       0.000
+ 80.0       -1.7297    0.100   -1.987     -0.0514       0.000
+```
+
+1. `AX` and `B_AX` are not separately observable: the accelerometer measures
+   their sum plus a gravity term, so nothing distinguishes "accelerating" from
+   "biased". The bias wanders to **-1.99 m/s^2** on a perfectly still sensor.
+2. Because the internal split is wrong, **the predicted specific force never
+   matches the measured one**. The innovation grows to -1.73 m/s^2 against a
+   sensor reading exactly gravity. The filter permanently disagrees with a
+   perfect measurement.
+3. `P(X,AX)` is non-zero, so that standing innovation is applied to position on
+   every IMU update, 100 times a second. Ten thousand updates is the -199.80 m.
+
+## The detail that explains the whole confusing signature
+
+**`P(X,VX)` is 0.000 throughout.** Position is coupled to ACCELERATION but not to
+VELOCITY. So the update can drag position anywhere while leaving `vx` at a
+perfect 1.000. That is precisely the symptom that made this so hard to see from
+the field data: velocity right, position wrong, on every run since 2026-08-03.
+
+## What a fix must target
+
+Not the covariance cap, not Q scaling, not the quaternion mean (all tried, all
+reverted, see the memory file). The target is **the observability of the
+acceleration/bias split**, and the fact that an unobservable split produces a
+standing innovation that leaks into position through `P(X,AX)`.
+
+Note this is a SECOND mechanism, distinct from the yaw/heading one measured
+earlier the same day. Both are real. This one dominates when heading is fine.
