@@ -36,7 +36,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_fusioncore tests/test_fusioncore.cpp)
   target_link_libraries(test_fusioncore fusioncore_core Eigen3::Eigen)
 
-  ament_add_gtest(test_gnss tests/test_gnss.cpp)
+  # TIMEOUT: this file holds integration-style tests that drive a simulated robot
+  # for tens of seconds each, and it measured 62.8 s on a Release desktop build.
+  # The ctest default is 60, so it was failing on the clock rather than on any
+  # assertion. Give it real headroom; a suite that fails on timing is a suite
+  # nobody trusts.
+  ament_add_gtest(test_gnss tests/test_gnss.cpp TIMEOUT 600)
   target_link_libraries(test_gnss fusioncore_core Eigen3::Eigen)
 
   ament_add_gtest(test_gnss_manager tests/test_gnss_manager.cpp)
