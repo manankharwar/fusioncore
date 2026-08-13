@@ -183,6 +183,12 @@ public:
     // the filter's P: chi2 is already the P-scaled test, and this gate exists to
     // catch what a coast-relaxed chi2 admits.
     declare_parameter("gnss.max_speed_sigma_k", 5.0);
+    // Multiples of the filter's own position sigma added to the jump bound, so
+    // the gate widens when the prediction is genuinely uncertain. Without it the
+    // first fix after a GPS blackout is rejected and the filter never
+    // re-acquires: measured 4.4 m recovery with the gate off versus 358 m and
+    // climbing with it on, on NCLT 2013-04-05.
+    declare_parameter("gnss.max_speed_drift_k", 3.0);
     declare_parameter("gnss.max_sigma_xy",   25.0);
     declare_parameter("gnss.max_sigma_z",    50.0);
     declare_parameter("gnss.min_satellites", 4);
@@ -533,6 +539,7 @@ public:
     config.gnss_max_speed         = get_parameter("gnss.max_speed").as_double();
     config.gnss_max_speed_margin  = get_parameter("gnss.max_speed_margin").as_double();
     config.gnss_max_speed_sigma_k = get_parameter("gnss.max_speed_sigma_k").as_double();
+    config.gnss_max_speed_drift_k = get_parameter("gnss.max_speed_drift_k").as_double();
     config.outlier_threshold_imu  = get_parameter("outlier_threshold_imu").as_double();
     config.outlier_threshold_enc   = get_parameter("outlier_threshold_enc").as_double();
     config.outlier_threshold_hdg   = get_parameter("outlier_threshold_hdg").as_double();

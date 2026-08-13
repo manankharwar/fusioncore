@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <iostream>
 #include "fusioncore/fusioncore.hpp"
 #include "fusioncore/motion_model.hpp"
 #include <cmath>
@@ -240,33 +241,66 @@ TEST(GnssCoastTest, JumpGateStillCatchesRealSpikeOnNoisyReceiver) {
       << "filter lurched toward the spike";
 }
 
-TEST(GnssCoastTest, JumpGateNoiseTermIsIndependentOfFilterCovariance) {
-  // The gate exists to catch what a coast-relaxed chi2 admits, so its bound must
-  // NOT grow with P. Same fix, same gap, but one filter has been coasting and has
-  // a much larger P: the verdict must be identical.
-  auto verdict = [](double outage_s) {
+TEST(GnssCoastTest, JumpBoundWidensWithPredictionUncertainty) {
+  // REPLACES an earlier test that asserted the opposite (that the bound must be
+  // independent of P). That assertion was wrong and it hid a real defect.
+  //
+  // The bound has to account for how uncertain the PREDICTION is, because after
+  // a GPS blackout the prediction error, not the robot's speed, is what puts a
+  // fix far from where the filter expects it. Rejecting on that basis throws
+  // away the measurement that would fix the drift. Measured on NCLT 2013-04-05
+  // (34 s outage at t+620 s): gate off recovers to 4.4 m, gate on reaches 358 m
+  // and keeps climbing, because the FIRST post-outage fix was rejected.
+  //
+  // Coast inflation does not reopen the sustained-spike hole this gate exists to
+  // plug, because coast is gap-gated (fede6e0): a continuous spike with no
+  // preceding gap never inflates P, so the bound stays tight. That is pinned by
+  // SustainedSpikeStaysRejected and by the tight-P case below.
+  auto verdict_after = [](double outage_s) {
     FusionCoreConfig cfg = demo_config();
     cfg.gnss_max_speed = 2.0;
     FusionCore fc(cfg);
     State s0; fc.init(s0, 0.0);
     const double dt = 0.01, speed = 1.0, g = 9.80665;
-    // 5 s of drive-up, not 10: five GPS fixes is plenty to converge and to set
-    // last_gnss_time_, and this helper runs twice so the saving is doubled.
-    drive_with_gps(fc, 5.0, 6.0);
-    for (int step = 501; step * dt <= 5.0 + outage_s + 1e-9; ++step) {
+    drive_with_gps(fc, 10.0, 6.0);
+    for (int step = 1001; step * dt <= 10.0 + outage_s + 1e-9; ++step) {
       double t = step * dt;
       fc.update_imu(t, 0, 0, 0, 0, 0, g);
       if (step % 2 == 0) { fc.update_encoder(t, speed, 0.0, 0.0); fc.update_ground_constraint(t); }
     }
-    // 700 m off truth. Physics says impossible regardless of how lost we feel.
-    double t = 5.0 + outage_s, tx = speed * t;
-    fc.update_gnss(t, make_noisy_fix(tx + 700.0, 0.0, 6.0));
-    return fc.get_gnss_debug().reason;
+    // A fix at the TRUE position: the legitimate recovery fix. Whatever the
+    // filter drifted to during the blackout, this is the one it must accept.
+    double t = 10.0 + outage_s, tx = speed * t;
+    return fc.update_gnss(t, make_noisy_fix(tx, 0.0, 6.0));
   };
-  EXPECT_EQ(verdict(1.0),  GnssRejectionReason::IMPLAUSIBLE_JUMP);
-  EXPECT_EQ(verdict(10.0), GnssRejectionReason::IMPLAUSIBLE_JUMP)
-      << "a long coast inflated P enough to let a 700 m outlier through, which is "
-         "exactly the hole this gate exists to plug";
+  EXPECT_TRUE(verdict_after(5.0))
+      << "recovery fix rejected after a 5 s outage";
+
+  // A 40 s outage is deliberately NOT asserted here, and the reason matters.
+  // With the drift term the jump gate does accept it, but the fix is then
+  // rejected by CHI2 instead, because the filter has dead-reckoned 103 m away
+  // while believing its position to +/- 8.6 m. That is a separate and much
+  // deeper defect: with a PERFECT encoder and a still IMU, FusionCore's position
+  // does not track its own velocity. Reproduced in ~30 s by
+  // hardware/repro/dr.cpp, identical on this commit and on c8b8b1f from May, so
+  // it is long-standing rather than a regression. Asserting recovery here would
+  // just encode that bug as expected behaviour. Re-enable once it is fixed:
+  //   EXPECT_TRUE(verdict_after(40.0));
+}
+
+TEST(GnssCoastTest, JumpGateStillRejectsAnOutlierWhenPredictionIsConfident) {
+  // The other half: widening with P must not make the gate toothless while the
+  // filter is confident. No blackout here, so P stays tight and a 700 m fix is
+  // still impossible.
+  FusionCoreConfig cfg = demo_config();
+  cfg.gnss_max_speed = 2.0;
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  drive_with_gps(fc, 15.0, 6.0);
+  EXPECT_FALSE(fc.update_gnss(16.0, make_noisy_fix(16.0 + 700.0, 0.0, 6.0)));
+  EXPECT_EQ(fc.get_gnss_debug().reason, GnssRejectionReason::IMPLAUSIBLE_JUMP);
+  EXPECT_LT(fc.get_state().x[X], 16.0 + 50.0) << "filter lurched toward the spike";
 }
 
 int main(int argc, char** argv) {

@@ -105,6 +105,28 @@ struct FusionCoreConfig {
   // chi2 would admit, and chi2 is already the P-scaled test. Scaling this one by
   // P too would just be a second chi2 and would reopen the hole it exists to plug.
   double gnss_max_speed_sigma_k = 5.0;
+  // Multiples of the FILTER's own position sigma added to the bound.
+  //
+  // The original design assumed dead-reckoning error is bounded by distance
+  // travelled, so max_speed * gap covered both how far the robot could drive AND
+  // how far the prediction could be wrong. That is false: a filter whose heading
+  // has drifted goes sideways further than it went forward, and after a GPS
+  // blackout the prediction error is the dominant term. Measured on NCLT
+  // 2013-04-05, which has a 34 s outage at t+620 s: with the gate off the filter
+  // drifts to 98 m during the outage and is back to 4.4 m a minute later, but
+  // with the gate on at 3.0 the FIRST post-outage fix is rejected, the filter
+  // keeps drifting, and by the time the bound would admit a fix the chi2 gate
+  // refuses it. One rejection at the wrong moment locks GPS out permanently:
+  // 4.4 m becomes 358 m and climbing.
+  //
+  // Earlier revisions of this comment argued the bound must NOT scale with P,
+  // on the grounds that chi2 is already the P-scaled test and coast inflation
+  // would reopen the hole this gate plugs. That reasoning was wrong. Coast only
+  // inflates P after a genuine GPS GAP (the gap-gating in fede6e0), which is
+  // exactly the situation where a wide bound is correct. A sustained spike with
+  // no preceding gap never triggers coast, so P stays tight and the spike is
+  // still rejected. P is precisely the right quantity here.
+  double gnss_max_speed_drift_k = 3.0;
 
   // Adaptive noise covariance
   // Whether to enable adaptive R estimation for each sensor

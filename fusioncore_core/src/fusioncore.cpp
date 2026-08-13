@@ -992,9 +992,22 @@ bool FusionCore::apply_gnss_update(
       const double sigma_term = fix.has_sigma()
         ? config_.gnss_max_speed_sigma_k * fix.sigma_xy
         : 0.0;
+      // How uncertain the PREDICTION is. Without this the bound assumes the
+      // prediction is as trustworthy as the robot's own motion, which stops
+      // being true the moment GPS goes away: after a blackout the filter's
+      // drift, not the robot's speed, is what puts the fix far from the
+      // prediction. Rejecting on that basis discards the one measurement that
+      // would fix the drift, and the filter never re-acquires. See the config
+      // comment for the measured NCLT case.
+      const StateMatrix& P_now = ukf_.state().P;
+      const double pred_sigma_xy = std::sqrt(
+          std::max(P_now(X, X), 0.0) + std::max(P_now(Y, Y), 0.0));
+      const double drift_term = config_.gnss_max_speed_drift_k * pred_sigma_xy;
+
       double max_offset = config_.gnss_max_speed * std::max(gap_s, 0.0) +
                           config_.gnss_max_speed_margin +
-                          sigma_term;
+                          sigma_term +
+                          drift_term;
       if (offset_xy > max_offset) {
         ++gnss_outliers_;
         gnss_debug_.accepted = false;
