@@ -190,3 +190,67 @@ standing innovation that leaks into position through `P(X,AX)`.
 
 Note this is a SECOND mechanism, distinct from the yaw/heading one measured
 earlier the same day. Both are real. This one dominates when heading is fine.
+
+## RESOLVED 2026-08-14: it was the sigma-point weights, and `alpha` is now 1.0
+
+Both mechanisms above were downstream of one thing. At 23 states with `kappa = 0`
+and the old `alpha = 0.1`, `lambda = alpha^2*n - n = -22.77`, so the CENTRE sigma
+weight is **-99.0** against 46 outer weights of +2.17. They sum to 1, which is
+formally correct but only for a tight cluster. Yaw is unobservable, the quaternion
+sigma points spread, their forward displacements cancel, and the surviving centre
+point (the one still pointing the right way) gets multiplied by -99. Position runs
+backwards while velocity and yaw both read perfect.
+
+`blackout.cpp` now sweeps `alpha` rather than `gnss_coast_q_bias_factor`, because
+that factor turned out to be a dead knob: identical results at 100 and at 1, under
+both the old and the new default.
+
+```
+blackout     alpha=0.1     alpha=0.5     alpha=1.0
+ 30 s          38.34 m       5.02 m        8.02 m
+ 60 s         195.08 m      16.84 m       20.13 m
+120 s         646.34 m      44.68 m       82.60 m
+240 s         607.32 m     105.00 m      206.88 m
+```
+
+At 120 s the old default put the estimate at x = -411 m against a truth of +120 m.
+
+### Why 1.0 and not 0.5, since 0.5 scores better here
+
+Measured on NCLT 2013-04-05 at 1x against identical ground truth, so this question
+is settled with data rather than taste:
+
+```
+                        alpha=1.0    alpha=0.5
+ATE 3D                    131.85 m     108.07 m     0.5 better by 18%
+drift                     24.57 m/km   20.14 m/km   0.5 better by 18%
+path length ratio          1.0092       0.9464      1.0 better, and this decides it
+RL-EKF control            229.66 m     230.60 m     harness stable to ~1 m
+achieved filter rate        88.5 Hz      83.9 Hz     a confound, see below
+```
+
+`alpha = 0.5` wins ATE but draws the path **5.4% short**, where 1.0 is within 0.9%
+of true length. Short path length is the `exp(-sigma^2/2)` attenuation signature,
+and it is expected: `Wm[0]` at 0.5 is still **-3.0**, so some cancellation remains.
+Only `alpha = 1.0` gives `lambda = 0` and all 47 weights non-negative, which is the
+standard unscaled UKF rather than a tuned point on a U-curve.
+
+Path scale is also the metric that maps onto the field failure this hunt started
+from, where the rover drew roughly 1.8x the distance it actually travelled. Trading
+that away for ATE on a single sequence is the wrong trade.
+
+Caveat worth keeping: the two runs differed in achieved rate as well as in alpha
+(83.9 vs 88.5 Hz), and process noise is injected per predict call rather than per
+second, so rate is not neutral. The 18% gap is well outside the ~1 m control noise
+and is probably real, but it is not cleanly attributable to alpha alone.
+
+### The remaining problem is heading, not weights
+
+With `alpha = 1.0`, a 120 s blackout still drifts **yaw to -134 degrees from zero
+rotation input**, with the encoder reporting `wz = 0` and `b_gz` wandering to
+0.0104. Position now tracks velocity correctly, so the path is smooth: it simply
+curves away. Both alpha values land near 108-132 m on 2013-04-05 while `c8b8b1f`
+(19 May) measures 22.96 m, so a second regression of roughly 5x remains, and this
+heading drift is the prime suspect. Note that the frozen `yaw = 0.00` and
+`b_gz = 0.00000` seen in earlier runs of this repro were an ARTEFACT of the -99
+weighting suppressing those states, not evidence that heading was healthy.
