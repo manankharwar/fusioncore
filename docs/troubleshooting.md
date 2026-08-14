@@ -308,6 +308,34 @@ Versions before 0.3.4 did not reject the skewed sensor: they repeatedly re-based
 
 ---
 
+## Position moves backwards, or barely moves, while velocity looks correct (fixed in 0.3.7)
+
+**Symptom:** `/fusion/odom` reports a sensible velocity and a sensible heading, but the position goes the wrong way or advances far slower than the robot actually moves. It is worst during a GPS outage and often invisible while GPS is healthy. On a plotted trajectory the path is smooth, it just does not go where the robot went.
+
+**Cause: a negative sigma-point weight, in every version up to and including 0.3.6.** The UKF forms its predicted mean as a weighted sum over sigma points. With 23 states, `kappa = 0` and the old `ukf.alpha` default of 0.1, the centre weight works out to **-99.0** against 46 outer weights of +2.17. Those sum to 1, so the filter is formally correct, but only while the sigma points stay in a tight cluster.
+
+Yaw is not observable without an absolute heading source. During a GPS gap the quaternion sigma points spread out, their forward displacements cancel against each other, and what survives is the centre point, the one still pointing the right way, multiplied by -99. Position then moves backwards while every state the filter reports still looks right.
+
+**How to check:** compare the length of the path the filter drew against the distance your wheels actually turned. If the filter travelled a small fraction of the encoder distance, or travelled it in the wrong direction, while `twist.twist.linear.x` tracked your real speed the whole time, this is it. Heading will look fine, which is the confusing part.
+
+**Fix: upgrade to 0.3.7.** The default is now `alpha = 1.0`, which gives all 47 weights non-negative. There is nothing to configure: `ukf.alpha` is not a ROS parameter and never was, so no config can have overridden it and none needs changing.
+
+**Most exposed:** robots that lose GPS for long stretches, and any GPS-denied setup running on wheel odometry plus a 6-axis IMU with no absolute heading source. Continuous GPS largely hides the problem, because GPS track heading bounds the yaw covariance and keeps the sigma points tight. An absolute heading source (magnetometer, dual-antenna GNSS, or a fused 9-axis IMU orientation) has the same protective effect.
+
+A 120 second blackout on synthetic data with a perfect encoder, truth 1 m/s dead straight, before the fix:
+
+```
+   t=  30 s   x =   27.24    truth   30.00
+   t=  60 s   x =  -17.10    truth   60.00
+   t= 120 s   x = -411.85    truth  120.00
+```
+
+Reproduce it yourself with `tools/repro/blackout.cpp`, which sweeps the value.
+
+**Note this is not the whole story on long outages.** With the weighting corrected, heading still drifts over a multi-minute blackout with no absolute reference: about -134 degrees over 120 seconds in the case above, with the wheel encoder reporting zero yaw rate throughout. Position now follows velocity correctly, so the path is smooth, it just curves. If you run long outages, a magnetometer or dual-antenna heading is the thing that bounds it.
+
+---
+
 ## `init.stationary_window` aborted immediately
 
 The encoder is publishing non-zero velocity during the window. Either the robot is moving, or the wheel odometry driver publishes a non-zero initial value even when stationary.
