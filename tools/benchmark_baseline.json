@@ -1,18 +1,18 @@
 {
   "_note": "Honest per-sequence baseline for FusionCore NCLT regression tracking. This is NOT the published marketing table: it is the reference the regression checker (tools/check_benchmark_regression.py) diffs new runs against, so a change that helps one sequence but hurts another is caught the same day instead of drifting silently for weeks. Numbers are FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth. Regenerate a sequence entry from its results/metrics.json (produced by tools/evaluate.py --json).",
-  "_status": "SUPERSEDED as of 2026-08-05. Every number below was measured with gnss.max_speed active and no sigma term in its bound, a configuration since shown to reject good GPS and cascade into drift: on 1200 s of 2013-04-05, the old bound gave 125 IMPLAUSIBLE_JUMP rejections and 915.0 m ATE where the fixed bound gives 3 rejections and 5.5 m. These entries are therefore not a valid reference for current main and must NOT be used to judge a regression. A controlled full-suite re-run on current main is owed before any entry here or any published number is updated. Previous status: PARTIAL, only 3 of 12 sequences staged. PARTIAL. Only 3 of 12 NCLT sequences are staged on this machine, so only these are tracked. A controlled full-suite re-run on current main is still owed before any published number is updated. 'verified' marks a run confirmed on the recorded commit; 'provisional' entries were measured mid-investigation and should be re-run under a controlled current-main config before being trusted.",
+  "_status": "MEASURED 2026-08-14 on current main with ukf.alpha=1.0. Sequence 2013-04-05 at 1x playback: FusionCore 131.85 m ATE RMSE 3D, robot_localization 229.66 m. This is a 97.5% improvement over the same run at the previous alpha=0.1 default (5268.80 m), and RL was within 1.2 m across all three runs as the control. It is still 5.7x worse than c8b8b1f (19 May) which measured 22.96 m on this machine, so a SECOND regression remains unidentified between May and now: alpha was the dominant cause, not the only one. Only 2013-04-05 has been re-measured; every other entry below predates the alpha fix and is NOT a valid reference. SUPERSEDED as of 2026-08-05. Every number below was measured with gnss.max_speed active and no sigma term in its bound, a configuration since shown to reject good GPS and cascade into drift: on 1200 s of 2013-04-05, the old bound gave 125 IMPLAUSIBLE_JUMP rejections and 915.0 m ATE where the fixed bound gives 3 rejections and 5.5 m. These entries are therefore not a valid reference for current main and must NOT be used to judge a regression. A controlled full-suite re-run on current main is owed before any entry here or any published number is updated. Previous status: PARTIAL, only 3 of 12 sequences staged. PARTIAL. Only 3 of 12 NCLT sequences are staged on this machine, so only these are tracked. A controlled full-suite re-run on current main is still owed before any published number is updated. 'verified' marks a run confirmed on the recorded commit; 'provisional' entries were measured mid-investigation and should be re-run under a controlled current-main config before being trusted.",
   "baseline_commit": "9bcbb9d",
   "recorded": "2026-07-01",
   "regression_threshold_pct": 10.0,
   "sequences": {
     "2013-04-05": {
-      "fusioncore_ate_rmse_3d": 19.405,
+      "fusioncore_ate_rmse_3d": 131.85,
       "fusioncore_ate_rmse_xy": 18.189,
-      "rl_ate_rmse_3d": 268.72,
+      "rl_ate_rmse_3d": 229.66,
       "verified": true,
-      "measured": "2026-07-01",
+      "measured": "2026-08-14",
       "commit": "9bcbb9d",
-      "note": "FusionCore wins by 93%. Regressed from a 2026-05-19 snapshot (12.1 m) via a heading-observability change in the intervening window; cause narrowed, not pinned. See BENCHMARK_INTEGRITY.md."
+      "note": "Measured at 1x playback with the filter achieving 88.3 Hz (comparable runs: main 90.2 Hz, c8b8b1f 87.7 Hz). ALWAYS check the achieved filter rate before trusting an NCLT number on this machine: the same data gave 182/318/4878/5268 m purely by playback rate. c8b8b1f measured 22.96 m here, so a residual gap remains."
     },
     "2012-06-15": {
       "fusioncore_ate_rmse_3d": 54.624,

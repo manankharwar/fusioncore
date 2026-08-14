@@ -301,7 +301,14 @@ TEST(MagnetometerTest, BoundsHeadingDriftFromSlipDuringBlackout) {
   double err_no_mag = run(false);
   double err_mag    = run(true);
 
-  EXPECT_GT(err_no_mag, 0.5);                 // odometry + gyro: heading runs away (>~29 deg)
+  // Threshold lowered from 0.5 when ukf.alpha went 0.1 -> 1.0. This assertion is
+  // a sanity check that the scenario produces meaningful drift, and its old value
+  // was calibrated against a filter with Wm[0] = -99, i.e. against the bug. With
+  // non-negative sigma weights the same gyro bias and encoder slip now produce
+  // 0.41 rad instead of >0.5: the filter genuinely got better, so the baseline
+  // moved. The two assertions that actually prove the magnetometer's value (the
+  // absolute bound and the >80% reduction) are unchanged and still pass.
+  EXPECT_GT(err_no_mag, 0.3);                 // odometry + gyro: heading still runs away (>~17 deg)
   EXPECT_LT(err_mag,    0.1);                  // magnetometer: bounded (<~6 deg)
   EXPECT_LT(err_mag,    err_no_mag * 0.2)      // mag cuts the heading error by >80%
       << "mag err " << err_mag << " vs no-mag " << err_no_mag;
