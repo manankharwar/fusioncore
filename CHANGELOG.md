@@ -8,12 +8,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [0.3.7]: 2026-08-14
+
 ### Fixed
 - **The UKF centre sigma weight was -99, and the filter drove backwards.** At 23 states with the previous `ukf.alpha` default of 0.1 and `kappa = 0`, `lambda = alpha^2*n - n = -22.77`, giving a centre weight of **-99.0** against 46 outer weights of +2.17. They sum to 1, so it is formally correct, but only for a tight sigma-point cluster. Yaw is structurally unobservable without an absolute heading source, so the quaternion sigma points spread wide, their forward displacements cancel one another, and what survives is the centre point (the one pointing correctly forward) multiplied by -99. The filter then moved position BACKWARDS while reporting a perfect velocity and a perfect heading, which is why this presented for months as "velocity right, position wrong" and resisted every covariance and process-noise explanation. Measured with a perfect encoder at 1.0 m/s over 60 s against a truth of 60.00 m: `alpha 0.1` gave **-114.06 m**, `alpha 0.5` gave 8.83 m, `alpha 1.0` gives 48.43 m. It is entirely the predict step: predict moved position -114.89 m where it should have moved +58.77, while every measurement update combined contributed 12 mm. Validated on real data, NCLT 2013-04-05 at 1x playback: **5268.80 m ATE to 131.85 m, a 97.5% reduction**, with robot_localization unchanged at ~230 m across all runs as the control. `alpha = 1.0` gives `lambda = 0` and all 47 weights non-negative, which is the standard unscaled UKF; with `kappa = 0` any alpha below 1 makes the centre weight negative, so lowering alpha to "tighten" the spread does the opposite of what it does in a low-dimensional filter. No shipped config overrode `ukf.alpha`, so every user was running -99. Reproductions in `tools/repro/`.
 
   Two caveats stated plainly. This does **not** fully restore the 22.96 m that commit `c8b8b1f` (19 May) measures on the same machine, so a second regression remains unidentified: alpha was the dominant cause, not the only one. And only 2013-04-05 has been re-measured; every other entry in `tools/benchmark_baseline.json` predates this fix.
 
 - **`MagnetometerTest.BoundsHeadingDriftFromSlipDuringBlackout` asserted the bug.** Its "heading runs away without a magnetometer" threshold of 0.5 rad was calibrated against a filter with `Wm[0] = -99`. The same gyro bias and encoder slip now produce 0.41 rad, so the threshold moved to 0.3. The two assertions that actually prove the magnetometer's value, the absolute bound and the >80% reduction, are unchanged and still pass.
+
+### Changed
+- **The certified configs now say which GNSS quality gate actually runs.** `bosch-bno085-ublox-f9p-outdoor`, `microstrain-3dm-gx3-45-segway` and `xsens-mti-680g-fsae` all listed `gnss.max_hdop` as though it were the gate. Since 0.3.6 a fix carrying a `position_covariance` is gated on the receiver's reported sigma in metres and the DOP thresholds are never consulted, which for these three receivers is always. Each config now states that, and points at the sigma gate with a note to leave it at its permissive defaults unless the receiver's actual reported sigma has been logged: a gate tuned to clean-sky numbers throws away the degraded fixes you most need.
+- `tools/run_nclt.sh` runs one NCLT sequence end to end with the process hygiene the harness needs (no orphaned players competing for CPU, no recorder appending to the next run's bag, a refusal to run off a 9p mount) and prints the achieved filter rate next to the ATE, because a starved run's ATE is meaningless. `tools/repro/blackout.cpp` now sweeps `ukf.alpha` instead of `gnss_coast_q_bias_factor`, which measured as a dead knob: identical results at 100 and at 1 under both the old and the new default.
 
 ---
 
