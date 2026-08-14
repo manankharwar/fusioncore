@@ -72,7 +72,21 @@ fusioncore:
     # gnss.min_fix_type: 1
 
     gnss.base_noise_z: 0.1          # m : RTK Z accuracy is better than standard GPS
-    gnss.max_hdop: 3.0
+
+    # Which of the two quality gates below actually runs depends on your driver.
+    # If the NavSatFix carries a non-zero position_covariance (most drivers do),
+    # FusionCore gates on the receiver's own reported sigma in METRES and the
+    # max_hdop/max_vdop lines are never consulted. They are the fallback for
+    # drivers that publish no covariance at all. Before 0.3.6 the DOP numbers
+    # were compared against metres, which silently rejected every fix from a
+    # receiver reporting honest sigma; see docs/configuration.md.
+    #
+    # Leave the sigma gate at its defaults (25 m / 50 m) unless you have logged
+    # what your receiver actually reports. It is deliberately permissive: a gate
+    # tuned to clean-sky numbers throws away the degraded fixes you most need.
+    # gnss.max_sigma_xy: 25.0         # m : reject a fix reporting worse than this
+    # gnss.max_sigma_z:  50.0         # m
+    gnss.max_hdop: 3.0              # fallback only: the MTi-680G publishes covariance
     gnss.min_satellites: 4
 
     # MTi-680G is a single-antenna unit. No dual-antenna heading.

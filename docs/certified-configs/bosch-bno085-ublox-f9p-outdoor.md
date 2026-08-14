@@ -53,7 +53,21 @@ fusioncore:
     # Start with standard GPS values. Tighten when corrections are stable.
     gnss.base_noise_xy: 2.0         # m : F9P autonomous CEP
     gnss.base_noise_z: 4.0          # m
-    gnss.max_hdop: 3.5              # F9P tracks GPS + GLONASS + Galileo: HDOP usually good
+
+    # Which of the two quality gates below actually runs depends on your driver.
+    # If the NavSatFix carries a non-zero position_covariance (most drivers do),
+    # FusionCore gates on the receiver's own reported sigma in METRES and the
+    # max_hdop/max_vdop lines are never consulted. They are the fallback for
+    # drivers that publish no covariance at all. Before 0.3.6 the DOP numbers
+    # were compared against metres, which silently rejected every fix from a
+    # receiver reporting honest sigma; see docs/configuration.md.
+    #
+    # Leave the sigma gate at its defaults (25 m / 50 m) unless you have logged
+    # what your receiver actually reports. It is deliberately permissive: a gate
+    # tuned to clean-sky numbers throws away the degraded fixes you most need.
+    # gnss.max_sigma_xy: 25.0         # m : reject a fix reporting worse than this
+    # gnss.max_sigma_z:  50.0         # m
+    gnss.max_hdop: 3.5              # fallback only: F9P publishes covariance, so this is unused
     gnss.min_satellites: 4
     gnss.min_fix_type: 1            # 1=GPS, 3=RTK_FLOAT, 4=RTK_FIXED
 
