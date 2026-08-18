@@ -11,6 +11,16 @@ navsat_transform:
     zero_altitude: true               # ground robot: z from GPS is unreliable, keep z=0
     broadcast_utm_transform: false
     publish_filtered_gps: false
-    use_odometry_yaw: false             # use GPS track heading: breaks circular EKF↔navsat dependency
+    use_odometry_yaw: true              # take heading from the EKF, not the IMU.
+                                        # With false, navsat never latches its transform and
+                                        # re-initialises the local origin on EVERY fix (measured
+                                        # 949 times in 70 s, and 12399/12399 on a full sequence).
+                                        # /gps/odometry still publishes, but every position is
+                                        # relative to an origin that keeps jumping, so RL-EKF is
+                                        # fed GPS that always reads "near zero": measured
+                                        # within_10m 0.0% and drift 28.8 m/km against 89.3% and
+                                        # 1.40 m/km in the archived results. With true the datum
+                                        # latches once. This makes the RL baseline honest; a
+                                        # benchmark against a crippled competitor is worthless.
     wait_for_datum: false               # auto-initialize from first GPS fix
     use_sim_time: true
