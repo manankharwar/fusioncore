@@ -56,19 +56,31 @@ echo "playback finished in $(( ($(date +%s) - START) / 60 )) min"
 cleanup                               # belt and braces: the bag needs SIGINT to write metadata
 [ -f "$OUT/bag/metadata.yaml" ] || { echo "bag has no metadata.yaml, it is unreadable"; exit 1; }
 
-python3 "$WS/src/fusioncore/tools/evaluate.py" \
-  --bag "$OUT/bag" --gt "$DATA/ground_truth.tum" --out "$OUT/res" --sequence "$SEQ" \
-  2>&1 | tail -25
+# evaluate.py takes TUM trajectories, not the bag, so extract both first.
+[ -f "$DATA/ground_truth.tum" ] || python3 "$WS/src/fusioncore/tools/nclt_rtk_to_tum.py" \
+  --rtk "$DATA/gps_rtk.csv" --out "$DATA/ground_truth.tum"
+python3 "$WS/src/fusioncore/tools/odom_to_tum.py" --bag "$OUT/bag" --topic /fusion/odom  --out "$OUT/fc.tum"
+python3 "$WS/src/fusioncore/tools/odom_to_tum.py" --bag "$OUT/bag" --topic /rl/odometry --out "$OUT/rl.tum"
 
-python3 - "$OUT/res/metrics.json" "$SEQ" <<'PY'
+python3 "$WS/src/fusioncore/tools/evaluate.py" \
+  --gt "$DATA/ground_truth.tum" --fusioncore "$OUT/fc.tum" --rl "$OUT/rl.tum" \
+  --sequence "$SEQ" --out_dir "$OUT/res" 2>&1 | tail -20
+
+# Duration comes from the ground truth, never from a hardcoded guess. Guessing
+# 4200 s for a 3311 s sequence once made a healthy 81 Hz run look like a starved
+# 64 Hz one, which would have thrown away a valid result.
+GT_SPAN=$(python3 -c "
+ls=[l for l in open('$DATA/ground_truth.tum') if l.strip()]
+print('%.1f' % (float(ls[-1].split()[0]) - float(ls[0].split()[0])))")
+
+python3 - "$OUT/res/metrics.json" "$GT_SPAN" <<'PY'
 import json, sys
 m = json.load(open(sys.argv[1]))
-dur = {"2013-04-05": 4170.0, "2012-06-15": 4200.0, "2012-08-20": 4300.0}.get(sys.argv[2])
+dur = float(sys.argv[2])
 fc = m["filters"]["FusionCore"]
 print("\n  %-12s %10s %10s" % ("", "FusionCore", "RL-EKF"))
 for k, lbl in (("ate_rmse_3d", "ATE 3D m"), ("rpe10_rmse", "RPE@10m"), ("path_length_ratio", "path ratio")):
     print("  %-12s %10.3f %10.3f" % (lbl, fc[k], m["filters"]["RL-EKF"][k]))
-if dur:
-    hz = m["poses"]["FusionCore"] / dur
-    print("\n  filter rate %.1f Hz  %s" % (hz, "OK" if hz > 80 else "STARVED, ATE IS MEANINGLESS"))
+hz = m["poses"]["FusionCore"] / dur
+print("\n  filter rate %.1f Hz over %.0f s  %s" % (hz, dur, "OK" if hz > 80 else "STARVED, ATE IS MEANINGLESS"))
 PY
