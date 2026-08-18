@@ -254,3 +254,72 @@ curves away. Both alpha values land near 108-132 m on 2013-04-05 while `c8b8b1f`
 heading drift is the prime suspect. Note that the frozen `yaw = 0.00` and
 `b_gz = 0.00000` seen in earlier runs of this repro were an ARTEFACT of the -99
 weighting suppressing those states, not evidence that heading was healthy.
+
+## The heading drift that remains after 0.3.7 (`heading.cpp`)
+
+`alpha = 1.0` fixed position. Heading is a SEPARATE defect and is still open. In a
+120 s blackout with the gyro reporting `wz = 0`, the encoder reporting `wz = 0` and
+truth dead straight, yaw still runs to -134 degrees.
+
+`heading.cpp` attributes every step's yaw change to predict versus each individual
+update, and prints the states that could drive it. Two things it found:
+
+**1. The unobservable direction is occupied.** In steady state:
+
+```
+b_gz = 0.01192    b_ewz = 0.01192    wz = -0.01192
+```
+
+Identical magnitudes. The filter has concluded the robot really is turning at
+-0.0119 rad/s while BOTH sensors carry a bias that exactly conceals it. Nothing in
+the data contradicts that: the gyro measures `wz + b_gz` and the encoder measures
+`wz + b_ewz`, two equations in three unknowns. Integrated over the blackout that is
+about 82 degrees.
+
+**2. The quaternion covariance is unbounded, and that is the bigger half.**
+`P(QZ,QZ)` reaches **4.30**. A unit quaternion component cannot leave [-1,1], so a
+variance of 4.30 is not uncertainty, it is a broken state. `state.hpp` initializes
+it to 1e-8 and says "P for them must stay tiny", pointing at "the clamp rationale in
+generate_sigma_points()". There is no clamp there. Only a hemisphere sign flip.
+
+Sigma points are built as `x +/- L.col(i)`, so at that covariance the quaternion
+entries come out near +/-10. Averaging renormalized near-random rotations gives the
+40 ms spin the instrument catches: yaw going 66 -> 119 -> 173 -> -165 degrees.
+
+### Three fixes tried. All measured, none shippable. Do not retry these naively.
+
+```
+                                    yaw @140s   speed          verdict
+shipped 0.3.7                        -134.11    fast           the bug
+normalize every sigma point             0.00    100x SLOWER    accurate, unusable
+normalize only if |q| outside 1.5/0.667 0.00    100x SLOWER    same
+cap P(Q*,Q*) diagonal at 0.25        -134.55    100x SLOWER    catastrophic
+```
+
+Normalizing works PERFECTLY on accuracy: yaw holds at exactly 0.00 across the whole
+blackout, `P(QZ,QZ)` stays near 3.7e-03, and the largest single-step yaw change in
+the entire run is 0.000 degrees. It is unusable only on speed, at roughly 1x
+realtime, because normalizing collapses the radial degree of freedom so the
+reconstructed covariance is no longer consistent with the points it came from, and
+every step falls through to the `SelfAdjointEigenSolver` fallback.
+
+Capping the diagonal is worse than the bug. `b_gz` explodes to -19 rad/s and yaw
+moves 179.995 degrees in one 10 ms step, because capping `P(i,i)` while leaving
+`P(i,j)` alone drives the correlation coefficient above 1 and makes P non-PSD by
+construction. Scaling the row and column instead keeps P valid but destroys the
+cross-covariance a magnetometer needs to correct yaw at all (tried previously, broke
+`MagnetometerTest.UpdateMovesYawTowardMeasurement`). Both horns of one dilemma.
+
+### What a real fix has to do
+
+Bound the quaternion block while keeping P positive semi-definite AND keeping the
+cross-covariances that let an absolute heading source pull yaw. The three attempts
+above each satisfy two of those three. The textbook answer is an error-state or
+multiplicative formulation (MEKF/USQUE), where orientation uncertainty lives in a
+3-vector tangent space and can never leave the manifold, rather than as 4 correlated
+components of a 23-state covariance. That is a structural change, not a patch.
+
+Cheaper and worth trying first: an absolute heading source removes the need. A
+magnetometer pins yaw, which bounds `P(QZ,QZ)`, which keeps the sigma points on the
+manifold. FusionCore already has `update_magnetometer`. That is the same conclusion
+the literature review reached, and it is why this is a hardware-run feature.
