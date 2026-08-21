@@ -323,3 +323,52 @@ Cheaper and worth trying first: an absolute heading source removes the need. A
 magnetometer pins yaw, which bounds `P(QZ,QZ)`, which keeps the sigma points on the
 manifold. FusionCore already has `update_magnetometer`. That is the same conclusion
 the literature review reached, and it is why this is a hardware-run feature.
+
+## `sensitivity.cpp`: the filter is chaotic at the microsecond level
+
+Eight full NCLT runs of 2013-04-05, identical code and identical data, returned
+FusionCore ATE between **32 m and 345 m** while robot_localization on the same runs
+returned 230 to 268 m. Achieved filter rate does not explain it: correlation with
+ATE is **r = +0.05**. So the cause is not "the CPU was slower that run".
+
+This feeds the filter the same measurements with the only three things that CAN
+differ between two replays, and measures the divergence.
+
+```
+                                    x        y      yaw    vs baseline
+--- GPS present the whole time ---
+baseline                        19.955   -0.018    -1.86      0.000 m
+callback order swapped          19.947   -0.016    -1.52      0.008 m
+IMU stamp +1 microsecond        19.367    0.317   106.96      0.677 m
+one extra predict per second    19.955   -0.018    -1.85      0.000 m
+
+--- 120 s GPS blackout ---
+baseline                        66.141  -36.973  -134.11      0.000 m
+callback order swapped          60.014  -37.558  -120.22      6.154 m
+IMU stamp +1 microsecond        23.966   -9.022   173.62     50.596 m
+one extra predict per second    54.915  -25.818  -167.05     15.825 m
+```
+
+**A 1 microsecond stamp shift moves the answer by up to 50 m and 175 degrees.**
+
+Note the first block: GPS is present and healthy, and yaw still swings from -1.86 to
+106.96 degrees. Position holds because GPS pins it. **The blackout does not create the
+instability, it removes what was hiding it.** Yaw is chaotic whenever the quaternion
+covariance is unbounded, which is always; GPS just masks the positional consequence.
+
+### What this settles
+
+- The 9x NCLT spread is this. Not the harness, not CPU load, not configuration.
+- **A single NCLT number from this filter is not meaningful.** The same sequence
+  returns 32 m or 345 m on microsecond timing. Report medians over >= 3 runs.
+- Every A/B run this month was unmeasurable, because no shipped parameter has a
+  9x effect. `gnss_recovery_rejection_n` 15 vs 0, three runs each: medians 141.6
+  vs 210.2, spreads 9.0x and 8.8x, ranges overlapping almost completely. No
+  measurable effect. Do not change that default on benchmark evidence.
+- **Fixing the heading defect is not an accuracy improvement, it is what makes
+  FusionCore deterministic.** See [[project_heading_drift_blackout]]: bound the
+  quaternion block while keeping P PSD and keeping the cross-covariances.
+
+Use this as the acceptance test for any candidate fix: all four rows must agree.
+It takes 20 minutes and is deterministic, instead of a 70 minute benchmark whose
+answer is a coin flip.
