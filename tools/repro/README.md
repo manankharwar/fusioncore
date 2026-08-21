@@ -372,3 +372,74 @@ covariance is unbounded, which is always; GPS just masks the positional conseque
 Use this as the acceptance test for any candidate fix: all four rows must agree.
 It takes 20 minutes and is deterministic, instead of a 70 minute benchmark whose
 answer is a coin flip.
+
+## `quat_cov.cpp`: it is an OBSERVABILITY problem, not a numerical one
+
+The obvious reading of the chaos is that the quaternion block of P is numerically
+broken. It is not. Splitting the 4x4 block into its non-physical direction (along q
+itself, the norm) and its real one:
+
+```
+   t      radial   tangential   P(QZ,QZ)     |q|      rad share
+10.0    4.4e-02     7.18e+00      7.16     1.000000     0.6%
+100.0   7.1e-02     3.97e+00      3.67     1.000000     1.7%
+```
+
+**The extra degree of freedom is fine.** `|q|` holds at 1.000000 and the radial part
+stays near 0.05. What grows is the TANGENTIAL part: 7.18 is about **300 degrees of
+heading uncertainty**, and that is HONEST. Yaw is genuinely unobservable with encoder
+plus 6-axis IMU plus GPS position. The filter is correctly reporting that it does not
+know which way it points.
+
+The failure is that a quaternion-in-state UKF cannot REPRESENT that much angular
+uncertainty. Past about a radian the sigma points span the rotation group and their
+weighted mean is meaningless. Note it is already 7.18 at t=10 with GPS healthy, which
+is why 1 us swings yaw 108 degrees even outside a blackout.
+
+### FOURTH failed fix: cap the quaternion block by congruence
+
+`P' = S P S` with `S = V diag(sqrt(min(lam,cap)/lam)) V^T`, cap 0.05, applied to the
+4x4 block AND every cross-covariance row and column. Unlike the diagonal clamp this
+is PSD by construction, and the 4x4 eigendecomposition costs nothing measurable.
+
+It bounded the covariance perfectly (tangential 7.18 -> 0.055) and **made the filter
+worse**:
+
+```
+                        before cap    with cap
+blackout 30s  order         1.02 m     13.87 m
+              1 us         25.74 m     39.38 m
+              predict       0.01 m     22.59 m
+blackout 120s order         6.15 m    102.56 m
+              predict      15.83 m    135.16 m
+```
+
+Yaw then walks steadily: 26 -> -14 -> -38 -> -62 -> -86 -> -110 -> -133 -> -157 ->
+179 deg, a clean -2.36 deg/s. The filter locked onto a wrong yaw rate and could no
+longer correct it. **Low covariance means small Kalman gain**: capping uncertainty
+does not make the estimate right, it removes the filter's ability to fix it.
+Confidently wrong instead of chaotically wrong. Reverted.
+
+### The conclusion after four attempts
+
+```
+normalize every sigma point     accurate, 100x slower, unusable
+threshold normalize             same
+clamp P diagonals               breaks PSD, catastrophic
+congruence cap (this)           valid PSD, but confidently wrong
+```
+
+Every numerical intervention either destroys performance or destroys correctability.
+That is not four unlucky implementations, it is the same wall: **you cannot fix an
+unobservable state by manipulating its covariance.** The covariance is not lying. The
+information is genuinely absent.
+
+**So the fix is a sensor, not code.** An absolute heading source (magnetometer, dual
+antenna, or a fused 9-axis orientation) makes yaw observable, which bounds the
+covariance HONESTLY, which keeps the sigma points in the linear regime, which makes
+the filter deterministic. Everything else is treating the symptom.
+
+Caveat for this rover: UART-RVC does NOT expose a magnetically referenced heading
+(its yaw is relative to power-on, proven by rotating 90 deg and power cycling). A
+magnetometer here needs UART-SHTP mode or a separate compass. See
+[[project_heading_drift_blackout]].
