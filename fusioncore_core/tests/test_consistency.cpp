@@ -52,8 +52,9 @@ constexpr double kGyroSigma   = 0.005;  // rad/s
 constexpr double kAccelSigma  = 0.1;    // m/s^2
 constexpr double kEncSigmaV   = 0.05;   // m/s
 constexpr double kEncSigmaWz  = 0.02;   // rad/s
+constexpr double kMagSigmaRad = 0.05;   // rad, about 3 deg
 
-FusionCoreConfig consistency_config(double alpha) {
+FusionCoreConfig consistency_config(double alpha, double gnss_sigma_xy) {
   FusionCoreConfig cfg;
   cfg.ukf.alpha = alpha;
   cfg.imu.gyro_noise_x  = cfg.imu.gyro_noise_y  = cfg.imu.gyro_noise_z  = kGyroSigma;
@@ -61,7 +62,7 @@ FusionCoreConfig consistency_config(double alpha) {
   cfg.imu_has_magnetometer = false;
   cfg.encoder.vel_noise_x = cfg.encoder.vel_noise_y = kEncSigmaV;
   cfg.encoder.vel_noise_wz = kEncSigmaWz;
-  cfg.gnss.base_noise_xy = kGnssSigmaXY;
+  cfg.gnss.base_noise_xy = gnss_sigma_xy;
   cfg.gnss.base_noise_z  = kGnssSigmaZ;
 
   // Adaptive noise off on purpose: it rescales R at runtime, so the filter would
@@ -75,6 +76,10 @@ FusionCoreConfig consistency_config(double alpha) {
   // a thousand, which does not move the mean.
   cfg.outlier_rejection = true;
   cfg.outlier_threshold_gnss = 16.27;
+
+  cfg.mag.noise_rad      = kMagSigmaRad;
+  cfg.mag.chi2_threshold = 9.21;      // chi2(1, 0.99), the 1-DOF gate
+  cfg.mag.declination_rad = 0.0;
 
   cfg.motion_model = create_motion_model("DifferentialDrive");
   return cfg;
@@ -103,12 +108,29 @@ struct RunResult {
 // the setup. Statistics start after burn_in_s so the initial covariance has
 // settled. NEES is sampled on a timer rather than on GNSS fixes, because the
 // interesting case is a blackout, when there are no fixes.
-RunResult run(unsigned seed, double duration_s, double burn_in_s, double alpha = 1.0,
-              double gnss_blackout_start = -1.0, double gnss_blackout_end = -1.0) {
+// Scenario knobs. Defaults describe a well-conditioned run: clean 5 Hz GNSS at
+// 1 m sigma, which is the case where the filter should look its best.
+struct Scenario {
+  double   duration_s      = 60.0;
+  double   burn_in_s       = 20.0;
+  double   alpha           = 1.0;
+  double   blackout_start  = -1.0;
+  double   blackout_end    = -1.0;
+  bool     use_mag         = false;
+  double   gnss_sigma_xy   = kGnssSigmaXY;
+  int      gnss_period_steps = 20;    // 20 steps at dt=0.01 is 5 Hz
+};
+
+RunResult run(unsigned seed, const Scenario& sc) {
+  const double duration_s = sc.duration_s, burn_in_s = sc.burn_in_s;
+  const double alpha = sc.alpha;
+  const double gnss_blackout_start = sc.blackout_start;
+  const double gnss_blackout_end   = sc.blackout_end;
+  const bool   use_mag = sc.use_mag;
   std::mt19937 rng(seed);
   std::normal_distribution<double> n01(0.0, 1.0);
 
-  FusionCore fc(consistency_config(alpha));
+  FusionCore fc(consistency_config(alpha, sc.gnss_sigma_xy));
   State s0;
   fc.init(s0, 0.0);
 
@@ -128,20 +150,28 @@ RunResult run(unsigned seed, double duration_s, double burn_in_s, double alpha =
       fc.update_ground_constraint(t);
     }
 
+    // Absolute heading at 20 Hz. True yaw is 0 throughout this run, so the
+    // reading is that plus its own noise. mx = sin(yaw), my = cos(yaw) is the
+    // convention update_magnetometer expects.
+    if (use_mag && step % 5 == 0) {
+      const double yaw_meas = kMagSigmaRad * n01(rng);
+      fc.update_magnetometer(t, std::sin(yaw_meas), std::cos(yaw_meas), 0.0);
+    }
+
     const bool blacked_out = (gnss_blackout_start >= 0.0 &&
                               t >= gnss_blackout_start && t < gnss_blackout_end);
 
-    if (step % 20 == 0 && !blacked_out) {
-      fc.update_gnss(t, make_fix(true_x + kGnssSigmaXY * n01(rng),
-                                 true_y + kGnssSigmaXY * n01(rng),
-                                 true_z + kGnssSigmaZ  * n01(rng)));
+    if (step % sc.gnss_period_steps == 0 && !blacked_out) {
+      fc.update_gnss(t, make_fix(true_x + sc.gnss_sigma_xy * n01(rng),
+                                 true_y + sc.gnss_sigma_xy * n01(rng),
+                                 true_z + kGnssSigmaZ    * n01(rng)));
       if (t >= burn_in_s) {
         const auto& dbg = fc.get_gnss_debug();
         if (dbg.mahalanobis_sq >= 0.0) out.nis.push_back(dbg.mahalanobis_sq);
       }
     }
 
-    if (step % 20 == 0 && t >= burn_in_s) {
+    if (step % sc.gnss_period_steps == 0 && t >= burn_in_s) {
       // NEES on the position block only. The full 23-state vector cannot be used
       // directly: the quaternion is 4 numbers carrying 3 degrees of freedom, so
       // its P block is singular by construction, and the bias states have no
@@ -203,7 +233,7 @@ TEST(ConsistencyTest, SteadyStateCovarianceIsNotOverconfident) {
   const int kRuns = 6;
   std::vector<double> nis, nees;
   for (int i = 0; i < kRuns; ++i) {
-    RunResult r = run(1000 + i, 60.0, 20.0);
+    RunResult r = run(1000 + i, Scenario{});
     nis.insert(nis.end(), r.nis.begin(), r.nis.end());
     nees.insert(nees.end(), r.nees_pos.begin(), r.nees_pos.end());
   }
@@ -240,8 +270,10 @@ TEST(ConsistencyTest, BlackoutCovarianceAndSigmaWeights) {
   const int kRuns = 16;
   std::vector<double> good, bad;
   for (int i = 0; i < kRuns; ++i) {
-    good.push_back(mean(run(2000 + i, 120.0, 20.0, 1.0, 30.0, 90.0).nees_pos_blackout));
-    bad .push_back(mean(run(2000 + i, 120.0, 20.0, 0.1, 30.0, 90.0).nees_pos_blackout));
+    Scenario g; g.duration_s = 120.0; g.blackout_start = 30.0; g.blackout_end = 90.0;
+    Scenario b = g; b.alpha = 0.1;
+    good.push_back(mean(run(2000 + i, g).nees_pos_blackout));
+    bad .push_back(mean(run(2000 + i, b).nees_pos_blackout));
   }
   const double good_med = percentile(good, 0.5), good_p90 = percentile(good, 0.9);
   const double bad_med  = percentile(bad,  0.5);
@@ -262,4 +294,97 @@ TEST(ConsistencyTest, BlackoutCovarianceAndSigmaWeights) {
          "measured median NEES " << bad_med << " vs " << good_med
       << ". If these have converged, the sigma-weight scaling changed and the "
          "0.3.7 fix may have been undone.";
+}
+
+// ─── Does an absolute heading source actually repair the covariance? ────────
+// Measured before the hardware has it, because the field runs say the covariance
+// is 88x to 171x underconfident and the diagnosis is unobservable yaw. If a
+// magnetometer is the fix, NIS should climb back toward 3 and the heading sigma
+// should collapse. If it does not, that is worth knowing before spending a field
+// day on it.
+TEST(ConsistencyTest, MagnetometerRepairsTheCovariance) {
+  const int kRuns = 5;
+  std::vector<double> nis_off, nis_on, nees_off, nees_on;
+  double hdg_off = 0.0, hdg_on = 0.0;
+
+  for (int i = 0; i < kRuns; ++i) {
+    Scenario off_sc; off_sc.duration_s = 90.0;
+    Scenario on_sc = off_sc; on_sc.use_mag = true;
+    RunResult off = run(3000 + i, off_sc);
+    RunResult on  = run(3000 + i, on_sc);
+    nis_off.insert(nis_off.end(), off.nis.begin(), off.nis.end());
+    nis_on .insert(nis_on .end(), on .nis.begin(), on .nis.end());
+    nees_off.insert(nees_off.end(), off.nees_pos.begin(), off.nees_pos.end());
+    nees_on .insert(nees_on .end(), on .nees_pos.begin(), on .nees_pos.end());
+    hdg_off += off.final_heading_sigma_deg;
+    hdg_on  += on .final_heading_sigma_deg;
+  }
+
+  printf("\n  magnetometer off/on, %d runs (honest NIS and NEES are 3.0)\n"
+         "    NIS   %.2f -> %.2f\n"
+         "    NEES  %.2f -> %.2f\n"
+         "    heading 2-sigma  %.1f -> %.1f deg\n\n",
+         kRuns, mean(nis_off), mean(nis_on), mean(nees_off), mean(nees_on),
+         hdg_off / kRuns, hdg_on / kRuns);
+
+  EXPECT_LT(hdg_on / kRuns, hdg_off / kRuns)
+      << "an absolute heading source should reduce heading uncertainty, but "
+         "measured " << hdg_on / kRuns << " deg with it against "
+      << hdg_off / kRuns << " deg without";
+}
+
+// ─── An absolute heading source keeps the covariance honest as GNSS degrades ──
+// Without one, the filter grows steadily more overconfident as GNSS noise rises:
+// NEES climbs from about 2 at clean 1 m fixes to about 7 at 10 m fixes, meaning
+// it claims an accuracy it no longer has. A magnetometer supplying absolute yaw
+// holds NEES near 2 across the whole range and pins heading under a degree.
+//
+// This is the measured case for adding one, and it is also the honest limit of
+// what it buys: it fixes the part of the covariance error that comes from
+// unobservable yaw. It does nothing about a receiver whose reported covariance
+// describes absolute accuracy while its consecutive fixes agree to centimetres,
+// which is a property of the measurement. See docs/guides/filter-consistency.md.
+TEST(ConsistencyTest, MagnetometerHoldsCovarianceAsGnssDegrades) {
+  const int kRuns = 4;
+  struct Case { const char* name; double sigma; int period; };
+  const Case cases[] = {
+    {"clean  1.0 m @5Hz",  1.0,  20},
+    {"noisy  3.0 m @1Hz",  3.0, 100},
+    {"rover  6.6 m @1Hz",  6.6, 100},
+    {"poor  10.0 m @1Hz", 10.0, 100},
+  };
+
+  printf("\n  %-19s %10s %10s %12s %10s\n",
+         "GNSS quality", "NEES", "NEES+mag", "hdg2sig", "hdg2sig+mag");
+  double worst_no_mag = 0.0, worst_with_mag = 0.0;
+  for (const auto& c : cases) {
+    double nees[2] = {0, 0}, hdg[2] = {0, 0};
+    for (int m = 0; m < 2; ++m) {
+      std::vector<double> acc;
+      for (int i = 0; i < kRuns; ++i) {
+        Scenario sc;
+        sc.duration_s = 110.0; sc.burn_in_s = 30.0;
+        sc.gnss_sigma_xy = c.sigma; sc.gnss_period_steps = c.period;
+        sc.use_mag = (m == 1);
+        RunResult r = run(4000 + i, sc);
+        acc.insert(acc.end(), r.nees_pos.begin(), r.nees_pos.end());
+        hdg[m] += r.final_heading_sigma_deg;
+      }
+      nees[m] = mean(acc);
+    }
+    printf("  %-19s %10.2f %10.2f %9.1f deg %6.1f deg\n",
+           c.name, nees[0], nees[1], hdg[0] / kRuns, hdg[1] / kRuns);
+    worst_no_mag   = std::max(worst_no_mag,   nees[0]);
+    worst_with_mag = std::max(worst_with_mag, nees[1]);
+  }
+  printf("  (3.0 is honest; above it means overconfident)\n\n");
+
+  EXPECT_GT(worst_no_mag, 4.0)
+      << "without an absolute heading source the filter should become clearly "
+         "overconfident as GNSS degrades, but the worst NEES was only "
+      << worst_no_mag << ". If this has improved, the scenario or the filter "
+         "changed and the magnetometer case below needs rechecking.";
+  EXPECT_LT(worst_with_mag, 3.0)
+      << "with a magnetometer the covariance should stay honest across all GNSS "
+         "qualities, but the worst NEES was " << worst_with_mag;
 }
