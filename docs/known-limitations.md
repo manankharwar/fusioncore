@@ -4,6 +4,36 @@ These are limitations of the current implementation, not bugs. Each entry includ
 
 ---
 
+## The reported covariance is conservative without an absolute heading source
+
+On a wheeled robot with a 6-axis IMU, wheel encoders and GNSS position, yaw is
+not observable: the gyro measures `wz + b_gz` and the encoder measures
+`wz + b_ewz`, two equations for three unknowns. GPS track heading only helps
+while the robot moves in a straight line fast enough for the displacement bearing
+to beat the position noise.
+
+That heading uncertainty propagates into the position covariance. Measured across
+three field runs on the development rover, the Normalized Innovation Squared for
+GNSS position had a median of 0.02 to 0.03 where an honest filter averages 3.0,
+with a filter heading 1-sigma of 57 to 143 degrees. One of those runs accepted
+every fix with no quality gate firing and behaved the same, so this is not a side
+effect of measurements being discarded.
+
+Two consequences worth knowing. The Kalman gain is higher than optimal, so the
+filter tracks GNSS noise more closely than it needs to. And the chi2 outlier gate
+is calibrated for a consistent filter: at the default threshold of 16.27, the
+99.9th percentile for 3 degrees of freedom, it is far less sensitive than that
+nominal figure when NIS is running near 0.03, so a moderate multipath excursion
+can pass through.
+
+**Workaround:** add an absolute heading source, either a magnetometer
+(`magnetometer.enabled`) or dual-antenna GNSS heading. Both make yaw observable
+and shrink the position covariance that depends on it. Measure your own run first
+with `python3 tools/nis_from_bag.py <bag>`, described in
+[Is your filter's covariance honest?](guides/filter-consistency.md).
+
+---
+
 ## GPS blackouts longer than 5-7 minutes cause heading drift
 
 During GPS blackouts, FusionCore dead-reckons on IMU and wheel encoders. The encoder WZ bias (`B_EWZ`) is calibrated from GPS heading cross-covariance before the blackout and subtracted during it. For blackouts up to a few minutes, this works well. Beyond 5-7 minutes, the residual uncorrected heading rate error (thermal drift in `B_EWZ`, temperature-dependent gyro drift) accumulates into position error quadratically.

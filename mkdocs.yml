@@ -85,6 +85,7 @@ nav:
     - Handling delayed GPS measurements: guides/delayed-gps-measurements.md
     - navsat_transform startup errors: guides/navsat-transform-startup-errors.md
     - EKF and UKF NaN divergence: guides/ekf-ukf-nan-divergence.md
+    - Is your filter's covariance honest?: guides/filter-consistency.md
   - Certified Configs:
     - Registry: certified-configs/index.md
     - Microstrain 3DM-GX3-45 + Novatel SPAN-CPT: certified-configs/microstrain-3dm-gx3-45-segway.md
