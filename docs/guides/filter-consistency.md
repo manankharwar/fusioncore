@@ -71,17 +71,57 @@ run is the useful control: every fix was accepted, no quality gate was firing,
 and the result is the same. So this is a property of the filter on this hardware
 and not a side effect of fixes being thrown away.
 
-The heading column is the reason. With a 6-axis IMU, wheel encoders and GNSS
-position, yaw is not observable: the gyro measures `wz + b_gz` and the encoder
-measures `wz + b_ewz`, which is two equations for three unknowns. GPS track
-heading only helps while the robot is moving in a straight line fast enough for
-the displacement bearing to beat the position noise. A heading that uncertain
-propagates into the position covariance, which inflates `S`, which collapses NIS.
+Two separate things push NIS down, and it is worth telling them apart because
+only one of them is a filter problem.
 
-Adding an absolute heading source is the direct fix, and it is the reason
-FusionCore supports magnetometer and dual-antenna heading. Until one is present,
-expect the reported covariance on a wheeled robot with a 6-axis IMU to be
-conservative, and do not read the chi2 gate as a 99.9% test.
+### The receiver's covariance describes absolute accuracy, not innovation size
+
+This is usually the larger effect and it surprises people. On the 2026-08-03 run
+the receiver declared a horizontal 1-sigma of 4.84 m. If the fixes really carried
+white noise of that size, consecutive fixes would disagree wildly: the median
+second difference would be about 14 m. The measured value was 0.087 m, and the
+largest anywhere in a 500 second run was 1.09 m. Consecutive fixes agree with
+each other about 160 times more closely than the declared covariance implies.
+
+Both statements are true at once. The receiver smooths internally, so its output
+is strongly time-correlated: the absolute error really is metres, dominated by
+multipath and ionosphere, while the fix-to-fix consistency is centimetres. A
+Kalman filter assumes measurement noise is white. Hand it the declared number as
+`R` and `S` becomes far larger than any innovation it will ever see, so NIS
+collapses regardless of how well the filter is working.
+
+**Do not respond by shrinking the covariance.** If you set `R` to the centimetre
+scatter, the filter will track the receiver's multipath bias rigidly and report
+centimetre confidence in a position that is metres off, which is the dangerous
+direction. The correct treatment for a time-correlated measurement is to model
+the correlation, for example by estimating a slowly varying GNSS bias, rather
+than by relabelling it as white noise.
+
+`tools/nis_from_bag.py` measures this for you and says so when it finds it. Note
+the second difference also contains the robot's real acceleration, so it bounds
+the measurement noise from above: the true white component is smaller still.
+
+### Unobservable yaw inflates P
+
+The second effect is the heading column above. With a 6-axis IMU, wheel encoders
+and GNSS position, yaw is not observable: the gyro measures `wz + b_gz` and the
+encoder measures `wz + b_ewz`, two equations for three unknowns. GPS track
+heading only helps while the robot moves in a straight line fast enough for the
+displacement bearing to beat the position noise. That uncertainty propagates into
+the position covariance and inflates `S` further.
+
+In simulation, where the measurement noise really is white and the receiver
+effect is absent, this part is clearly visible. As GNSS noise grows, NEES without
+an absolute heading source drifts from 2.0 to 7.0, meaning the filter becomes
+steadily more overconfident. With a magnetometer supplying absolute yaw it stays
+near 1.9 across the same range, and the heading 2-sigma drops from 8.8 to 25.5
+degrees down to under one degree. That is measured in
+`fusioncore_core/tests/test_consistency.cpp`.
+
+So an absolute heading source (magnetometer or dual-antenna) is the fix for the
+second effect, and it is worth having. It will not by itself bring NIS back to 3
+on a receiver that smooths its output, because that part is not the filter's
+doing.
 
 ## Simulated counterpart
 

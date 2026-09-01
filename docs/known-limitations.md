@@ -19,6 +19,15 @@ with a filter heading 1-sigma of 57 to 143 degrees. One of those runs accepted
 every fix with no quality gate firing and behaved the same, so this is not a side
 effect of measurements being discarded.
 
+A second and usually larger effect sits underneath it: a receiver that smooths
+internally reports its absolute accuracy while emitting fixes that agree with
+each other far more closely. On the same run the receiver declared 4.84 m
+1-sigma, but the median second difference between consecutive fixes was 0.087 m
+where white noise of that size would give about 14 m. The filter is handed the
+declared figure as `R`, so `S` dwarfs any innovation it will see. That part is a
+property of the measurement, not of the filter, and shrinking `R` is the wrong
+response because the absolute error genuinely is metres.
+
 Two consequences worth knowing. The Kalman gain is higher than optimal, so the
 filter tracks GNSS noise more closely than it needs to. And the chi2 outlier gate
 is calibrated for a consistent filter: at the default threshold of 16.27, the
