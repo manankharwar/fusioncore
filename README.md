@@ -7,7 +7,7 @@
 [![Newsletter](https://img.shields.io/badge/newsletter-subscribe-orange)](https://manankharwar.substack.com)
 <a href="https://www.producthunt.com/products/fusioncore?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-fusioncore-0-3-2" target="_blank" rel="noopener noreferrer"><img alt="FusionCore 0.3.2 - Robust sensor fusion for ROS 2, zero manual tuning | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1189863&amp;theme=light&amp;t=1783397121405"></a>
 
-**ROS 2 UKF sensor fusion for robots that run in the real world. IMU + wheel encoders + GPS at 100 Hz. Handles bad calibration, timestamp jitter, delayed GPS, wheel slip, and ARM hardware out of the box. Apache 2.0.**
+**ROS 2 sensor fusion for outdoor robots: IMU + wheel encoders + GPS at 100 Hz on a 23-state UKF. It handles bad calibration, timestamp jitter, delayed GPS, wheel slip and ARM hardware, and when something does go wrong it tells you which sensor and why. Apache 2.0.**
 
 
 <img width="1080" height="608" alt="586785007-e1e07cfb-74e0-48b9-9bfd-32b68ee5a6ef" src="https://github.com/user-attachments/assets/d59b74ec-af94-4cb1-ab19-e5310a5d138b" />
@@ -17,6 +17,35 @@
 <p align="center">
   <img width="800" height="384" alt="FusionCore running on a real robot" src="https://github.com/user-attachments/assets/9ef42175-6525-4e72-b8d0-a35b0cc5a09d"/>
 </p>
+
+---
+
+## When it goes wrong, it tells you why
+
+Most localization problems are debugging problems. The filter drifts, and the
+hard part is working out which sensor did it. FusionCore publishes what it is
+thinking while it runs, on real hardware:
+
+```bash
+ros2 topic echo /fusion/debug/gnss_status     # one message per GPS fix
+ros2 topic echo /fusion/debug/filter_health   # filter state at 1 Hz
+```
+
+`gnss_status` answers "why was that fix dropped?" for every fix: a
+`rejection_reason` (`CHI2_FAILED`, `SIGMA_XY_HIGH`, `IMPLAUSIBLE_JUMP`,
+`DELAY_TOO_LARGE` and the rest), the Mahalanobis distance printed next to the
+threshold it was actually tested against, and the filter's own position sigma at
+that moment.
+
+`filter_health` answers "does this filter even know which way it is pointing?":
+per-sensor innovation norms, heading uncertainty in degrees, which source the
+heading came from (`GPS_TRACK`, `MAGNETOMETER`, `DUAL_ANTENNA`, `NONE`), and a
+separate count of measurements dropped because two drivers disagree about the
+clock rather than because the data was bad.
+
+That last distinction matters more than it sounds. A sensor whose timestamps run
+behind the filter clock is not being fused at all, and from the outside that
+looks exactly like a badly tuned filter.
 
 ---
 
@@ -41,6 +70,12 @@ bash tools/quick_test.sh
 ```
 
 Starts FusionCore with fake sensors and checks all outputs in about 15 seconds. Prints `[PASS]` / `[FAIL]` for each check.
+
+**Middleware**: verified on Jazzy against Fast DDS (the ROS 2 default),
+`rmw_zenoh_cpp` and `rmw_cyclonedds_cpp`, with all `quick_test.sh` checks passing
+on each. Every sensor subscription uses `SensorDataQoS` (BEST_EFFORT), which is
+compatible with both BEST_EFFORT and RELIABLE publishers, so a QoS mismatch will
+not silently starve the filter of data.
 
 ### **Option B: Docker (no ROS install required)**
 
