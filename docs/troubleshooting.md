@@ -177,11 +177,19 @@ If any are silent, `rgbd_sync` isn't syncing. Check the depthai driver and the t
 
 ---
 
-## `ros2 lifecycle set` returns "Node not found"
+## `ros2 lifecycle set` fails
 
-DDS discovery latency in WSL2 or slow machines. The node is up but hasn't been discovered yet.
+Two different failures get confused here, so read the message.
 
-Use the launch file's auto-configure instead: it uses timed lifecycle events which are immune to discovery latency. Or wait 2–3 seconds and retry the manual command.
+**"Unknown transition requested"** means the node is already past that state, not that anything is wrong. The launch files configure and activate it themselves unless you pass `autoconfigure:=false`, so a manual `configure` afterwards has nothing to do. Check where it is:
+
+```bash
+ros2 lifecycle get /fusioncore
+```
+
+If that says `active`, it is up and you can carry on.
+
+**"Node not found"** is DDS discovery latency on WSL2 or a slow machine: the node is running but has not been discovered yet. Wait 2 to 3 seconds and retry, or let the launch file bring it up, since its timed events are not affected.
 
 ---
 

@@ -88,7 +88,10 @@ def generate_launch_description():
         name="fusioncore",
         namespace="",
         output="screen",
-        parameters=[config],
+        # This launch file emits the transitions below, so stop the node
+        # activating itself as well: the two race and the loser logs an
+        # invalid transition.
+        parameters=[config, {"autostart": False}],
     )
 
     # 6: Configure FusionCore via the launch system's internal event bus.

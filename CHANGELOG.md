@@ -8,6 +8,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **`tools/quick_test.sh` could not bring the node up, and the documented manual lifecycle path could not either.** Reported by Paul Bouchier in #75. Two auto-activation paths had grown up independently of the script: the node gained an `autostart` parameter defaulting to true in 0.3.1, and the launch files gained an `autoconfigure` argument defaulting to true in 0.3.3, while `quick_test.sh` still drove `configure` and `activate` by hand as it had to before either existed. Whichever transition arrived second was invalid for the state the node had already reached, so the script failed on `configure` or on `activate` depending on which side won the race, which is why it failed differently on different machines. The script now waits for the node to reach `active` and reports the state it actually stalled in, rather than driving the transitions itself and reporting "node not found" for what was never a discovery problem. Its per call timeouts were also too short to be a real check: a single `ros2 lifecycle get` takes 5 to 10 s on a slow machine, against the 1 s the retry loop allowed.
+
+  The same conflict broke the manual path in `fusioncore.launch.py` and `fusioncore_duatic.launch.py`. They cleared the node's `autostart` only when `autoconfigure` was on, so `autoconfigure:=false`, which exists precisely to hand the transitions to a `nav2_lifecycle_manager` or to you, left the node activating itself: `configure` jumped straight past `inactive` to `active` and the caller's `activate` was then rejected. Both now clear `autostart` unconditionally, since the launch file settles the transitions either way. `fusioncore_gazebo.launch.py` emitted both transitions without clearing `autostart` at all and had the same race.
+
 ---
 
 ## [0.3.7]: 2026-08-14

@@ -55,7 +55,7 @@ if [[ -z "${AMENT_PREFIX_PATH:-}" ]]; then
 fi
 
 if [[ -f "${WORKSPACE}/install/setup.bash" ]]; then
-    set +u; source "${WORKSPACE}/install/setup.bash"; set -u 2>/dev/null || true
+    set +u; source "${WORKSPACE}/install/setup.bash"
     pass "ROS environment sourced (workspace: ${WORKSPACE})"
 elif [[ -n "${AMENT_PREFIX_PATH:-}" ]]; then
     pass "ROS environment already sourced"
@@ -82,27 +82,36 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 PIDS+=($!)
 sleep 3
 
-# ── 4. Lifecycle (retry for DDS discovery latency on WSL2 / slow machines) ────
-info "Configuring lifecycle node..."
-for i in 1 2 3 4 5; do
-    if ros2 lifecycle set /fusioncore configure >/dev/null 2>&1; then
-        break
-    fi
-    if [[ $i -eq 5 ]]; then
-        fail "Could not configure /fusioncore (node not found after 5 s)"
-        echo "       Check: ros2 node list"
-        exit 1
-    fi
-    sleep 1
+# ── 4. Wait for the node to come up ───────────────────────────────────────────
+# The launch file drives the lifecycle itself (autoconfigure defaults to true),
+# so this waits for that to finish instead of calling configure and activate.
+# Driving them from here as well races the launch file: whichever transition
+# arrives second is invalid for the state the node is already in, so the script
+# failed on configure or on activate depending on which side won.
+# Each ros2 CLI call can take 5-10 s to answer on a slow machine, so give one
+# call room to finish rather than assuming it returns promptly. The node itself
+# reaches active about a second after launch.
+info "Waiting for lifecycle node to reach active..."
+STATE=""
+for i in 1 2 3 4 5 6; do
+    STATE="$(timeout 20 ros2 lifecycle get /fusioncore 2>/dev/null | head -1 | awk '{print $1}')"
+    [[ "${STATE}" == "active" ]] && break
+    sleep 2
 done
-sleep 1
 
-info "Activating lifecycle node..."
-if ! ros2 lifecycle set /fusioncore activate >/dev/null 2>&1; then
-    fail "Could not activate /fusioncore"
+if [[ "${STATE}" != "active" ]]; then
+    if timeout 20 ros2 node list 2>/dev/null | grep -qx "/fusioncore"; then
+        fail "/fusioncore is up but stalled in '${STATE:-unknown}' instead of active"
+        echo "       A bad parameter is the usual cause. Rerun the launch to see the error:"
+        echo "         ros2 launch fusioncore_ros fusioncore.launch.py \\"
+        echo "           env_config:=${REPO_ROOT}/tools/quick_test_params.yaml"
+    else
+        fail "/fusioncore never appeared"
+        echo "       Check: ros2 node list"
+    fi
     exit 1
 fi
-pass "Lifecycle: configure → activate"
+pass "Lifecycle: active"
 sleep 1
 
 # ── 5. Fake sensors ───────────────────────────────────────────────────────────

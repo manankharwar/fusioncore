@@ -98,8 +98,10 @@ ros2 topic hz /fusion/odom
 # expected: average rate: 100.000
 ```
 
-!!! note "WSL2"
-    If `ros2 lifecycle set` returns "Node not found", use the launch file's auto-configure instead. WSL2 DDS discovery latency can prevent manual lifecycle commands from finding the node. The launch file handles this with timed events.
+!!! note "If a lifecycle command fails"
+    "Unknown transition requested" means the node is already past the state you asked for. The launch files bring it up to `active` themselves unless you pass `autoconfigure:=false`, so there is nothing left to drive. Check where it actually is with `ros2 lifecycle get /fusioncore`.
+
+    "Node not found" is a different problem: DDS discovery has not settled yet, which happens on WSL2 and slow machines. Wait a couple of seconds and retry, or let the launch file do it, since its timed events are not affected.
 
 ---
 

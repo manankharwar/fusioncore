@@ -20,10 +20,13 @@ def _make_node(context, *args, **kwargs):
 
     params = [config]
 
-    # When the launch file drives the lifecycle we turn off the node's own
-    # self-activate, otherwise both fire and you get a double-activate.
-    if autoconfigure:
-        params.append({"autostart": False})
+    # The launch file settles the transitions either way: it drives them itself
+    # when autoconfigure is on, and hands them to the caller when it is off.
+    # The node activating itself on top of that breaks both cases, so switch it
+    # off here. With autoconfigure on you would get a double-activate; with it
+    # off, configure would jump straight to active and the caller's activate
+    # would be an invalid transition.
+    params.append({"autostart": False})
 
     node = LifecycleNode(
         package="fusioncore_ros",
