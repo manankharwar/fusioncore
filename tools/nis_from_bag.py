@@ -39,6 +39,7 @@ except ImportError:
              "and your workspace, so the fusioncore_ros messages resolve")
 
 GNSS_TOPIC = "/fusion/debug/gnss_status"
+NAVSAT_TYPE = "sensor_msgs/msg/NavSatFix"
 HEALTH_TOPIC = "/fusion/debug/filter_health"
 EXPECTED_NIS = 3.0          # GNSS position is a 3-DOF measurement
 
@@ -62,6 +63,52 @@ def storage_id(bag):
         if entry.endswith(".db3"):
             return "sqlite3"
     return "mcap"
+
+
+def read_navsat(bag):
+    """Declared covariance vs how much consecutive fixes actually move.
+
+    A receiver that smooths internally reports its ABSOLUTE accuracy (metres,
+    dominated by multipath and ionosphere) while delivering fixes that agree with
+    each other to centimetres. The filter is handed the declared number as R, but
+    its innovations only ever see the short-term consistency, so NIS collapses.
+    Worth measuring, because it is invisible from the estimate alone.
+    """
+    import math
+    reader = rosbag2_py.SequentialReader()
+    reader.open(rosbag2_py.StorageOptions(uri=bag, storage_id=storage_id(bag)),
+                rosbag2_py.ConverterOptions("", ""))
+    topics = [t.name for t in reader.get_all_topics_and_types() if t.type == NAVSAT_TYPE]
+    if not topics:
+        return None
+    topic = topics[0]
+    msg_type = get_message(NAVSAT_TYPE)
+    reader.set_filter(rosbag2_py.StorageFilter(topics=[topic]))
+
+    lat, lon, sig = [], [], []
+    while reader.has_next():
+        _, data, _ = reader.read_next()
+        m = deserialize_message(data, msg_type)
+        if m.position_covariance_type == 0:
+            continue
+        lat.append(m.latitude)
+        lon.append(m.longitude)
+        sig.append(math.sqrt(max(m.position_covariance[0], 0.0)))
+    if len(lat) < 10:
+        return None
+
+    earth = 6371000.0
+    xs = [math.radians(v - lon[0]) * earth * math.cos(math.radians(lat[0])) for v in lon]
+    ys = [math.radians(v - lat[0]) * earth for v in lat]
+    # Second difference cancels constant velocity. What survives is measurement
+    # noise plus the robot's real acceleration, so this BOUNDS the noise above.
+    d2 = sorted(math.hypot(xs[i+1] - 2*xs[i] + xs[i-1], ys[i+1] - 2*ys[i] + ys[i-1])
+                for i in range(1, len(xs) - 1))
+    declared = statistics.median(sig)
+    observed = d2[len(d2) // 2]
+    # White noise of size s gives median |2nd difference| of about sqrt(6)*1.1774*s
+    expected = math.sqrt(6.0) * 1.1774 * declared
+    return topic, declared, observed, expected
 
 
 def read(bag):
@@ -146,8 +193,25 @@ def report(bag):
         print("  heading 1-sigma: median %.0f deg, sources %s"
               % (statistics.median(hdg), sorted({m.heading_source for m in health})))
         if statistics.median(hdg) > 45.0:
-            print("  Heading is effectively unknown. An unobservable yaw inflates the "
-                  "position covariance, which is the usual reason NIS collapses.")
+            print("  Heading is effectively unknown, which inflates the position "
+                  "covariance and pushes NIS down.")
+
+    nav = read_navsat(bag)
+    if nav:
+        topic, declared, observed, expected = nav
+        print("  receiver on %s declares %.2f m 1-sigma" % (topic, declared))
+        print("    fix-to-fix scatter implies far less: median second difference "
+              "%.3f m against the %.1f m that declared figure would produce"
+              % (observed, expected))
+        if observed * 10.0 < expected:
+            print("    Consecutive fixes are %.0fx smoother than the declared "
+                  "covariance implies, so that number describes ABSOLUTE accuracy "
+                  "(multipath, ionosphere) while the filter's innovations only see "
+                  "short-term consistency." % (expected / max(observed, 1e-9)))
+            print("    This alone drives NIS down and is not a filter bug. Do not "
+                  "just shrink the covariance: the absolute error really is metres, "
+                  "and a small R would make the filter track that bias rigidly and "
+                  "report centimetre confidence it has not earned.")
 
 
 def main():
