@@ -8,6 +8,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [0.3.8]: 2026-09-01
+
 ### Added
 - **Measured what an absolute heading source actually buys, before the hardware has one.** The field bags say the covariance is badly underconfident and the standing diagnosis was unobservable yaw, so `test_consistency.cpp` now measures whether a magnetometer repairs it. Without one the filter grows steadily more overconfident as GNSS degrades: mean position NEES climbs from 2.0 at clean 1 m fixes to 6.3 at 10 m fixes, where 3.0 is honest and above it means claiming an accuracy it does not have. With a magnetometer supplying absolute yaw it holds between 1.7 and 2.0 across that whole range, and the heading 2-sigma drops from 9 to 31 degrees down to under one degree. `MagnetometerHoldsCovarianceAsGnssDegrades` asserts both halves.
 
@@ -27,16 +31,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   The sigma-weight bug turns out to be invisible under good observability: NIS and NEES agree to three decimals across alpha 0.1, 0.5 and 1.0 with GPS up, because the quaternion sigma points never spread far enough for the negative centre weight to dominate. It only shows during dead reckoning. Over a 60 s GPS blackout, median NEES across 16 seeds is 1.36 at alpha 1.0 and 6.51 at alpha 0.1, the latter overconfident by roughly 2x. `BlackoutCovarianceAndSigmaWeights` fails if those converge, so the 0.3.7 fix cannot be quietly undone. Medians, not means: per-seed blackout NEES ranges from 0.5 to 24.3, so a mean over a handful of seeds mostly reports which tail it drew, the same reason `tools/compare_runs.py` judges NCLT runs on median and p90.
 
+### Changed
+- **`autoconfigure:=false` now also stops the node activating itself.** Previously the launch files cleared the node's `autostart` only when they were driving the lifecycle themselves, so the one setting that exists to hand the transitions to a `nav2_lifecycle_manager` or to you left the node self-activating: `configure` jumped straight past `inactive` to `active` and the caller's `activate` was then rejected. That path could not have worked for anyone, but it is still a behaviour change. If you drive FusionCore's lifecycle externally, you now get `unconfigured -> inactive -> active` in the order you ask for it.
+
+- **Rebuild an existing workspace to get the optimisation fix.** The Release default below only applies when CMake configures a build directory, so a workspace that already has `build/` keeps its unoptimised binary and sees none of the speedup. `rm -rf build install && colcon build` once, or pass `--cmake-args -DCMAKE_BUILD_TYPE=Release`.
+
 ### Fixed
 - **A plain `colcon build` produced an unoptimised filter.** No package set `CMAKE_BUILD_TYPE` and no install instruction passed one, so the documented build produced no optimisation flags at all. Eigen without inlining is drastically slower: the consistency suite runs in 298 s that way and 4.3 s at `-O3`, a factor of 69, and the whole core and ROS test suite went from 5 min 19 s to 42 s. For a 23-state UKF at 100 Hz on a Raspberry Pi that is the difference between keeping up and starving, and a starved filter drops delayed measurements as `DELAY_TOO_LARGE` and dead-reckons instead. `fusioncore_core`, `fusioncore_ros` and `fusioncore_ublox` now default to Release when the caller has not chosen; an explicit `-DCMAKE_BUILD_TYPE` still wins, so debug builds are unaffected.
 
-### Verified
-- Middleware compatibility on Jazzy: Fast DDS (the ROS 2 default), `rmw_zenoh_cpp` 0.2.9 and `rmw_cyclonedds_cpp`, with all `tools/quick_test.sh` checks passing under each, lifecycle transitions and the service call included. No code change was needed: every sensor subscription already uses `SensorDataQoS`.
-
-### Fixed
 - **`tools/quick_test.sh` could not bring the node up, and the documented manual lifecycle path could not either.** Reported by Paul Bouchier in #75. Two auto-activation paths had grown up independently of the script: the node gained an `autostart` parameter defaulting to true in 0.3.1, and the launch files gained an `autoconfigure` argument defaulting to true in 0.3.3, while `quick_test.sh` still drove `configure` and `activate` by hand as it had to before either existed. Whichever transition arrived second was invalid for the state the node had already reached, so the script failed on `configure` or on `activate` depending on which side won the race, which is why it failed differently on different machines. The script now waits for the node to reach `active` and reports the state it actually stalled in, rather than driving the transitions itself and reporting "node not found" for what was never a discovery problem. Its per call timeouts were also too short to be a real check: a single `ros2 lifecycle get` takes 5 to 10 s on a slow machine, against the 1 s the retry loop allowed.
 
   The same conflict broke the manual path in `fusioncore.launch.py` and `fusioncore_duatic.launch.py`. They cleared the node's `autostart` only when `autoconfigure` was on, so `autoconfigure:=false`, which exists precisely to hand the transitions to a `nav2_lifecycle_manager` or to you, left the node activating itself: `configure` jumped straight past `inactive` to `active` and the caller's `activate` was then rejected. Both now clear `autostart` unconditionally, since the launch file settles the transitions either way. `fusioncore_gazebo.launch.py` emitted both transitions without clearing `autostart` at all and had the same race.
+
+### Verified
+- Middleware compatibility on Jazzy: Fast DDS (the ROS 2 default), `rmw_zenoh_cpp` 0.2.9 and `rmw_cyclonedds_cpp`, with all `tools/quick_test.sh` checks passing under each, lifecycle transitions and the service call included. No code change was needed: every sensor subscription already uses `SensorDataQoS`.
 
 ---
 

@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(fusioncore_ros VERSION 0.3.7)
+project(fusioncore_ros VERSION 0.3.8)
 
 # Default to Release when the caller has not chosen. A plain "colcon build" sets
 # no build type, which means no optimisation flags at all, and Eigen without
