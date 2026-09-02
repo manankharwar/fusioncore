@@ -86,11 +86,6 @@ Every project has these. Most do not write them down.
 **The chi-squared gate is less sensitive than its nominal threshold on a smoothing receiver.** Many GNSS receivers report their absolute accuracy, several metres dominated by multipath, while emitting fixes that agree with each other to centimetres because they filter internally. A Kalman filter assumes white measurement noise, so it gets handed a covariance far larger than any innovation it will see, and the gate then sits much further above typical than its 99.9% design point suggests. Measure yours with `nis_from_bag.py` before relying on the gate.
 
 **Long GPS blackouts still accumulate heading error.** Beyond roughly five to seven minutes of dead reckoning, residual bias drift dominates. See [known limitations](https://manankharwar.github.io/fusioncore/known-limitations/).
-
-**The published benchmark numbers below are a snapshot, not a current measurement.** They have not been re-verified on `main` since May 2026. The 10-of-12 result holds and the regression harness (`tools/check_benchmark_regression.py`) gates further drift, but treat the individual figures as indicative.
-
-**One maintainer.** That is a real risk for anything you depend on. What offsets it: Apache 2.0 forever, a core small enough to read in an afternoon, and 132 tests including consistency checks that verify the filter's own covariance rather than only its output.
-
 ---
 
 ## Built around the problems real robots have
