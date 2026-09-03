@@ -64,6 +64,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_stale_rate tests/test_stale_rate.cpp)
   target_include_directories(test_stale_rate PRIVATE include)
 
+  ament_add_gtest(test_gnss_dop_gate_warning tests/test_gnss_dop_gate_warning.cpp)
+  target_include_directories(test_gnss_dop_gate_warning PRIVATE include)
+
   # Launches the real node and asserts /fromLL is advertised with the type
   # nav2_waypoint_follower binds. A different-but-identical type is invisible to
   # Nav2 and only a real typed client catches it, which is how issue #73 shipped
