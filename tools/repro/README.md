@@ -349,7 +349,12 @@ IMU stamp +1 microsecond        23.966   -9.022   173.62     50.596 m
 one extra predict per second    54.915  -25.818  -167.05     15.825 m
 ```
 
-**A 1 microsecond stamp shift moves the answer by up to 50 m and 175 degrees.**
+**A 1 microsecond stamp shift moves the final position by up to 50.6 m, and swings
+yaw by 109 degrees while GPS is still present.**
+
+Read the yaw column as absolute headings, not deltas. With GPS the shift is
+-1.86 to 106.96, so 109 degrees. In the blackout it is -134.11 to 173.62, which
+wraps to 52 degrees, not the 307 the raw subtraction gives.
 
 Note the first block: GPS is present and healthy, and yaw still swings from -1.86 to
 106.96 degrees. Position holds because GPS pins it. **The blackout does not create the
