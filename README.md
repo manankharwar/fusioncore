@@ -241,6 +241,26 @@ Useful if you are on PX4, a custom middleware, or an embedded loop where ROS 2 i
 
 ---
 
+## Contributing
+
+Bug reports are genuinely useful here and several have changed the library. If
+something misbehaves, the fastest route to an answer is usually the filter's own
+diagnostics, which the [bug report template](.github/ISSUE_TEMPLATE/bug_report.md)
+asks for:
+
+```bash
+ros2 topic echo /fusion/debug/filter_health --once
+ros2 topic echo /fusion/debug/gnss_status --once
+```
+
+If you would rather write code, the
+[good first issues](https://github.com/manankharwar/fusioncore/labels/good%20first%20issue)
+are scoped so you do not need to understand the estimator to pick one up. They
+point at the file and the line, and each one comes from a real failure rather than
+a wishlist. [CONTRIBUTING.md](CONTRIBUTING.md) has the build and test steps.
+
+---
+
 ## License
 
 Apache 2.0, and it stays that way.
