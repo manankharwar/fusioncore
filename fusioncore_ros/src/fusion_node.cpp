@@ -39,6 +39,8 @@
 #include <sstream>
 #include <proj.h>
 
+#include "fusioncore_ros/gnss_dop_gate_warning.hpp"
+
 using namespace std::chrono_literals;
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -471,6 +473,8 @@ public:
     config.gnss.heading_noise  = get_parameter("gnss.heading_noise").as_double();
     config.gnss.max_hdop       = get_parameter("gnss.max_hdop").as_double();
     config.gnss.max_vdop       = get_parameter("gnss.max_vdop").as_double();
+    max_hdop_                  = config.gnss.max_hdop;
+    max_vdop_                  = config.gnss.max_vdop;
     config.gnss.max_sigma_xy   = get_parameter("gnss.max_sigma_xy").as_double();
     config.gnss.max_sigma_z    = get_parameter("gnss.max_sigma_z").as_double();
     max_sigma_xy_              = config.gnss.max_sigma_xy;
@@ -1929,6 +1933,20 @@ private:
 
   // ─── GNSS position callback ────────────────────────────────────────────────
 
+  void warn_if_dop_gate_bypassed(bool covariance_gate_active)
+  {
+    if (!dop_gate_warning_.should_warn(covariance_gate_active, max_hdop_, max_vdop_)) {
+      return;
+    }
+
+    RCLCPP_WARN(get_logger(),
+      "This receiver reports position covariance, so the sigma gate runs "
+      "(gnss.max_sigma_xy=%.1f m, gnss.max_sigma_z=%.1f m). "
+      "gnss.max_hdop=%.1f and gnss.max_vdop=%.1f will not be consulted on this run; "
+      "the DOP path is only used for fixes without covariance.",
+      max_sigma_xy_, max_sigma_z_, max_hdop_, max_vdop_);
+  }
+
   void gnss_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg, int source_id = 0)
   {
     if (source_id == 0) mark_sensor_received("GNSS");
@@ -2100,6 +2118,8 @@ private:
       fix.vdop = 2.0;
       fix.satellites = 4;  // Fix 10
     }
+
+    warn_if_dop_gate_bypassed(msg->position_covariance_type >= 1 && fix.has_sigma());
 
     bool accepted = fc_->update_gnss(t, fix);
     const auto& dbg = fc_->get_gnss_debug();
@@ -2298,6 +2318,10 @@ private:
       fix.hdop = 1.5;
       fix.vdop = 2.0;
     }
+
+    warn_if_dop_gate_bypassed(
+      msg->position_covariance_type >= gps_msgs::msg::GPSFix::COVARIANCE_TYPE_APPROXIMATED &&
+      fix.has_sigma());
 
     bool accepted = fc_->update_gnss(t, fix);
     const auto& dbg = fc_->get_gnss_debug();
@@ -3085,8 +3109,11 @@ private:
   double      enc2_yaw_noise_ = 0.02;
   // Cached so the GNSS rejection warning can name the limit it failed against.
   // Defaults mirror the declare_parameter values.
+  double      max_hdop_     = 4.0;
+  double      max_vdop_     = 6.0;
   double      max_sigma_xy_ = 25.0;
   double      max_sigma_z_  = 50.0;
+  fusioncore_ros::GnssDopGateWarning dop_gate_warning_;
   std::string vslam_topic_;
   std::string vslam_frame_override_;
   // VSLAM map-to-odom frame offset: applied to every VSLAM measurement.
