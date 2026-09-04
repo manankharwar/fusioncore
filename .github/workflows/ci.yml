@@ -12,6 +12,11 @@ env:
 jobs:
   build-and-test:
     strategy:
+      # One distro's toolchain going down should not erase the signal from the
+      # other. On 2026-09-04 setup-ros failed on jammy in 21 s, before compiling
+      # anything, and fail-fast cancelled a Jazzy job that was perfectly healthy.
+      # The result was a bare red X on main for an upstream outage.
+      fail-fast: false
       matrix:
         include:
           - ros_distro: jazzy
