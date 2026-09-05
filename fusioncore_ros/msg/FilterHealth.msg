@@ -29,6 +29,10 @@ int32 gnss_consecutive_rejects
 # gnss_outlier_count, so this is the only field that reveals why a fix was dropped.
 string gnss_last_reject_reason
 
+# Reason the most recent magnetometer reading was rejected (empty until the first reading):
+# CHI2_FAILED | FIELD_MAGNITUDE
+string mag_last_reject_reason
+
 # Distance traveled since init (meters): heading observable above 5m
 float64 distance_traveled_m
 

@@ -291,6 +291,14 @@ enum class GnssRejectionReason {
   SIGMA_Z_HIGH    = 10, // reported vertical sigma in METRES > max_sigma_z
 };
 
+// Why a magnetometer reading was rejected (or ACCEPTED if it passed).
+enum class MagRejectionReason {
+  NOT_PROCESSED    = 0,
+  ACCEPTED         = 1,
+  CHI2_FAILED      = 2,  // Mahalanobis distance > threshold
+  FIELD_MAGNITUDE  = 3,  // corrected field magnitude outside configured range
+};
+
 // Per-fix observability data: populated by update_gnss() on every call.
 // Retrieve via get_gnss_debug() after update_gnss() returns.
 struct GnssFixDebug {
@@ -314,6 +322,15 @@ struct GnssFixDebug {
   // Lever arm observability
   bool               lever_arm_used     = false;  // was lever arm correction applied for this fix
   double             heading_sigma_deg  = 0.0;    // heading 1-sigma at time of this fix (degrees)
+};
+
+// Per-reading observability data: populated by update_magnetometer() on every call.
+struct MagnetometerDebug {
+  bool              accepted       = false;
+  MagRejectionReason reason        = MagRejectionReason::NOT_PROCESSED;
+  double            mahalanobis_sq = -1.0;
+  double            chi2_threshold  = 0.0;
+  double            measured_field  = 0.0;
 };
 
 enum class SensorHealth {
@@ -365,6 +382,7 @@ struct FusionCoreStatus {
   // rejection). Quality-gate rejects (HDOP/VDOP/fix-type/sats) and delay rejects
   // do NOT increment gnss_outliers, so this is the only place they are reported.
   GnssRejectionReason gnss_last_rejection_reason = GnssRejectionReason::NOT_PROCESSED;
+  MagRejectionReason mag_last_rejection_reason = MagRejectionReason::NOT_PROCESSED;
 
   // Stale-measurement rejections from inter-sensor clock skew: this sensor's
   // stamps run more than max_measurement_delay behind the filter clock while
@@ -465,6 +483,7 @@ public:
   double last_position_correction() const { return ukf_.last_position_correction(); }
   FusionCoreStatus   get_status()     const;
   const GnssFixDebug& get_gnss_debug() const { return gnss_debug_; }
+  const MagnetometerDebug& get_magnetometer_debug() const { return mag_debug_; }
   void               reset();
   bool               is_initialized()    const { return initialized_; }
   bool               is_heading_valid()  const { return heading_validated_; }
@@ -564,6 +583,7 @@ private:
 
   // Per-fix observability: updated on every update_gnss() call
   GnssFixDebug gnss_debug_;
+  MagnetometerDebug mag_debug_;
 
   // Last accepted innovation norms per sensor: updated on each accepted update
   double last_gnss_innovation_norm_    = 0.0;
@@ -575,6 +595,8 @@ private:
   bool gnss_in_coast_            = false;
   // Persists the reason of the last rejected GNSS fix, for status reporting.
   GnssRejectionReason last_gnss_rejection_reason_ = GnssRejectionReason::NOT_PROCESSED;
+  // Persists the reason of the last rejected magnetometer reading.
+  MagRejectionReason last_mag_rejection_reason_ = MagRejectionReason::NOT_PROCESSED;
 
   // Inter-sensor clock-skew protection. Raw per-stream stamps (recorded whether
   // or not the measurement was accepted, unlike last_*_time_ which only tracks
