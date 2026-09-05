@@ -149,7 +149,9 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
 
   // Reset observability state
   gnss_debug_                    = GnssFixDebug{};
+  mag_debug_                     = MagnetometerDebug{};
   last_gnss_rejection_reason_    = GnssRejectionReason::NOT_PROCESSED;
+  last_mag_rejection_reason_     = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
   last_encoder_innovation_norm_  = 0.0;
@@ -196,7 +198,9 @@ void FusionCore::reset() {
   ukf_.set_gyro_bias_noise_scale(1.0);
 
   gnss_debug_                   = GnssFixDebug{};
+  mag_debug_                    = MagnetometerDebug{};
   last_gnss_rejection_reason_   = GnssRejectionReason::NOT_PROCESSED;
+  last_mag_rejection_reason_    = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
   last_encoder_innovation_norm_ = 0.0;
@@ -1302,6 +1306,7 @@ FusionCoreStatus FusionCore::get_status() const {
   status.gnss_in_coast           = gnss_in_coast_;
   status.gnss_consecutive_rejects = gnss_consecutive_rejects_;
   status.gnss_last_rejection_reason = last_gnss_rejection_reason_;
+  status.mag_last_rejection_reason = last_mag_rejection_reason_;
 
   // Inter-sensor clock-skew rejections
   status.imu_stale_rejects     = imu_stale_rejects_;
@@ -1407,6 +1412,12 @@ bool FusionCore::update_magnetometer(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_magnetometer() called before init()");
 
+  mag_debug_ = MagnetometerDebug{};
+  mag_debug_.chi2_threshold = config_.mag.chi2_threshold;
+  const Eigen::Vector3d corrected_field =
+    config_.mag.soft_iron * (Eigen::Vector3d(mx, my, mz) - config_.mag.hard_iron);
+  mag_debug_.measured_field = corrected_field.norm();
+
   if (reject_stale_from_skew(timestamp_seconds, last_mag_raw_stamp_, mag_stale_rejects_))
     return false;
 
@@ -1418,6 +1429,8 @@ bool FusionCore::update_magnetometer(
   // catch. See sensors::mag_field_disturbed. Disabled when field_strength <= 0.
   if (sensors::mag_field_disturbed(mx, my, mz, config_.mag)) {
     ++mag_outliers_;
+    mag_debug_.reason = MagRejectionReason::FIELD_MAGNITUDE;
+    last_mag_rejection_reason_ = mag_debug_.reason;
     return false;
   }
 
@@ -1445,8 +1458,12 @@ bool FusionCore::update_magnetometer(
     sensors::GnssHdgNoiseMatrix S;
     ukf_.predict_measurement<sensors::GNSS_HDG_DIM>(
       z, sensors::gnss_hdg_measurement_function, R, innov_pre, S, MAG_ANGLE_DIMS);
-    if (is_outlier<sensors::GNSS_HDG_DIM>(innov_pre, S, config_.mag.chi2_threshold)) {
+    const double mahalanobis_sq = innov_pre.dot(S.ldlt().solve(innov_pre));
+    mag_debug_.mahalanobis_sq = mahalanobis_sq;
+    if (mahalanobis_sq > config_.mag.chi2_threshold) {
       ++mag_outliers_;
+      mag_debug_.reason = MagRejectionReason::CHI2_FAILED;
+      last_mag_rejection_reason_ = mag_debug_.reason;
       return false;
     }
   }
@@ -1466,6 +1483,8 @@ bool FusionCore::update_magnetometer(
 
   last_mag_time_ = timestamp_seconds;
   ++update_count_;
+  mag_debug_.accepted = true;
+  mag_debug_.reason = MagRejectionReason::ACCEPTED;
   return true;
 }
 

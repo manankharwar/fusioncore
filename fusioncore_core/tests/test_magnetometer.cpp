@@ -155,6 +155,10 @@ TEST(MagnetometerTest, Chi2GateRejectsOutlier) {
   // Filter is at yaw=0. Feed a pi/2 reading with noise_rad=0.001: huge outlier.
   bool accepted = fc.update_magnetometer(0.01, 1.0, 0.0, 0.0);  // yaw=pi/2
   EXPECT_FALSE(accepted);
+  EXPECT_EQ(fc.get_magnetometer_debug().reason, MagRejectionReason::CHI2_FAILED);
+  EXPECT_GT(fc.get_magnetometer_debug().mahalanobis_sq,
+            fc.get_magnetometer_debug().chi2_threshold);
+  EXPECT_EQ(fc.get_status().mag_last_rejection_reason, MagRejectionReason::CHI2_FAILED);
 }
 
 // ─── Test 10: heading_source set to MAGNETOMETER after first update ───────────
@@ -251,6 +255,9 @@ TEST(MagnetometerTest, DisturbedFieldRejected) {
 
   EXPECT_TRUE (fc.update_magnetometer(0.01, 0.0, 1.0, 0.0));  // clean, accepted
   EXPECT_FALSE(fc.update_magnetometer(0.02, 0.0, 1.6, 0.0));  // 60% high, rejected
+  EXPECT_EQ(fc.get_magnetometer_debug().reason, MagRejectionReason::FIELD_MAGNITUDE);
+  EXPECT_NEAR(fc.get_magnetometer_debug().measured_field, 1.6, 1e-9);
+  EXPECT_EQ(fc.get_status().mag_last_rejection_reason, MagRejectionReason::FIELD_MAGNITUDE);
 }
 
 // ─── Test 15: magnetometer bounds heading drift from wheel slip in a blackout ─

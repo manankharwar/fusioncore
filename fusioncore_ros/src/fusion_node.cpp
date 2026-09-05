@@ -2486,8 +2486,10 @@ private:
       msg->magnetic_field.y,
       msg->magnetic_field.z);
     if (!accepted) {
+      const auto& debug = fc_->get_magnetometer_debug();
       RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-        "Magnetometer heading update rejected (chi2 gate)");
+        "Magnetometer heading update rejected (%s)",
+        mag_reason_str(debug.reason).c_str());
     }
   }
 
@@ -2512,6 +2514,17 @@ private:
       case fusioncore::GnssRejectionReason::SIGMA_XY_HIGH:   return "SIGMA_XY_HIGH";
       case fusioncore::GnssRejectionReason::SIGMA_Z_HIGH:    return "SIGMA_Z_HIGH";
       case fusioncore::GnssRejectionReason::NOT_PROCESSED:   return "NOT_PROCESSED";
+    }
+    return "NOT_PROCESSED";
+  }
+
+  static std::string mag_reason_str(fusioncore::MagRejectionReason r)
+  {
+    switch (r) {
+      case fusioncore::MagRejectionReason::CHI2_FAILED:     return "CHI2_FAILED";
+      case fusioncore::MagRejectionReason::FIELD_MAGNITUDE: return "FIELD_MAGNITUDE";
+      case fusioncore::MagRejectionReason::NOT_PROCESSED:   return "NOT_PROCESSED";
+      case fusioncore::MagRejectionReason::ACCEPTED:        return "ACCEPTED";
     }
     return "NOT_PROCESSED";
   }
@@ -2899,6 +2912,11 @@ private:
       fh.gnss_in_coast           = status.gnss_in_coast;
       fh.gnss_consecutive_rejects = status.gnss_consecutive_rejects;
       fh.gnss_last_reject_reason = gnss_reject_str(status.gnss_last_rejection_reason);
+      fh.mag_last_reject_reason = mag_reason_str(status.mag_last_rejection_reason);
+      if (status.mag_last_rejection_reason == fusioncore::MagRejectionReason::NOT_PROCESSED ||
+          status.mag_last_rejection_reason == fusioncore::MagRejectionReason::ACCEPTED) {
+        fh.mag_last_reject_reason.clear();
+      }
 
       fh.distance_traveled_m = status.distance_traveled;
 
