@@ -94,13 +94,20 @@ sleep 3
 info "Waiting for lifecycle node to reach active..."
 STATE=""
 for i in 1 2 3 4 5 6; do
-    STATE="$(timeout 20 ros2 lifecycle get /fusioncore 2>/dev/null | head -1 | awk '{print $1}')"
+    # The `|| true` is what makes the retry loop a retry loop. This script runs
+    # under `set -eo pipefail`, and a command substitution inherits the pipeline's
+    # exit status, so without it the FIRST failed lookup kills the whole script:
+    # no retry, and not even the diagnostic below. Locally the node is usually up
+    # by the first attempt so it looked fine; in CI, on a cold runner, it died
+    # 1.2 s in every time.
+    STATE="$(timeout 20 ros2 lifecycle get /fusioncore 2>/dev/null | head -1 | awk '{print $1}' || true)"
     [[ "${STATE}" == "active" ]] && break
     sleep 2
 done
 
 if [[ "${STATE}" != "active" ]]; then
-    if timeout 20 ros2 node list 2>/dev/null | grep -qx "/fusioncore"; then
+    NODES="$(timeout 20 ros2 node list 2>/dev/null || true)"
+    if echo "${NODES}" | grep -qx "/fusioncore"; then
         fail "/fusioncore is up but stalled in '${STATE:-unknown}' instead of active"
         echo "       A bad parameter is the usual cause. Rerun the launch to see the error:"
         echo "         ros2 launch fusioncore_ros fusioncore.launch.py \\"
@@ -134,6 +141,8 @@ ros2 topic pub /odom/wheels nav_msgs/msg/Odometry "{
 }" --rate 50 >/dev/null 2>&1 &
 PIDS+=($!)
 
+# A floor, not the whole wait: check_topic below retries for up to 40 s each, so
+# a slow machine is handled there rather than by guessing a number here.
 info "Waiting 6 s for filter to initialize..."
 sleep 6
 
@@ -142,20 +151,41 @@ echo ""
 echo "  Checks:"
 echo "  -------"
 
+# Uses the shell's timeout, NOT `ros2 topic echo --timeout`.
+#
+# That flag does not exist on Humble: ros2topic gained it after that release, so
+# on Humble argparse rejects the whole command and every check below reports FAIL
+# while the topics are in fact publishing perfectly. A false negative in the first
+# thing a new user runs is worse than no check at all, and it is invisible to
+# anyone testing only on Jazzy. `timeout N` is portable and does the same job.
 check_topic() {
     local topic="$1" label="$2"
-    if ros2 topic echo "${topic}" --once --timeout 5 >/dev/null 2>&1; then
-        pass "${label}"
-    else
-        fail "${label}  (topic: ${topic})"
-    fi
+    # Retries rather than asking once. FusionCore advertises its services at
+    # activation but only PUBLISHES once sensor data has arrived and the filter
+    # has initialised, and how long that takes depends entirely on the machine.
+    # On a cold CI runner the fixed 6 s wait above was not enough: all three
+    # topic checks failed 0.35 s apart, which is `ros2 topic echo` erroring out
+    # because the topic had no publisher yet, not a timeout. The service check
+    # passed in the same run, which is what pointed at initialisation rather than
+    # at discovery being broken.
+    local i
+    for i in 1 2 3 4 5 6 7 8; do
+        if timeout 3 ros2 topic echo "${topic}" --once >/dev/null 2>&1; then
+            pass "${label}"
+            return
+        fi
+        sleep 2
+    done
+    fail "${label}  (topic: ${topic})"
 }
 
 check_topic /fusion/odom  "/fusion/odom publishing (main output)"
 check_topic /fusion/pose  "/fusion/pose publishing"
 check_topic /diagnostics  "/diagnostics publishing"
 
-if ros2 service call /fusioncore/reset std_srvs/srv/Trigger '{}' >/dev/null 2>&1; then
+# Bounded for the same reason: a service call with nothing on the other end waits
+# for the service to appear, which in CI means the job hangs instead of failing.
+if timeout 10 ros2 service call /fusioncore/reset std_srvs/srv/Trigger '{}' >/dev/null 2>&1; then
     pass "/fusioncore/reset service responds"
 else
     fail "/fusioncore/reset service not found"
