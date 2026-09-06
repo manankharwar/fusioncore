@@ -31,8 +31,16 @@ fail() { echo -e "  ${RED}[FAIL]${NC} $*"; FAIL=1; }
 info() { echo -e "  ${BLUE}[....]${NC} $*"; }
 
 cleanup() {
+    # Kill the process GROUP, not just the process.
+    #
+    # `ros2 launch` spawns the node as a child of itself, so killing the launcher
+    # alone orphans a live /fusioncore. Whatever runs next then finds two nodes
+    # with the same name and misbehaves in ways that look nothing like the real
+    # cause: in CI this surfaced as an unrelated launch_testing service call
+    # timing out on one distro and passing on the other. Everything below is
+    # started with setsid so it leads its own group and the whole tree goes.
     for pid in "${PIDS[@]}"; do
-        kill "$pid" 2>/dev/null || true
+        kill -- "-${pid}" 2>/dev/null || kill "${pid}" 2>/dev/null || true
     done
     wait 2>/dev/null || true
 }
@@ -67,17 +75,17 @@ fi
 
 # ── 2. TF publishers ──────────────────────────────────────────────────────────
 info "Starting TF publishers..."
-ros2 run tf2_ros static_transform_publisher \
+setsid ros2 run tf2_ros static_transform_publisher \
     --frame-id base_link --child-frame-id imu_link >/dev/null 2>&1 &
 PIDS+=($!)
-ros2 run tf2_ros static_transform_publisher \
+setsid ros2 run tf2_ros static_transform_publisher \
     --frame-id odom --child-frame-id base_link >/dev/null 2>&1 &
 PIDS+=($!)
 sleep 1
 
 # ── 3. Launch FusionCore ──────────────────────────────────────────────────────
 info "Launching FusionCore..."
-ros2 launch fusioncore_ros fusioncore.launch.py \
+setsid ros2 launch fusioncore_ros fusioncore.launch.py \
     env_config:="${REPO_ROOT}/tools/quick_test_params.yaml" >/dev/null 2>&1 &
 PIDS+=($!)
 sleep 3
@@ -123,7 +131,7 @@ sleep 1
 
 # ── 5. Fake sensors ───────────────────────────────────────────────────────────
 info "Publishing fake IMU at 100 Hz (stationary, gravity pointing up, orientation provided)..."
-ros2 topic pub /imu/data sensor_msgs/msg/Imu "{
+setsid ros2 topic pub /imu/data sensor_msgs/msg/Imu "{
   header: {frame_id: 'imu_link'},
   orientation: {x: 0.0, y: 0.0, z: 0.0, w: 1.0},
   orientation_covariance: [0.01, 0.0, 0.0, 0.0, 0.01, 0.0, 0.0, 0.0, 0.01],
@@ -135,7 +143,7 @@ ros2 topic pub /imu/data sensor_msgs/msg/Imu "{
 PIDS+=($!)
 
 info "Publishing fake wheel odometry at 50 Hz (stationary)..."
-ros2 topic pub /odom/wheels nav_msgs/msg/Odometry "{
+setsid ros2 topic pub /odom/wheels nav_msgs/msg/Odometry "{
   header: {frame_id: 'odom'},
   twist: {twist: {linear: {x: 0.0}, angular: {z: 0.0}}}
 }" --rate 50 >/dev/null 2>&1 &
