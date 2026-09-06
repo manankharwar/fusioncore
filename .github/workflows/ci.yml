@@ -53,6 +53,12 @@ jobs:
             --cmake-args -DBUILD_TESTING=ON \
             --event-handlers console_cohesion+
 
+      - name: Run quick-start smoke test
+        run: |
+          source /opt/ros/${{ matrix.ros_distro }}/setup.sh
+          source install/local_setup.bash
+          bash tools/quick_test.sh
+
       - name: Test
         run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.sh
