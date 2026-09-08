@@ -99,6 +99,25 @@ That matches the rest of the bundled config, which targets GPS navigation with n
 
 ## What the launch file does under the hood
 
+### Why FusionCore is not in the lifecycle manager's node list
+
+`nav2_lifecycle_manager` requires every node it owns to keep a `bond` heartbeat
+open, and FusionCore does not implement that protocol. Adding it to the manager's
+`node_names` produces a bond timeout on every boot regardless of the
+`bond_timeout` value, because no heartbeat is ever sent. This was reported from
+the Sowbot agricultural stack after they hit it in the field.
+
+FusionCore is a lifecycle node, so putting it under the manager looks correct.
+Use one of these instead:
+
+- **Leave autostart on** (the default since 0.3.1). The node self-transitions
+  configure then activate about 200 ms after `on_configure()` returns, and needs
+  no external management at all. This is the simplest option and what Sowbot
+  settled on.
+- **Drive the transitions from your launch file**, which is what
+  `fusioncore_nav2.launch.py` does below: `autostart: False`, then `EmitEvent`
+  for configure, then an `OnStateTransition` handler that fires activate.
+
 The lifecycle timing is important. `fusioncore_nav2.launch.py`:
 
 1. Starts `fusioncore_node` as a lifecycle node

@@ -80,7 +80,7 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 
 Both launch files bring the node all the way up to `active` on their own. There is nothing else to run.
 
-If you would rather drive the lifecycle yourself (for example a `nav2_lifecycle_manager` owns it), pass `autoconfigure:=false` and do the transitions by hand:
+If you would rather drive the lifecycle yourself, pass `autoconfigure:=false` and do the transitions by hand:
 
 ```bash
 ros2 launch fusioncore_ros fusioncore.launch.py \
@@ -90,6 +90,18 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 ros2 lifecycle set /fusioncore configure
 ros2 lifecycle set /fusioncore activate
 ```
+
+**Do not put FusionCore in a `nav2_lifecycle_manager` node list.** It is a
+lifecycle node, so this looks like the obvious thing to do, and it fails. The
+manager requires each node it owns to keep a `bond` heartbeat open, FusionCore
+does not implement that protocol, and the manager therefore reports a bond
+timeout on every boot no matter what `bond_timeout` is set to. Reported from the
+Sowbot agricultural stack, which worked it out the hard way.
+
+Use one of the two supported approaches instead: leave autostart on and let the
+node bring itself up (what both shipped launch files do), or drive the
+transitions from your own launch file, which is what
+`fusioncore_nav2.launch.py` does with `EmitEvent`.
 
 Verify it's publishing:
 
