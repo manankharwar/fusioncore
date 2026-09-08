@@ -24,7 +24,13 @@ For a filter whose covariance is honest, NIS averages the measurement dimension,
 
 Usage:
     python3 tools/nis_from_bag.py <bag_dir> [more bags ...]
+    python3 tools/nis_from_bag.py --json <bag_dir> [more bags ...]
+
+--json prints one JSON object per bag (JSON Lines) instead of the prose, with
+the same numbers, so a script or a CI job can track them across runs.
 """
+import argparse
+import json
 import sys
 import os
 import statistics
@@ -135,19 +141,22 @@ def pct(values, q):
     return values[idx]
 
 
-def report(bag):
+def analyze(bag):
+    """Every number the report prints, as one dict, so prose and --json agree.
+
+    A bag that cannot be measured comes back as {"bag", "error"} rather than
+    raising, so one bad bag does not stop the rest. "nis", "health" and "navsat"
+    are None when that part was not recorded.
+    """
     name = os.path.basename(os.path.normpath(bag))
     try:
         gnss, health = read(bag)
-    except Exception as exc:                      # one unreadable bag must not
-        print("  %s: could not be read (%s)" % (name, exc))   # stop the rest
-        return
+    except Exception as exc:
+        return {"bag": name, "error": "could not be read (%s)" % exc}
     if gnss is None:
-        print("  %s: no %s recorded, nothing to measure" % (name, GNSS_TOPIC))
-        return
+        return {"bag": name, "error": "no %s recorded, nothing to measure" % GNSS_TOPIC}
     if not gnss:
-        print("  %s: %s is empty" % (name, GNSS_TOPIC))
-        return
+        return {"bag": name, "error": "%s is empty" % GNSS_TOPIC}
 
     # mahalanobis_sq is -1 when a quality gate failed before the chi2 test ran,
     # so those fixes carry no NIS to report.
@@ -155,20 +164,62 @@ def report(bag):
     reasons = {}
     for m in gnss:
         reasons[m.rejection_reason] = reasons.get(m.rejection_reason, 0) + 1
-    threshold = gnss[-1].chi2_threshold
 
-    print("\n=== %s ===" % name)
-    print("  fixes %d, accepted %d" % (len(gnss), sum(1 for m in gnss if m.accepted)))
-    for reason, count in sorted(reasons.items(), key=lambda kv: -kv[1]):
-        print("    %-18s %4d  (%.0f%%)" % (reason, count, 100.0 * count / len(gnss)))
+    out = {
+        "bag": name,
+        "fixes": len(gnss),
+        "accepted": sum(1 for m in gnss if m.accepted),
+        "rejection_reasons": reasons,
+        "chi2_threshold": gnss[-1].chi2_threshold,
+        "nis": None,
+        "health": None,
+        "navsat": None,
+    }
+    if nis:
+        out["nis"] = {
+            "samples": len(nis),
+            "median": statistics.median(nis),
+            "mean": statistics.mean(nis),
+            "p90": pct(nis, 0.90),
+            "max": nis[-1],
+            "expected": EXPECTED_NIS,
+        }
+    if health:
+        out["health"] = {
+            "position_sigma_median_m": statistics.median(m.position_sigma_x for m in health),
+            "heading_sigma_median_deg": statistics.median(m.heading_sigma_deg for m in health),
+            "heading_sources": sorted({m.heading_source for m in health}),
+        }
+    nav = read_navsat(bag)
+    if nav:
+        topic, declared, observed, expected = nav
+        out["navsat"] = {
+            "topic": topic,
+            "declared_sigma_m": declared,
+            "observed_d2_median_m": observed,
+            "expected_d2_median_m": expected,
+        }
+    return out
 
+
+def print_report(s):
+    if "error" in s:
+        print("  %s: %s" % (s["bag"], s["error"]))
+        return
+
+    print("\n=== %s ===" % s["bag"])
+    print("  fixes %d, accepted %d" % (s["fixes"], s["accepted"]))
+    for reason, count in sorted(s["rejection_reasons"].items(), key=lambda kv: -kv[1]):
+        print("    %-18s %4d  (%.0f%%)" % (reason, count, 100.0 * count / s["fixes"]))
+
+    nis = s["nis"]
     if not nis:
         print("  no NIS samples: every fix failed a quality gate before the chi2 test")
         return
 
-    med = statistics.median(nis)
+    med = nis["median"]
     print("  NIS median %.2f   mean %.2f   p90 %.2f   max %.2f   (honest is %.1f)"
-          % (med, statistics.mean(nis), pct(nis, 0.90), nis[-1], EXPECTED_NIS))
+          % (med, nis["mean"], nis["p90"], nis["max"], EXPECTED_NIS))
 
     if med > 3.0 * EXPECTED_NIS:
         print("  OVERCONFIDENT by %.0fx: the filter trusts itself more than it has "
@@ -179,27 +230,26 @@ def report(bag):
               "warrant." % (EXPECTED_NIS / med))
         print("  Consequence: the gain is too high, so the filter tracks GNSS noise "
               "instead of smoothing it.")
-        if nis[-1] < threshold:
+        if nis["max"] < s["chi2_threshold"]:
             print("  Consequence: outlier rejection is INERT. The chi2 threshold is "
                   "%.2f and the largest NIS in this whole run was %.2f, so no fix "
-                  "could ever have been rejected by it." % (threshold, nis[-1]))
+                  "could ever have been rejected by it." % (s["chi2_threshold"], nis["max"]))
     else:
         print("  Covariance is consistent with the errors being made.")
 
+    health = s["health"]
     if health:
-        hdg = sorted(m.heading_sigma_deg for m in health)
-        pos = sorted(m.position_sigma_x for m in health)
-        print("  filter position 1-sigma: median %.2f m" % statistics.median(pos))
+        print("  filter position 1-sigma: median %.2f m" % health["position_sigma_median_m"])
         print("  heading 1-sigma: median %.0f deg, sources %s"
-              % (statistics.median(hdg), sorted({m.heading_source for m in health})))
-        if statistics.median(hdg) > 45.0:
+              % (health["heading_sigma_median_deg"], health["heading_sources"]))
+        if health["heading_sigma_median_deg"] > 45.0:
             print("  Heading is effectively unknown, which inflates the position "
                   "covariance and pushes NIS down.")
 
-    nav = read_navsat(bag)
+    nav = s["navsat"]
     if nav:
-        topic, declared, observed, expected = nav
-        print("  receiver on %s declares %.2f m 1-sigma" % (topic, declared))
+        observed, expected = nav["observed_d2_median_m"], nav["expected_d2_median_m"]
+        print("  receiver on %s declares %.2f m 1-sigma" % (nav["topic"], nav["declared_sigma_m"]))
         print("    fix-to-fix scatter implies far less: median second difference "
               "%.3f m against the %.1f m that declared figure would produce"
               % (observed, expected))
@@ -215,11 +265,20 @@ def report(bag):
 
 
 def main():
-    if len(sys.argv) < 2:
-        sys.exit(__doc__)
-    for bag in sys.argv[1:]:
-        report(bag)
-    print()
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("bags", nargs="+", metavar="bag_dir")
+    ap.add_argument("--json", action="store_true",
+                    help="print one JSON object per bag (JSON Lines) instead of the prose")
+    args = ap.parse_args()
+    for bag in args.bags:
+        stats = analyze(bag)
+        if args.json:
+            print(json.dumps(stats))
+        else:
+            print_report(stats)
+    if not args.json:
+        print()
 
 
 if __name__ == "__main__":
