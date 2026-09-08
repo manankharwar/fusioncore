@@ -1473,10 +1473,19 @@ private:
         }
         imu_lever_arm_tf_resolved_ = true;
       } catch (const tf2::TransformException &ex) {
-        RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-          "IMU lever arm auto-resolve failed (%s -> %s): %s. "
-          "Leaving lever arm at zero; set imu.lever_arm_x/y/z explicitly to override.",
-          base_frame_.c_str(), imu_frame.c_str(), ex.what());
+        // A missing TF does not fix itself. This is a CONFIGURATION message, not
+        // a transient one, so say it a few times early (in case the TF is merely
+        // slow to publish) and then stop. At the old 5 s throttle it printed
+        // roughly 700 times in an hour-long run and became wallpaper, which is
+        // how a genuinely new fault gets lost in a field log.
+        if (report_lever_arm_tf_failure(imu_la_warns_, imu_la_last_warn_)) {
+          RCLCPP_WARN(get_logger(),
+            "IMU lever arm auto-resolve failed (%s -> %s): %s. "
+            "Leaving lever arm at zero; set imu.lever_arm_x/y/z explicitly to "
+            "override.%s",
+            base_frame_.c_str(), imu_frame.c_str(), ex.what(),
+            imu_la_warns_ >= kLeverArmTfMaxWarns ? "  Not reporting this again." : "");
+        }
       }
     }
 
@@ -2014,10 +2023,14 @@ private:
           }
           gnss_lever_arm_tf_resolved_ = true;
         } catch (const tf2::TransformException &ex) {
-          RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
-            "GNSS lever arm auto-resolve failed (%s -> %s): %s. "
-            "Leaving lever arm at zero; set gnss.lever_arm_x/y/z explicitly to override.",
-            base_frame_.c_str(), msg->header.frame_id.c_str(), ex.what());
+          if (report_lever_arm_tf_failure(gnss_la_warns_, gnss_la_last_warn_)) {
+            RCLCPP_WARN(get_logger(),
+              "GNSS lever arm auto-resolve failed (%s -> %s): %s. "
+              "Leaving lever arm at zero; set gnss.lever_arm_x/y/z explicitly to "
+              "override.%s",
+              base_frame_.c_str(), msg->header.frame_id.c_str(), ex.what(),
+              gnss_la_warns_ >= kLeverArmTfMaxWarns ? "  Not reporting this again." : "");
+          }
         }
       } else {
         // Empty frame_id or same as base: nothing to resolve, mark done.
@@ -2629,6 +2642,19 @@ private:
     if (tally.count == 0) tally.first_seen = t;
     tally.last_seen = t;
     ++tally.count;
+  }
+
+  // Should a lever-arm TF failure be reported this time? Allows the first
+  // report immediately, then one every 10 s, up to kLeverArmTfMaxWarns total.
+  static constexpr int kLeverArmTfMaxWarns = 3;
+  bool report_lever_arm_tf_failure(int & count, rclcpp::Time & last)
+  {
+    if (count >= kLeverArmTfMaxWarns) return false;
+    const auto now = get_clock()->now();
+    if (count > 0 && (now - last).seconds() < 10.0) return false;
+    ++count;
+    last = now;
+    return true;
   }
 
   // One-shot warning for an antenna offset that was never measured.
@@ -3275,6 +3301,10 @@ private:
   // ─── Members ──────────────────────────────────────────────────────────────
 
   bool   lever_arm_warned_  = false;
+  int    imu_la_warns_      = 0;
+  int    gnss_la_warns_     = 0;
+  rclcpp::Time imu_la_last_warn_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time gnss_la_last_warn_{0, 0, RCL_ROS_TIME};
   bool   apply_lever_arm_pre_heading_ = false;
   double gnss_min_sigma_xy_ = 0.02;   // metres: floor on the receiver's reported sigma
   double gnss_min_sigma_z_  = 0.05;
