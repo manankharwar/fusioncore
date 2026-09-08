@@ -76,6 +76,27 @@ inline bool mag_field_disturbed(
   return std::abs(m_c.norm() - p.field_strength) > p.field_tolerance * p.field_strength;
 }
 
+// Largest field magnitude that can plausibly be tesla. sensor_msgs/MagneticField
+// is tesla, so field_strength and hard_iron are tesla and Earth's total field is
+// roughly 2.5e-5 to 6.5e-5. Magnetometer datasheets and calibration tools nearly
+// always print microtesla, where the same field reads as about 50, so a value
+// entered in microtesla lands 1e6 too high. That is silent and total: every
+// reading then misses field_strength by a factor of a million, mag_field_disturbed
+// rejects all of them, and no heading comes out at all, which looks exactly like
+// a magnetometer that was never wired up.
+//
+// 1e-3 T (1000 uT) is deliberately loose: it only fires on an actual unit
+// mistake, never on an unusual but real field.
+constexpr double kMagPlausibleTeslaMax = 1.0e-3;
+
+// True when a tesla-valued magnetometer parameter is large enough that microtesla
+// is the likely explanation. 0.0 is the default for both field_strength (gate
+// disabled) and hard_iron (uncalibrated), so zero never flags.
+inline bool mag_value_looks_like_microtesla(double tesla)
+{
+  return tesla > kMagPlausibleTeslaMax;
+}
+
 // Apply hard/soft iron correction and tilt compensation to a raw magnetometer
 // reading, returning the heading in radians (ENU yaw convention: counterclockwise
 // from east, same as the UKF's quaternion-derived yaw).

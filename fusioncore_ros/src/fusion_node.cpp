@@ -643,6 +643,30 @@ public:
       }
     }
 
+    // sensor_msgs/MagneticField is tesla, but calibration tools print microtesla.
+    // Entering microtesla here is silent and total: every reading misses the
+    // field-magnitude gate by a factor of a million and no heading comes out.
+    // Warn rather than fail, since an unusual value may still be deliberate.
+    if (fusioncore::sensors::mag_value_looks_like_microtesla(config.mag.field_strength)) {
+      RCLCPP_WARN(get_logger(),
+        "magnetometer.field_strength is %g, far above Earth's field of ~5e-5. "
+        "sensor_msgs/MagneticField is TESLA, so this is probably microtesla: "
+        "%g uT is %.2e T. Left as is, every magnetometer reading is rejected as "
+        "a magnetic disturbance and you get no heading at all.",
+        config.mag.field_strength, config.mag.field_strength,
+        config.mag.field_strength * 1e-6);
+    }
+
+    const double hard_iron_norm = config.mag.hard_iron.norm();
+    if (fusioncore::sensors::mag_value_looks_like_microtesla(hard_iron_norm)) {
+      RCLCPP_WARN(get_logger(),
+        "magnetometer.hard_iron has magnitude %g, far above Earth's field of "
+        "~5e-5. sensor_msgs/MagneticField is TESLA, so these are probably "
+        "microtesla: scale the vector by 1e-6. Left as is, the bias correction "
+        "swamps every reading and the heading is meaningless.",
+        hard_iron_norm);
+    }
+
     if (mag_enabled_) {
       RCLCPP_INFO(get_logger(),
         "Magnetometer heading fusion enabled on topic: %s "
