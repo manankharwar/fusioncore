@@ -153,6 +153,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_gnss_rejection_reason_    = GnssRejectionReason::NOT_PROCESSED;
   gnss_tally_.fill(OutcomeTally{});
   mag_tally_.fill(OutcomeTally{});
+  zupt_holds_pos_noise_ = false;
   last_mag_rejection_reason_     = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
@@ -204,6 +205,7 @@ void FusionCore::reset() {
   last_gnss_rejection_reason_   = GnssRejectionReason::NOT_PROCESSED;
   gnss_tally_.fill(OutcomeTally{});
   mag_tally_.fill(OutcomeTally{});
+  zupt_holds_pos_noise_ = false;
   last_mag_rejection_reason_    = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
@@ -688,6 +690,14 @@ void FusionCore::update_encoder(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_encoder() called before init()");
 
+  // Moving again: hand the position noise scale back. Only ever undoes what
+  // update_zupt set, so a coast-inflated scale is left alone.
+  if (zupt_holds_pos_noise_ &&
+      std::sqrt(vx * vx + vy * vy) > config_.zupt_velocity_threshold) {
+    ukf_.set_position_noise_scale(1.0);
+    zupt_holds_pos_noise_ = false;
+  }
+
   if (reject_stale_from_skew(timestamp_seconds, last_enc_raw_stamp_, enc_stale_rejects_))
     return;
 
@@ -828,6 +838,15 @@ void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
   R(2,2) = var;
 
   ukf_.update<sensors::ENCODER_DIM>(z, sensors::zupt_measurement_function, R);
+
+  // Hold the position covariance down while the robot is known to be still.
+  // Deliberately NOT applied while coasting: coast inflation exists so the
+  // filter can re-admit GNSS after a blackout, and quietly cancelling it here
+  // would change a behaviour this function has nothing to do with.
+  if (config_.zupt_position_noise_scale != 1.0 && !gnss_in_coast_) {
+    ukf_.set_position_noise_scale(config_.zupt_position_noise_scale);
+    zupt_holds_pos_noise_ = true;
+  }
 }
 
 

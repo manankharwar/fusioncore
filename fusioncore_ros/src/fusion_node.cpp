@@ -338,6 +338,10 @@ public:
     declare_parameter("zupt.velocity_threshold", 0.05);  // m/s
     declare_parameter("zupt.angular_threshold",  0.05);  // rad/s
     declare_parameter("zupt.noise_sigma",        0.01);  // m/s: tight
+    // Position process noise scale while ZUPT holds the robot still. 1.0 keeps
+    // the old behaviour. Below 1.0 stops P growing on a parked robot, so the
+    // filter averages a wandering receiver instead of following it.
+    declare_parameter("zupt.position_noise_scale", 1.0);
 
     // Raw magnetometer heading fusion.
     // Subscribe to sensor_msgs/MagneticField and fuse heading via UKF 1-DOF update.
@@ -634,6 +638,8 @@ public:
     zupt_velocity_threshold_ = get_parameter("zupt.velocity_threshold").as_double();
     zupt_angular_threshold_  = get_parameter("zupt.angular_threshold").as_double();
     zupt_noise_sigma_        = get_parameter("zupt.noise_sigma").as_double();
+    config.zupt_position_noise_scale =
+      get_parameter("zupt.position_noise_scale").as_double();
 
     mag_enabled_ = get_parameter("magnetometer.enabled").as_bool();
     mag_topic_   = get_parameter("magnetometer.topic").as_string();

@@ -491,6 +491,44 @@ fusioncore:
 
 ---
 
+## Stopping a parked robot chasing its GPS
+
+When the wheels report zero velocity, FusionCore fuses a zero-velocity update
+(ZUPT). That pins **velocity**, and says nothing about **position**.
+
+The consequence is easy to miss. Position process noise keeps growing between
+fixes even though the robot is not moving, so the covariance stays large, the
+Kalman gain stays high, and every incoming fix drags the estimate. A receiver
+that wanders while parked takes the estimate with it.
+
+Measured on a u-blox M9N, parked for 57 seconds with wheel encoders confirming
+the robot was stationary: **the receiver's reported position moved 9.76 m and
+the fused position followed it for 10.16 m.** The robot did not move at all.
+
+```yaml
+zupt.velocity_threshold: 0.05      # m/s below which the robot counts as still
+zupt.angular_threshold: 0.05       # rad/s, same
+zupt.noise_sigma: 0.01             # m/s: how tightly to believe "not moving"
+zupt.position_noise_scale: 1.0     # scale on POSITION process noise while still
+```
+
+`zupt.position_noise_scale` is the one that fixes the drift. At 1.0 nothing
+changes. Below 1.0 the position covariance stops growing while the robot is
+known to be still, so it decays as fixes arrive, the gain falls, and consecutive
+fixes are **averaged** rather than followed. On the run above, 0.001 reduced the
+idle drift from 10.16 m to 3.06 m, improved whole-run loop closure slightly
+(12.99 m to 12.72 m), and rejected no additional fixes. The effect saturates
+below about 0.001.
+
+It is deliberately **not** applied while GNSS coast mode is active. Coast
+inflation exists so the filter can re-admit GNSS after a blackout, and silently
+cancelling it here would change a behaviour this setting has nothing to do with.
+The scale is handed back as soon as the encoders report motion again.
+
+The default stays at 1.0 until this has been checked against the full NCLT
+regression suite. It is measured on one robot with one receiver, which is not
+enough to move a default.
+
 ## GNSS Doppler velocity bridge (ublox F9P / M8U)
 
 FusionCore itself has no dependency on any specific GPS driver. It accepts velocity from any receiver via `gnss.velocity_topic`, which expects `nav_msgs/Odometry` with ENU velocity (`linear.x=east`, `linear.y=north`).

@@ -166,6 +166,24 @@ struct FusionCoreConfig {
   // Noise sigma applied during ZUPT (m/s). Tight = filter strongly believes zero velocity.
   double zupt_noise_sigma = 0.01;
 
+  // Position process noise scale applied while ZUPT holds the robot stationary.
+  // 1.0 keeps the previous behaviour exactly; below 1.0 stops the position
+  // covariance growing while the wheels say the robot is not moving.
+  //
+  // ZUPT fuses [VX=0, VY=0, WZ=0]: it pins VELOCITY, and says nothing about
+  // position. So a parked robot's P kept growing from process noise between
+  // fixes, the Kalman gain stayed high, and the filter chased a wandering
+  // receiver. Measured on the 2026-09-07 bags: parked for 57 s with the
+  // encoders confirming stillness, the receiver's reported position moved
+  // 9.76 m and the fused position followed it for 7.18 m, i.e. 74% of pure
+  // GNSS wander on a robot that did not move at all.
+  //
+  // With process noise suppressed while stationary, P decays as fixes arrive
+  // instead of being held up, the gain falls, and consecutive fixes average
+  // rather than drag. Martin Pecka put the property well on ROS Discourse:
+  // a parked robot's estimate should not drift toward the GNSS mean.
+  double zupt_position_noise_scale = 1.0;
+
   // Does the IMU have a magnetometer (9-axis)?
   // true : IMU orientation includes magnetically-referenced yaw (BNO08x,
   //         VectorNav, Xsens). Orientation update validates heading.
@@ -674,6 +692,8 @@ private:
   // Inertial coast mode tracking
   int  gnss_consecutive_rejects_ = 0;
   bool gnss_in_coast_            = false;
+  // True while update_zupt owns the position noise scale, so only it undoes it.
+  bool zupt_holds_pos_noise_     = false;
   // Persists the reason of the last rejected GNSS fix, for status reporting.
   GnssRejectionReason last_gnss_rejection_reason_ = GnssRejectionReason::NOT_PROCESSED;
   // Persists the reason of the last rejected magnetometer reading.

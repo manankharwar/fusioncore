@@ -8,6 +8,16 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **`zupt.position_noise_scale`: stop a parked robot chasing its own GPS.** ZUPT fuses `[VX=0, VY=0, WZ=0]`, which pins velocity and says nothing about position. So a stationary robot's position covariance kept growing between fixes, the Kalman gain stayed near 0.75, and every incoming fix dragged the estimate. Measured on a u-blox M9N parked for 57 seconds with wheel encoders confirming stillness: the receiver's reported position moved 9.76 m and the fused position followed it for **10.16 m**, on a robot that did not move at all.
+
+  Setting the scale below 1.0 holds the position covariance down while the wheels say the robot is still, so it decays as fixes arrive and consecutive fixes are averaged rather than followed. At 0.001 the same run drifts **3.06 m** instead of 10.16 m, whole-run loop closure improved slightly (12.99 m to 12.72 m), and no additional fixes were rejected. Not applied while GNSS coast is active, since coast inflation exists to re-admit GNSS after a blackout and cancelling it here would change an unrelated behaviour. The scale is handed back as soon as the encoders report motion.
+
+  The default stays at 1.0, so nothing changes for anyone: this is measured on one robot with one receiver, which is not enough to move a default. `test_idle_drift.cpp` pins the behaviour, including that motion restores the scale, because a robot that parked once and stayed over-confident afterwards would be a worse bug than the one being fixed.
+
+  Prompted by Martin Pecka on ROS Discourse, who described a parked robot's estimate not drifting toward the GNSS mean as the property that matters for GNSS integration. FusionCore failed that test; this is the measurement and the fix.
+
+
 ---
 
 ## [0.3.9]: 2026-09-08
