@@ -518,6 +518,12 @@ public:
         "GNSS lever arm will be applied pre-heading-validation "
         "(gnss.apply_lever_arm_pre_heading=true)");
     }
+    apply_lever_arm_pre_heading_ = config.gnss.apply_lever_arm_pre_heading;
+    if (apply_lever_arm_pre_heading_) {
+      // This flag makes the correction live from the first accepted fix, so an
+      // unmeasured offset bites immediately rather than waiting for heading.
+      warn_if_lever_arm_unset("gnss.apply_lever_arm_pre_heading is true");
+    }
 
     gnss_lever_arm2_.x = get_parameter("gnss.lever_arm2_x").as_double();
     gnss_lever_arm2_.y = get_parameter("gnss.lever_arm2_y").as_double();
@@ -2257,6 +2263,20 @@ private:
       RCLCPP_INFO(get_logger(),
         "Heading validated at %.1f m with %.1f deg 1-sigma (source %s).",
         st.distance_traveled, sig, src);
+
+      // Heading is now good enough that the antenna offset correction is live.
+      // If it is still all zeros, that is almost certainly unconfigured rather
+      // than deliberate, and it is silent: the startup log only prints the
+      // lever arm when it is non-zero, so an unset one produces no output at
+      // all. Announce it here, at the moment it starts mattering, rather than
+      // at configure time when we cannot yet know heading will validate.
+      //
+      // Zeros mean no correction is applied, so the filter treats the antenna
+      // position as base_link. The error is the true offset rotated by heading:
+      // on flat ground the vertical part drops out and the horizontal part
+      // sweeps around as the robot turns, which reads as a cross-track bias
+      // that flips sign when the robot reverses direction.
+      warn_if_lever_arm_unset("heading just validated");
     }
   }
 
@@ -2609,6 +2629,32 @@ private:
     if (tally.count == 0) tally.first_seen = t;
     tally.last_seen = t;
     ++tally.count;
+  }
+
+  // One-shot warning for an antenna offset that was never measured.
+  //
+  // An antenna is essentially never at base_link, so all-zero is the one value
+  // that is almost certainly wrong, and it is the only value FusionCore says
+  // nothing about. Reported by the Sowbot stack, whose fusioncore.yaml carried
+  // `# measured TODO` placeholders next to a dual-antenna heading source: their
+  // heading validated at about 1 degree, so the correction went live with zeros
+  // and nothing in the log mentioned it.
+  void warn_if_lever_arm_unset(const char * when)
+  {
+    if (lever_arm_warned_) return;
+    if (!gnss_lever_arm_.is_zero()) return;
+    lever_arm_warned_ = true;
+    RCLCPP_WARN(get_logger(),
+      "GNSS antenna offset is 0,0,0 and the lever arm correction is now active "
+      "(%s). Zeros mean NO correction: the filter treats the antenna's position "
+      "as base_link's. Your position will carry an error equal to the real "
+      "offset, rotated by heading, which on flat ground shows up as a "
+      "cross-track bias that flips sign when the robot turns around. Measure "
+      "from base_link to the antenna's phase centre (the middle of the patch, "
+      "not the housing) in the body frame, x forward, y left, z up, and set "
+      "gnss.lever_arm_x/y/z. The x and y terms are what move cross-track error; "
+      "z only matters when tilted. If base_link really is at the antenna, this "
+      "warning is expected and can be ignored.", when);
   }
 
   // Converts a GnssRejectionReason enum to the string stored in the message.
@@ -3228,6 +3274,8 @@ private:
 
   // ─── Members ──────────────────────────────────────────────────────────────
 
+  bool   lever_arm_warned_  = false;
+  bool   apply_lever_arm_pre_heading_ = false;
   double gnss_min_sigma_xy_ = 0.02;   // metres: floor on the receiver's reported sigma
   double gnss_min_sigma_z_  = 0.05;
   std::unique_ptr<fusioncore::FusionCore>        fc_;
