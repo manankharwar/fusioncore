@@ -28,12 +28,37 @@ declared figure as `R`, so `S` dwarfs any innovation it will see. That part is a
 property of the measurement, not of the filter, and shrinking `R` is the wrong
 response because the absolute error genuinely is metres.
 
+**This is not one bad receiver, and it is not specific to u-blox.** Martin Pecka
+[confirmed the same behaviour on Emlid and Septentrio receivers](https://discourse.ros.org/t/gps-says-5m-accuracy-but-the-fixes-agree-to-9-cm-anyone-else-seen-this)
+and gave the mechanism: the phase locks themselves introduce a time dependency
+that breaks the independence assumption a Kalman filter (or a factor graph)
+relies on. His summary of what everyone does about it: *"We just use the reported
+covariance as if it were a Gaussian and that gets fused to our pose estimate
+covariance (that's also what robot_localization does)."*
+
+So the naive handling is the norm rather than a robot_localization oversight, and
+any filter that consumes `position_covariance` inherits the problem. FusionCore's
+answers are `gnss.min_sigma_xy` (a floor in metres, for a receiver that is
+over-confident rather than under-confident) and `gnss.continuity_max_m`, which
+judges a fix against its two neighbours instead of against the filter, so it does
+not scale with `P` and can still see a metre-scale excursion when the chi2 gate
+cannot. Neither is a complete answer: the honest position is that the covariance a
+receiver reports is not the quantity a Kalman filter is asking for.
+
 Two consequences worth knowing. The Kalman gain is higher than optimal, so the
 filter tracks GNSS noise more closely than it needs to. And the chi2 outlier gate
 is calibrated for a consistent filter: at the default threshold of 16.27, the
 99.9th percentile for 3 degrees of freedom, it is far less sensitive than that
 nominal figure when NIS is running near 0.03, so a moderate multipath excursion
 can pass through.
+
+A related property, and a useful test of whether any of this is handled well,
+also from Pecka: when the robot is idle the motion model reports zero motion
+while GNSS may still wander, and the pose estimate should not drift toward the
+GNSS mean. FusionCore failed that outright (parked 57 s, the receiver's reported
+position moved 9.76 m and the fused position followed it for 10.16 m) because
+ZUPT pins velocity and says nothing about position. `zupt.position_noise_scale`
+addresses it; see [Stopping a parked robot chasing its GPS](configuration.md).
 
 **Workaround:** add an absolute heading source, either a magnetometer
 (`magnetometer.enabled`) or dual-antenna GNSS heading. Both make yaw observable
