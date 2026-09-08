@@ -38,6 +38,9 @@ jobs:
       - name: Check shipped configs against declared parameters
         run: python3 tools/check_config_params.py --quiet
 
+      - name: Test config checker rules
+        run: python3 -m unittest tools/test_check_config_params.py
+
       - name: Install rosdep dependencies
         run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.sh
