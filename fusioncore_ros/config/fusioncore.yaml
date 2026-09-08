@@ -85,6 +85,11 @@ fusioncore:
     # (/fix, /ublox/fix, /gps/fix, ...) instead of writing a launch remap.
     gnss.fix_topic: "/gnss/fix"
 
+    # Override the primary GNSS TF frame. Leave empty to use the incoming
+    # message frame_id. If both are empty, the frame is treated as unknown:
+    # FusionCore skips TF validation and lever-arm auto-resolution for it.
+    gnss.frame_id: ""
+
     gnss.base_noise_xy: 1.0    # meters: base position noise sigma, scaled by HDOP
     gnss.base_noise_z: 2.0     # meters: altitude noise sigma, scaled by VDOP
     gnss.heading_noise: 0.02   # radians: dual-antenna heading noise sigma

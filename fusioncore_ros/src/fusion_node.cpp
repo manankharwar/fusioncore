@@ -40,6 +40,7 @@
 #include <proj.h>
 
 #include "fusioncore_ros/gnss_dop_gate_warning.hpp"
+#include "fusioncore_ros/gnss_frame.hpp"
 
 using namespace std::chrono_literals;
 using CallbackReturn = rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
@@ -214,6 +215,10 @@ public:
     // set this instead of writing a launch remap (a remap still works and applies
     // to whatever name is set here).
     declare_parameter("gnss.fix_topic", std::string("/gnss/fix"));
+    // Override the primary GNSS message frame. When empty, use the incoming
+    // message frame_id. If both are empty, the frame is unknown and TF
+    // validation / lever-arm auto-resolution are skipped.
+    declare_parameter("gnss.frame_id", std::string(""));
 
     // Optional second GNSS receiver topic: set to empty string to disable
     declare_parameter("gnss.fix2_topic", "");
@@ -429,6 +434,8 @@ public:
     publish_tf_   = get_parameter("publish.tf").as_bool();
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
     gnss_fix_topic_ = get_parameter("gnss.fix_topic").as_string();
+    gnss_frame_override_ = get_parameter("gnss.frame_id").as_string();
+    gnss_frame_validated_ = false;
     gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
     azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
     use_gps_fix_    = get_parameter("gnss.use_gps_fix").as_bool();
@@ -1170,18 +1177,16 @@ private:
       }
     }
 
-    // Check GNSS frame if primary lever arm is configured
-    if (!gnss_lever_arm_.is_zero()) {
-      if (check_transform("gnss_link", base_frame_)) {
-        RCLCPP_INFO(get_logger(), "  [OK]      gnss_link -> %s", base_frame_.c_str());
-      } else {
-        RCLCPP_WARN(get_logger(),
-          "  [MISSING] gnss_link -> %s  Fix: ros2 run tf2_ros static_transform_publisher --x %.3f --y %.3f --z %.3f --frame-id %s --child-frame-id gnss_link",
-          base_frame_.c_str(),
-          gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z,
-          base_frame_.c_str());
+    // Validate the primary GNSS frame at startup only when it is genuinely known.
+    // With no override, the real frame arrives on the first GNSS message; do not
+    // invent gnss_link here because that can make startup diagnostics misleading.
+    if (!gnss_lever_arm_.is_zero() && !gnss_frame_override_.empty()) {
+      if (!validate_primary_gnss_frame(gnss_frame_override_)) {
         all_ok = false;
       }
+    } else if (!gnss_lever_arm_.is_zero()) {
+      RCLCPP_INFO(get_logger(),
+        "  [DEFERRED] GNSS TF validation until first fix (gnss.frame_id is empty)");
     }
 
     // Check GNSS2 frame if secondary lever arm is configured
@@ -1200,6 +1205,33 @@ private:
 
     RCLCPP_INFO(get_logger(), "---------------------");
     return all_ok;
+  }
+
+  bool validate_primary_gnss_frame(const std::string & frame)
+  {
+    if (frame.empty()) {
+      return true;
+    }
+
+    if (frame == base_frame_) {
+      RCLCPP_INFO(get_logger(), "  [OK]      GNSS frame is base frame: %s", frame.c_str());
+      gnss_frame_validated_ = true;
+      return true;
+    }
+
+    const bool ok = check_transform(frame, base_frame_);
+    if (ok) {
+      RCLCPP_INFO(get_logger(), "  [OK]      %s -> %s", frame.c_str(), base_frame_.c_str());
+    } else {
+      RCLCPP_WARN(get_logger(),
+        "  [MISSING] %s -> %s  Fix: ros2 run tf2_ros static_transform_publisher "
+        "--x %.3f --y %.3f --z %.3f --frame-id %s --child-frame-id %s",
+        frame.c_str(), base_frame_.c_str(),
+        gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z,
+        base_frame_.c_str(), frame.c_str());
+    }
+    gnss_frame_validated_ = true;
+    return ok;
   }
 
 
@@ -1999,15 +2031,29 @@ private:
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
 
+    const bool gnss_frame_unknown =
+      gnss_frame_override_.empty() && msg->header.frame_id.empty();
+    const std::string gnss_frame = fusioncore_ros::resolve_gnss_frame(
+      gnss_frame_override_, msg->header.frame_id);
+
+    if (source_id == 0 && !gnss_frame_unknown &&
+        !gnss_frame_validated_ && !gnss_lever_arm_.is_zero()) {
+      (void)validate_primary_gnss_frame(gnss_frame);
+    }
+
     // One-shot auto-resolve of the GNSS lever arm from TF, primary receiver
-    // only. Uses msg->header.frame_id (typically "gps" or "gnss_link")
-    // looked up against base_frame_. Only runs when the user did not set
-    // gnss.lever_arm_x/y/z explicitly.
+    // only. Empty override + empty message frame means the frame is unknown:
+    // complete the one-shot as a no-op instead of probing a synthetic frame on
+    // every fix and blocking this callback for the TF timeout each time.
     if (source_id == 0 && !gnss_lever_arm_explicit_ && !gnss_lever_arm_tf_resolved_) {
-      if (!msg->header.frame_id.empty() && msg->header.frame_id != base_frame_) {
+      const auto tf_action = fusioncore_ros::gnss_lever_arm_tf_action(
+        gnss_frame_override_, msg->header.frame_id, base_frame_);
+      if (tf_action == fusioncore_ros::GnssLeverArmTfAction::MarkResolved) {
+        gnss_lever_arm_tf_resolved_ = true;
+      } else {
         try {
           auto tf = tf_buffer_->lookupTransform(
-            base_frame_, msg->header.frame_id, tf2::TimePointZero,
+            base_frame_, gnss_frame, tf2::TimePointZero,
             tf2::durationFromSec(0.2));
           gnss_lever_arm_.x = tf.transform.translation.x;
           gnss_lever_arm_.y = tf.transform.translation.y;
@@ -2015,7 +2061,7 @@ private:
           if (!gnss_lever_arm_.is_zero()) {
             RCLCPP_INFO(get_logger(),
               "GNSS lever arm auto-resolved from TF %s -> %s: x=%.3f y=%.3f z=%.3f m",
-              base_frame_.c_str(), msg->header.frame_id.c_str(),
+              base_frame_.c_str(), gnss_frame.c_str(),
               gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z);
           } else {
             RCLCPP_INFO(get_logger(),
@@ -2023,18 +2069,18 @@ private:
           }
           gnss_lever_arm_tf_resolved_ = true;
         } catch (const tf2::TransformException &ex) {
+          // Both sides of this: the rate limit from 45a1ef5, and gnss_frame
+          // from #96 so the message names the frame actually looked up rather
+          // than the raw message frame_id, which may have been overridden.
           if (report_lever_arm_tf_failure(gnss_la_warns_, gnss_la_last_warn_)) {
             RCLCPP_WARN(get_logger(),
               "GNSS lever arm auto-resolve failed (%s -> %s): %s. "
               "Leaving lever arm at zero; set gnss.lever_arm_x/y/z explicitly to "
               "override.%s",
-              base_frame_.c_str(), msg->header.frame_id.c_str(), ex.what(),
+              base_frame_.c_str(), gnss_frame.c_str(), ex.what(),
               gnss_la_warns_ >= kLeverArmTfMaxWarns ? "  Not reporting this again." : "");
           }
         }
-      } else {
-        // Empty frame_id or same as base: nothing to resolve, mark done.
-        gnss_lever_arm_tf_resolved_ = true;
       }
     }
 
@@ -2313,6 +2359,15 @@ private:
     }
 
     double t = rclcpp::Time(msg->header.stamp).seconds();
+
+    const bool gnss_frame_unknown =
+      gnss_frame_override_.empty() && msg->header.frame_id.empty();
+    const std::string gnss_frame = fusioncore_ros::resolve_gnss_frame(
+      gnss_frame_override_, msg->header.frame_id);
+    if (source_id == 0 && !gnss_frame_unknown &&
+        !gnss_frame_validated_ && !gnss_lever_arm_.is_zero()) {
+      (void)validate_primary_gnss_frame(gnss_frame);
+    }
 
     fusioncore::sensors::LLAPoint lla;
     lla.lat_rad = msg->latitude  * M_PI / 180.0;
@@ -3354,6 +3409,7 @@ private:
   bool        use_gps_fix_  = false;
   std::string heading_topic_;
   std::string gnss_fix_topic_;
+  std::string gnss_frame_override_;
   std::string gnss2_topic_;
   std::string azimuth_topic_;
   std::string mag_topic_;
@@ -3419,6 +3475,7 @@ private:
   bool gnss_lever_arm_explicit_   = false;
   bool imu_lever_arm_tf_resolved_  = false;
   bool gnss_lever_arm_tf_resolved_ = false;
+  bool gnss_frame_validated_        = false;
 
   // ZUPT parameters
   bool   zupt_enabled_            = true;
