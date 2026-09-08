@@ -467,6 +467,12 @@ struct FusionCoreStatus {
   // Reason the most recent GNSS fix was rejected (NOT_PROCESSED until the first
   // rejection). Quality-gate rejects (HDOP/VDOP/fix-type/sats) and delay rejects
   // do NOT increment gnss_outliers, so this is the only place they are reported.
+  // Largest Mahalanobis distance seen by the GNSS outlier gate, -1 before any
+  // fix has been judged, alongside the threshold it is compared against and the
+  // number of fixes behind it.
+  double gnss_chi2_max = -1.0;
+  double gnss_chi2_threshold = 0.0;
+  int    gnss_chi2_samples = 0;
   GnssRejectionReason gnss_last_rejection_reason = GnssRejectionReason::NOT_PROCESSED;
   MagRejectionReason mag_last_rejection_reason = MagRejectionReason::NOT_PROCESSED;
 
@@ -694,6 +700,11 @@ private:
   bool gnss_in_coast_            = false;
   // True while update_zupt owns the position noise scale, so only it undoes it.
   bool zupt_holds_pos_noise_     = false;
+  // Largest Mahalanobis distance the GNSS gate has seen, and how many fixes it
+  // has judged. Compare against outlier_threshold_gnss: a large ratio means the
+  // gate cannot fire, which is invisible in any per-fix field.
+  double gnss_chi2_max_          = -1.0;
+  int    gnss_chi2_samples_      = 0;
   // Persists the reason of the last rejected GNSS fix, for status reporting.
   GnssRejectionReason last_gnss_rejection_reason_ = GnssRejectionReason::NOT_PROCESSED;
   // Persists the reason of the last rejected magnetometer reading.

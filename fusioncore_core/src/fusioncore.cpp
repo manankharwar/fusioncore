@@ -154,6 +154,8 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   gnss_tally_.fill(OutcomeTally{});
   mag_tally_.fill(OutcomeTally{});
   zupt_holds_pos_noise_ = false;
+  gnss_chi2_max_ = -1.0;
+  gnss_chi2_samples_ = 0;
   last_mag_rejection_reason_     = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
@@ -206,6 +208,8 @@ void FusionCore::reset() {
   gnss_tally_.fill(OutcomeTally{});
   mag_tally_.fill(OutcomeTally{});
   zupt_holds_pos_noise_ = false;
+  gnss_chi2_max_ = -1.0;
+  gnss_chi2_samples_ = 0;
   last_mag_rejection_reason_    = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
@@ -696,6 +700,8 @@ void FusionCore::update_encoder(
       std::sqrt(vx * vx + vy * vy) > config_.zupt_velocity_threshold) {
     ukf_.set_position_noise_scale(1.0);
     zupt_holds_pos_noise_ = false;
+  gnss_chi2_max_ = -1.0;
+  gnss_chi2_samples_ = 0;
   }
 
   if (reject_stale_from_skew(timestamp_seconds, last_enc_raw_stamp_, enc_stale_rejects_))
@@ -1073,6 +1079,13 @@ bool FusionCore::apply_gnss_update(
     // This avoids calling is_outlier() which would run a second LDLT internally.
     double d2 = innovation_pre.dot(S.ldlt().solve(innovation_pre));
     gnss_debug_.mahalanobis_sq = d2;
+    // Running maximum, so a whole run can be judged rather than a single fix.
+    // A gate whose LARGEST innovation all run sits far below its threshold has
+    // not been passing fixes, it has been unable to reject any. On a 2026-09-06
+    // rover log the biggest of 222 fixes was 39x below firing while every fix
+    // reported ACCEPTED, which reads exactly like a healthy run.
+    if (d2 > gnss_chi2_max_) gnss_chi2_max_ = d2;
+    ++gnss_chi2_samples_;
 
     // Physical plausibility gate: the fix cannot be farther from the predicted
     // position than the robot could have moved or drifted since the last accepted
@@ -1484,6 +1497,9 @@ FusionCoreStatus FusionCore::get_status() const {
   // GPS coast mode
   status.gnss_in_coast           = gnss_in_coast_;
   status.gnss_consecutive_rejects = gnss_consecutive_rejects_;
+  status.gnss_chi2_max       = gnss_chi2_max_;
+  status.gnss_chi2_threshold = config_.outlier_threshold_gnss;
+  status.gnss_chi2_samples   = gnss_chi2_samples_;
   status.gnss_last_rejection_reason = last_gnss_rejection_reason_;
   status.mag_last_rejection_reason = last_mag_rejection_reason_;
 

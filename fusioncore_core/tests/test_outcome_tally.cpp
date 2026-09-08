@@ -213,3 +213,45 @@ TEST(OutcomeTallyTest, AcceptedFixDoesNotClearTheLastRejectReason) {
             GnssRejectionReason::FIX_TYPE_LOW);
   EXPECT_EQ(gnss_entry(fc, GnssRejectionReason::ACCEPTED).count, 1);
 }
+
+// ─── The gate's own headroom is recorded, not just per-fix values ────────────
+// A single small Mahalanobis distance is normal. It is the LARGEST across a
+// whole run staying far below the threshold that means the gate cannot fire,
+// and no per-fix field shows that because every fix honestly reports ACCEPTED.
+TEST(OutcomeTallyTest, GateHeadroomIsTracked) {
+  FusionCore fc(rover_config());
+  State s0;
+  fc.init(s0, 0.0);
+
+  EXPECT_LT(fc.get_status().gnss_chi2_max, 0.0) << "should be -1 before any fix";
+  EXPECT_EQ(fc.get_status().gnss_chi2_samples, 0);
+
+  const double g = 9.80665;
+  for (int step = 1; step <= 1500; ++step) {
+    const double t = step * 0.01;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 100 == 0) fc.update_gnss(t, good_fix(0.0, 0.0));   // agrees perfectly
+  }
+
+  const auto seen = fc.get_status();
+  ASSERT_GT(seen.gnss_chi2_samples, 5) << "no fix was judged by the gate";
+  EXPECT_GE(seen.gnss_chi2_max, 0.0)   << "maximum never left its -1 sentinel";
+  EXPECT_GT(seen.gnss_chi2_threshold, 0.0) << "threshold not reported";
+
+  // The number that matters is a RUNNING MAXIMUM, so it must never fall and
+  // must rise for a fix that genuinely disagrees. Deliberately not asserting a
+  // particular headroom here: how much a fix disagrees depends on filter tuning
+  // and the scenario, whereas "the maximum is tracked and responds" is the
+  // property this field promises.
+  const double before = seen.gnss_chi2_max;
+  fc.update_gnss(15.5, good_fix(400.0, 400.0));
+  const auto after = fc.get_status();
+  EXPECT_GT(after.gnss_chi2_max, before)
+    << "a wildly disagreeing fix did not raise the recorded maximum";
+  EXPECT_GT(after.gnss_chi2_samples, seen.gnss_chi2_samples);
+
+  // And it never goes back down when agreeing fixes resume.
+  fc.update_gnss(15.6, good_fix(0.0, 0.0));
+  EXPECT_GE(fc.get_status().gnss_chi2_max, after.gnss_chi2_max)
+    << "the maximum decreased, so it is not a running maximum";
+}

@@ -2718,6 +2718,34 @@ private:
     return true;
   }
 
+  // Say once when the chi2 gate has judged enough fixes to be sure it cannot
+  // fire. Not a per-fix condition: a single small innovation is normal and
+  // healthy. It is the LARGEST over a whole run staying far below the threshold
+  // that means the gate is inert, and that is invisible in every existing field
+  // because each fix honestly reports ACCEPTED.
+  static constexpr int    kGateInertMinSamples = 100;
+  static constexpr double kGateInertRatio      = 0.1;
+  void warn_if_outlier_gate_inert(const fusioncore::FusionCoreStatus & st)
+  {
+    if (gate_inert_warned_) return;
+    if (st.gnss_chi2_samples < kGateInertMinSamples) return;
+    if (st.gnss_chi2_threshold <= 0.0 || st.gnss_chi2_max < 0.0) return;
+    const double ratio = st.gnss_chi2_max / st.gnss_chi2_threshold;
+    if (ratio >= kGateInertRatio) return;
+    gate_inert_warned_ = true;
+    RCLCPP_WARN(get_logger(),
+      "GNSS outlier gate cannot fire. Across %d fixes the largest Mahalanobis "
+      "distance was %.3f against a threshold of %.2f, so the gate is %.0fx from "
+      "rejecting anything. Every fix will report ACCEPTED, which looks like a "
+      "healthy run and is not: a bad fix would be accepted too. The gate scales "
+      "with the filter's own covariance, so this happens when the filter is "
+      "uncertain (check heading_sigma_deg) or the receiver reports a covariance "
+      "far larger than its actual fix-to-fix noise. gnss.continuity_max_m judges "
+      "a fix against its neighbours instead and does not scale with P.",
+      st.gnss_chi2_samples, st.gnss_chi2_max, st.gnss_chi2_threshold,
+      1.0 / std::max(ratio, 1e-9));
+  }
+
   // One-shot warning for an antenna offset that was never measured.
   //
   // An antenna is essentially never at base_link, so all-zero is the one value
@@ -3163,6 +3191,11 @@ private:
       fh.heading_validated = status.heading_validated;
       fh.heading_source    = heading_src_str(status.heading_source);
 
+      fh.gnss_chi2_max       = status.gnss_chi2_max;
+      fh.gnss_chi2_threshold = status.gnss_chi2_threshold;
+      fh.gnss_chi2_samples   = status.gnss_chi2_samples;
+      warn_if_outlier_gate_inert(status);
+
       fh.gnss_in_coast           = status.gnss_in_coast;
       fh.gnss_consecutive_rejects = status.gnss_consecutive_rejects;
       // gnss_reason_str is the single table for these names. A local copy of it
@@ -3362,6 +3395,7 @@ private:
   // ─── Members ──────────────────────────────────────────────────────────────
 
   bool   lever_arm_warned_  = false;
+  bool   gate_inert_warned_ = false;
   int    imu_la_warns_      = 0;
   int    gnss_la_warns_     = 0;
   rclcpp::Time imu_la_last_warn_{0, 0, RCL_ROS_TIME};

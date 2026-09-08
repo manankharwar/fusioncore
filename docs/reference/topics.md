@@ -205,6 +205,15 @@ heading_source: GPS_TRACK       # NONE | GPS_TRACK | IMU_ORIENTATION | DUAL_ANTE
 gnss_last_reject_reason: CHI2_FAILED
 mag_last_reject_reason: FIELD_MAGNITUDE
 
+# Can the outlier gate actually fire? Read max/threshold as a ratio.
+# Near 1: the gate is working at its limit. Below ~0.1 it cannot reject anything
+# a real receiver would produce, and every fix will report ACCEPTED, which reads
+# exactly like a healthy run. On a rover log from 2026-09-06 the largest of 222
+# fixes sat 39x below firing. -1 means no fix has been judged yet.
+gnss_chi2_max: 0.415
+gnss_chi2_threshold: 16.27
+gnss_chi2_samples: 222
+
 # GPS coast mode: entered when GPS goes quiet or consecutively rejects
 gnss_in_coast: false
 gnss_consecutive_rejects: 0

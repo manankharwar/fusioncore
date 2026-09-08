@@ -71,3 +71,19 @@ string[]  outcome_names
 int32[]   outcome_counts
 float64[] outcome_first_seen
 float64[] outcome_last_seen
+
+# Can the GNSS outlier gate actually fire?
+#
+# The largest Mahalanobis distance the chi2 gate has seen all run, the threshold
+# it is judged against, and how many fixes are behind that. A gate whose biggest
+# innovation sits far below its threshold has not been passing good fixes, it has
+# been incapable of rejecting a bad one, and no per-fix field shows that: every
+# fix reports ACCEPTED, which reads exactly like a healthy run. On a rover log
+# from 2026-09-06 the largest of 222 fixes was 39x below firing.
+#
+# Read gnss_chi2_max / gnss_chi2_threshold as a ratio. Near 1 means the gate is
+# working at its limit. Below about 0.1 it cannot reject anything a real
+# receiver would produce. -1 means no fix has been judged yet.
+float64 gnss_chi2_max
+float64 gnss_chi2_threshold
+int32   gnss_chi2_samples
