@@ -8,6 +8,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [0.3.9]: 2026-09-08
+
 ### Added
 - **Per-outcome counts and timestamps on `/fusion/debug/filter_health`.** The health message already named the reason the last fix was rejected, which answers "what dropped that one" but not the two questions you actually have in front of a recorded run: how often, and when. Establishing that the chi2 gate had never fired at all on the 2026-09-06 rover run took a day of replaying the bag, because nothing published said so and an inert gate looks exactly like a gate that is passing everything.
 
