@@ -85,6 +85,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_idle_drift tests/test_idle_drift.cpp TIMEOUT 300)
   target_link_libraries(test_idle_drift fusioncore_core Eigen3::Eigen)
+
+  ament_add_gtest(test_fixed_dt tests/test_fixed_dt.cpp TIMEOUT 300)
+  target_link_libraries(test_fixed_dt fusioncore_core Eigen3::Eigen)
 endif()
 
 ament_export_targets(fusioncore_core_targets HAS_LIBRARY_TARGET)

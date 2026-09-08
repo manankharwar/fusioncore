@@ -156,6 +156,9 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   zupt_holds_pos_noise_ = false;
   gnss_chi2_max_ = -1.0;
   gnss_chi2_samples_ = 0;
+  imu_rate_observed_sum_ = 0.0;
+  imu_rate_observed_n_ = 0;
+  imu_rate_prev_stamp_ = -1.0;
   last_mag_rejection_reason_     = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
@@ -210,6 +213,9 @@ void FusionCore::reset() {
   zupt_holds_pos_noise_ = false;
   gnss_chi2_max_ = -1.0;
   gnss_chi2_samples_ = 0;
+  imu_rate_observed_sum_ = 0.0;
+  imu_rate_observed_n_ = 0;
+  imu_rate_prev_stamp_ = -1.0;
   last_mag_rejection_reason_    = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
@@ -514,13 +520,50 @@ void FusionCore::update_imu(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_imu() called before init()");
 
+  // Observe the real arrival rate BEFORE the stale gate, because a wrong
+  // nominal rate is exactly what makes the clock run away from the stamps and
+  // start rejecting IMU messages. Measuring only survivors would bias the very
+  // number that is supposed to detect the problem.
+  if (imu_rate_prev_stamp_ >= 0.0) {
+    const double observed = timestamp_seconds - imu_rate_prev_stamp_;
+    if (observed > 0.0 && observed < 1.0) {
+      imu_rate_observed_sum_ += observed;
+      ++imu_rate_observed_n_;
+    }
+  }
+  imu_rate_prev_stamp_ = timestamp_seconds;
+
   if (reject_stale_from_skew(timestamp_seconds, last_imu_raw_stamp_, imu_stale_rejects_))
     return;
 
   yaw_sign_imu_wz_    = wz;
   yaw_sign_imu_stamp_ = timestamp_seconds;
 
-  predict_to(timestamp_seconds);
+  // Nominal dt: advance by exactly 1/rate rather than by the gap between two
+  // stamps, so stamp jitter cannot reach the integrator. Track what the stamps
+  // actually say anyway, because a configured rate that does not match reality
+  // makes this systematically wrong rather than merely noisy.
+  if (config_.imu_fixed_rate_hz > 0.0) {
+    // Nominal on EVERY step including the first. Letting the first message
+    // through on its raw stamp seeded a small difference that this filter's
+    // yaw amplified to 76 degrees over 20 s in test_fixed_dt, which is the same
+    // sensitivity that made a 1 microsecond stamp shift move yaw by 109 degrees.
+    // Partial immunity is not immunity.
+    const double nominal = 1.0 / config_.imu_fixed_rate_hz;
+    // The filter clock stays ON the nominal grid, it is not re-based to the
+    // incoming stamp. Re-basing looks harmless but is not: last_timestamp_ then
+    // carries the jitter, (last_timestamp_ + nominal) - last_timestamp_ rounds
+    // differently every step, and this filter is chaotic enough that ANY
+    // nonzero difference saturates. Measured: re-basing left 2.4 degrees of
+    // jitter sensitivity where staying on the grid leaves none.
+    //
+    // The cost is that the clock drifts from real time at exactly the rate
+    // error, which is why imu_fixed_rate_mismatch exists: at a correct rate
+    // there is no drift, and at a wrong one you are told.
+    predict_to(last_timestamp_ + nominal);
+  } else {
+    predict_to(timestamp_seconds);
+  }
 
   sensors::ImuMeasurement z;
   z[0] = wx; z[1] = wy; z[2] = wz;
@@ -702,6 +745,9 @@ void FusionCore::update_encoder(
     zupt_holds_pos_noise_ = false;
   gnss_chi2_max_ = -1.0;
   gnss_chi2_samples_ = 0;
+  imu_rate_observed_sum_ = 0.0;
+  imu_rate_observed_n_ = 0;
+  imu_rate_prev_stamp_ = -1.0;
   }
 
   if (reject_stale_from_skew(timestamp_seconds, last_enc_raw_stamp_, enc_stale_rejects_))
@@ -1497,6 +1543,14 @@ FusionCoreStatus FusionCore::get_status() const {
   // GPS coast mode
   status.gnss_in_coast           = gnss_in_coast_;
   status.gnss_consecutive_rejects = gnss_consecutive_rejects_;
+  if (imu_rate_observed_n_ > 200) {
+    status.imu_rate_observed_hz =
+      static_cast<double>(imu_rate_observed_n_) / imu_rate_observed_sum_;
+    if (config_.imu_fixed_rate_hz > 0.0) {
+      const double ratio = status.imu_rate_observed_hz / config_.imu_fixed_rate_hz;
+      status.imu_fixed_rate_mismatch = (ratio < 0.98 || ratio > 1.02);
+    }
+  }
   status.gnss_chi2_max       = gnss_chi2_max_;
   status.gnss_chi2_threshold = config_.outlier_threshold_gnss;
   status.gnss_chi2_samples   = gnss_chi2_samples_;

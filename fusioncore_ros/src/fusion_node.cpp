@@ -342,6 +342,11 @@ public:
     // the old behaviour. Below 1.0 stops P growing on a parked robot, so the
     // filter averages a wandering receiver instead of following it.
     declare_parameter("zupt.position_noise_scale", 1.0);
+    // Nominal IMU rate. Above 0, propagate by 1/rate instead of by the gap
+    // between stamps, so stamp jitter cannot reach the integrator. Only set a
+    // rate you have measured: a wrong one is a systematic dt error and will
+    // eventually get your IMU rejected as stale.
+    declare_parameter("imu.fixed_rate_hz", 0.0);
 
     // Raw magnetometer heading fusion.
     // Subscribe to sensor_msgs/MagneticField and fuse heading via UKF 1-DOF update.
@@ -640,6 +645,7 @@ public:
     zupt_noise_sigma_        = get_parameter("zupt.noise_sigma").as_double();
     config.zupt_position_noise_scale =
       get_parameter("zupt.position_noise_scale").as_double();
+    config.imu_fixed_rate_hz = get_parameter("imu.fixed_rate_hz").as_double();
 
     mag_enabled_ = get_parameter("magnetometer.enabled").as_bool();
     mag_topic_   = get_parameter("magnetometer.topic").as_string();

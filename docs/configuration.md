@@ -491,6 +491,36 @@ fusioncore:
 
 ---
 
+## Nominal IMU dt: not trusting timestamps you cannot trust
+
+Anything downstream of an integrator amplifies timestamp error. On one recorded
+run, shifting **every IMU stamp by a single microsecond** and changing nothing
+else moved final yaw by **109 degrees**, and across a 120 s GNSS outage moved
+final position by 50.6 m. Most of that is an unbounded quaternion covariance
+rather than the stamps themselves, but the sensitivity is real.
+
+```yaml
+imu.fixed_rate_hz: 0.0    # 0 = derive dt from stamps (default). Above 0,
+                          # propagate by exactly 1/rate instead.
+```
+
+Set to your IMU's real rate and the propagation step no longer depends on stamp
+jitter at all. This is what Martin Pecka's team does: they never compute dt in
+fusion from IMU timestamps, they assume the configured rate.
+
+**Only set a rate you have measured.** A wrong rate is a *systematic* error, not
+a noisy one: the filter integrates the wrong amount of time on every single
+step, and it does not average out. A BNO085 nominally at 100 Hz has been logged
+running at 103 and 109.
+
+FusionCore watches for this. It measures the real arrival rate from the raw
+stamps and sets `imu_fixed_rate_mismatch` in the status when the two differ by
+more than 2%. There is a second, more visible symptom: because the filter clock
+advances at the nominal rate while stamps advance at the real one, the two
+separate at exactly the rate error, and once that exceeds
+`max_measurement_delay` the stale-skew guard **starts rejecting your IMU**. If
+you enable this and your IMU begins getting rejected, the rate is wrong.
+
 ## Stopping a parked robot chasing its GPS
 
 When the wheels report zero velocity, FusionCore fuses a zero-velocity update

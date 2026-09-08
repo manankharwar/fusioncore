@@ -184,6 +184,23 @@ struct FusionCoreConfig {
   // a parked robot's estimate should not drift toward the GNSS mean.
   double zupt_position_noise_scale = 1.0;
 
+  // Nominal IMU rate in Hz. Above zero, the PREDICT step between IMU messages
+  // advances by exactly 1/rate instead of the gap between two stamps. Zero
+  // keeps the previous behaviour.
+  //
+  // Anything downstream that integrates amplifies stamp error: shifting every
+  // IMU stamp on one recorded run by a single MICROSECOND changed final yaw by
+  // 109 degrees. Most of that is an unbounded quaternion covariance rather than
+  // the stamps, but a nominal dt removes the input sensitivity entirely. Martin
+  // Pecka's team does exactly this, never computing dt in fusion from IMU
+  // timestamps.
+  //
+  // THE HAZARD, which is why FusionCoreStatus reports a mismatch: if the rate
+  // is wrong the filter integrates the wrong amount of time on EVERY step, and
+  // that error is systematic rather than noisy. A BNO085 nominally at 100 Hz
+  // was logged at 103 and 109. Only set a rate you have measured.
+  double imu_fixed_rate_hz = 0.0;
+
   // Does the IMU have a magnetometer (9-axis)?
   // true : IMU orientation includes magnetically-referenced yaw (BNO08x,
   //         VectorNav, Xsens). Orientation update validates heading.
@@ -470,6 +487,10 @@ struct FusionCoreStatus {
   // Largest Mahalanobis distance seen by the GNSS outlier gate, -1 before any
   // fix has been judged, alongside the threshold it is compared against and the
   // number of fixes behind it.
+  // Observed IMU rate, and whether it disagrees with imu_fixed_rate_hz enough
+  // that the filter is integrating the wrong amount of time per step.
+  double imu_rate_observed_hz    = -1.0;
+  bool   imu_fixed_rate_mismatch = false;
   double gnss_chi2_max = -1.0;
   double gnss_chi2_threshold = 0.0;
   int    gnss_chi2_samples = 0;
@@ -703,6 +724,9 @@ private:
   // Largest Mahalanobis distance the GNSS gate has seen, and how many fixes it
   // has judged. Compare against outlier_threshold_gnss: a large ratio means the
   // gate cannot fire, which is invisible in any per-fix field.
+  double imu_rate_prev_stamp_    = -1.0;
+  double imu_rate_observed_sum_  = 0.0;
+  int    imu_rate_observed_n_    = 0;
   double gnss_chi2_max_          = -1.0;
   int    gnss_chi2_samples_      = 0;
   // Persists the reason of the last rejected GNSS fix, for status reporting.
