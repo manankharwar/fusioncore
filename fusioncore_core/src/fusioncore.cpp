@@ -743,11 +743,6 @@ void FusionCore::update_encoder(
       std::sqrt(vx * vx + vy * vy) > config_.zupt_velocity_threshold) {
     ukf_.set_position_noise_scale(1.0);
     zupt_holds_pos_noise_ = false;
-  gnss_chi2_max_ = -1.0;
-  gnss_chi2_samples_ = 0;
-  imu_rate_observed_sum_ = 0.0;
-  imu_rate_observed_n_ = 0;
-  imu_rate_prev_stamp_ = -1.0;
   }
 
   if (reject_stale_from_skew(timestamp_seconds, last_enc_raw_stamp_, enc_stale_rejects_))
