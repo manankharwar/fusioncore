@@ -128,12 +128,29 @@ def read(bag):
     reader.set_filter(rosbag2_py.StorageFilter(topics=wanted))
     msg_types = {t: get_message(types[t]) for t in wanted}
 
-    gnss, health = [], []
+    # Deserialise per message and drop a topic that cannot be read, rather than
+    # losing the whole bag to it.
+    #
+    # CDR is not self-describing: adding a field to a message makes every older
+    # recording of it deserialise into garbage or, as here, throw. FilterHealth
+    # has gained fields three times, so a bag recorded last week stops being
+    # readable by this week's tool. Before this, one unreadable FilterHealth
+    # message reported the entire bag as "could not be read" and the NIS numbers
+    # went with it, even though they live on GnssStatus and were perfectly
+    # intact. Losing an old field is annoying; losing the analysis of a field
+    # run you cannot repeat is not.
+    gnss, health, broken = [], [], {}
     while reader.has_next():
         topic, data, _ = reader.read_next()
-        msg = deserialize_message(data, msg_types[topic])
+        if topic in broken:
+            continue
+        try:
+            msg = deserialize_message(data, msg_types[topic])
+        except Exception as exc:
+            broken[topic] = str(exc).split(",")[0]
+            continue
         (gnss if topic == GNSS_TOPIC else health).append(msg)
-    return gnss, health
+    return gnss, health, broken
 
 
 def pct(values, q):
@@ -150,7 +167,7 @@ def analyze(bag):
     """
     name = os.path.basename(os.path.normpath(bag))
     try:
-        gnss, health = read(bag)
+        gnss, health, broken = read(bag)
     except Exception as exc:
         return {"bag": name, "error": "could not be read (%s)" % exc}
     if gnss is None:
@@ -174,6 +191,9 @@ def analyze(bag):
         "nis": None,
         "health": None,
         "navsat": None,
+        # Topics present in the bag whose messages no longer deserialise against
+        # the installed definitions, usually because a field was added since.
+        "unreadable_topics": broken,
     }
     if nis:
         out["nis"] = {
@@ -208,6 +228,10 @@ def print_report(s):
         return
 
     print("\n=== %s ===" % s["bag"])
+    for topic, why in s.get("unreadable_topics", {}).items():
+        print("  NOTE: %s could not be decoded and was skipped (%s)." % (topic, why))
+        print("        The message gained fields since this bag was recorded. "
+              "Everything below is unaffected.")
     print("  fixes %d, accepted %d" % (s["fixes"], s["accepted"]))
     for reason, count in sorted(s["rejection_reasons"].items(), key=lambda kv: -kv[1]):
         print("    %-18s %4d  (%.0f%%)" % (reason, count, 100.0 * count / s["fixes"]))

@@ -54,7 +54,7 @@ def run_main(*argv):
 
 
 @mock.patch.object(nis_from_bag, "read_navsat", lambda bag: NAVSAT)
-@mock.patch.object(nis_from_bag, "read", lambda bag: (GNSS, HEALTH))
+@mock.patch.object(nis_from_bag, "read", lambda bag: (GNSS, HEALTH, {}))
 class NisFromBagTest(unittest.TestCase):
     def test_analyze_reports_the_numbers_the_prose_prints(self):
         s = nis_from_bag.analyze("/bags/run1/")
@@ -74,7 +74,7 @@ class NisFromBagTest(unittest.TestCase):
         def read(bag):
             if bag == "broken":
                 raise RuntimeError("no such file")
-            return GNSS, HEALTH
+            return GNSS, HEALTH, {}   # third value: topics that failed to decode
 
         with mock.patch.object(nis_from_bag, "read", read):
             lines = run_main("--json", "broken", "/bags/run1").splitlines()
@@ -94,7 +94,7 @@ class NisFromBagTest(unittest.TestCase):
 
     def test_no_nis_samples_when_every_fix_failed_a_quality_gate(self):
         gated = [m for m in GNSS if m.mahalanobis_sq < 0.0]
-        with mock.patch.object(nis_from_bag, "read", lambda bag: (gated, [])), \
+        with mock.patch.object(nis_from_bag, "read", lambda bag: (gated, [], {})), \
                 mock.patch.object(nis_from_bag, "read_navsat", lambda bag: None):
             s = nis_from_bag.analyze("run")
             out = run_main("run")
@@ -105,3 +105,33 @@ class NisFromBagTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnreadableTopicTest(unittest.TestCase):
+    """A topic that no longer deserialises must not cost you the whole bag.
+
+    CDR is not self-describing, so adding a field to a message makes every older
+    recording of it unreadable. FilterHealth has gained fields three times, most
+    recently in 96d0207. The NIS numbers live on GnssStatus and are unaffected
+    by that, and losing them to an unrelated topic means losing the analysis of
+    a field run you cannot go back and repeat.
+    """
+
+    def test_gnss_numbers_survive_an_undecodable_health_topic(self):
+        broken = {"/fusion/debug/filter_health": "Fast CDR exception"}
+
+        def read(bag):
+            return GNSS, [], broken
+
+        with mock.patch.object(nis_from_bag, "read", read), \
+                mock.patch.object(nis_from_bag, "read_navsat", lambda bag: None):
+            summary = nis_from_bag.analyze("/bags/run1")
+            out = run_main("/bags/run1")
+
+        self.assertNotIn("error", summary)
+        self.assertEqual(len(GNSS), summary["fixes"])
+        self.assertIsNotNone(summary["nis"])
+        self.assertEqual(broken, summary["unreadable_topics"])
+        self.assertIn("could not be decoded and was skipped", out)
+        self.assertIn("Everything below is unaffected", out)
+        self.assertIn("NIS median", out)
