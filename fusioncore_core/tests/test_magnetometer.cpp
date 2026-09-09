@@ -363,3 +363,37 @@ TEST(MagnetometerTest, ReportedFieldIsTheOneTheGateTested) {
   // report. -1 is the sentinel for that, and it must not read as a passing 0.
   EXPECT_LT(fc.get_magnetometer_debug().mahalanobis_sq, 0.0);
 }
+
+// ─── Test 16: microtesla-instead-of-tesla parameter detection ─────────────────
+// MagneticField is tesla, calibration tools print microtesla. Entering 50 for
+// what should be 5e-5 makes mag_field_disturbed reject every reading, so the
+// heading silently never appears. The node warns at configure time on this.
+
+TEST(MagnetometerTest, MicroteslaParameterLooksWrong) {
+  // Defaults must stay quiet: 0.0 means the gate is off / hard iron is
+  // uncalibrated, not that someone got the units wrong.
+  EXPECT_FALSE(mag_value_looks_like_microtesla(0.0));
+  EXPECT_FALSE(mag_value_looks_like_microtesla(MagParams{}.field_strength));
+  EXPECT_FALSE(mag_value_looks_like_microtesla(MagParams{}.hard_iron.norm()));
+
+  // Real Earth field in tesla, across the plausible span. None of these flag.
+  EXPECT_FALSE(mag_value_looks_like_microtesla(2.5e-5));
+  EXPECT_FALSE(mag_value_looks_like_microtesla(5.0e-5));
+  EXPECT_FALSE(mag_value_looks_like_microtesla(6.5e-5));
+
+  // The same fields typed in microtesla. Every one of these is the bug.
+  EXPECT_TRUE(mag_value_looks_like_microtesla(25.0));
+  EXPECT_TRUE(mag_value_looks_like_microtesla(50.0));
+  EXPECT_TRUE(mag_value_looks_like_microtesla(65.0));
+
+  // Loose by design: the threshold sits well above any real field, so an
+  // unusual-but-genuine tesla value is not second-guessed.
+  EXPECT_FALSE(mag_value_looks_like_microtesla(kMagPlausibleTeslaMax));
+  EXPECT_TRUE (mag_value_looks_like_microtesla(kMagPlausibleTeslaMax * 1.01));
+
+  // hard_iron is checked by magnitude, the way the node passes it.
+  EXPECT_FALSE(mag_value_looks_like_microtesla(
+    Eigen::Vector3d(1.2e-5, -3.0e-6, 8.0e-6).norm()));
+  EXPECT_TRUE (mag_value_looks_like_microtesla(
+    Eigen::Vector3d(12.0, -3.0, 8.0).norm()));
+}
