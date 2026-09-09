@@ -140,7 +140,7 @@ struct GnssParams {
 
   // Normally the lever arm is only applied after heading_validated_ flips
   // true (dock compass, dual-GNSS, or 5 m of straight GPS track). Setting
-  // this to true applies the lever arm from the very first fix — which lets
+  // this to true applies the lever arm from the very first fix, which lets
   // GPS position innovations actively observe yaw from startup, instead of
   // having to wait for the straight-line accumulation. Safe when Mahalanobis
   // gating is on AND either (a) initial yaw is roughly known (dock compass
