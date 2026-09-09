@@ -30,6 +30,11 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+### Fixed
+- **One undecodable topic no longer costs you the whole bag.** CDR is not self-describing, so adding a field to a message makes every older recording of it fail to deserialise. `FilterHealth` has gained fields three times, most recently in 96d0207, which meant `tools/nis_from_bag.py` reported field bags recorded days earlier as `could not be read` and the NIS numbers went with them, even though those live on `GnssStatus` and were perfectly intact. Losing an old field is annoying; losing the analysis of a field run you cannot repeat is not.
+
+  The reader now deserialises per message, drops a topic that consistently fails, and says which one and why. `analyze()` reports it as `unreadable_topics`, so the `--json` output carries it too. A run recorded before this change reads cleanly again, with a note naming the skipped topic, and still produces every number that does not depend on it.
+
 ## [0.3.9]: 2026-09-08
 
 ### Added
