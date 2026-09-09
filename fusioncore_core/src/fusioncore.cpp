@@ -1046,6 +1046,22 @@ bool FusionCore::apply_gnss_update(
       R(i,i) = std::max(R(i,i), R_gnss_(i,i));
   }
 
+  // Believe GNSS less while the wheels say the robot is parked.
+  //
+  // A stationary robot's fixes all measure the SAME point, so their spread is a
+  // direct statement about whether the receiver deserves belief. On 2026-09-07
+  // it spread 9.76 m over 57 parked seconds while declaring 3.6 m: wrong, and
+  // wrong by more than it admits. Suppressing position process noise alone got
+  // the drift from 10.16 m to 3.06 m and could go no further, because the filter
+  // still weighs a lying sensor by its own stated covariance. This is the part
+  // that says: while I KNOW you have not moved, that covariance is not credible.
+  //
+  // Applied to the update only, never to R_meas, so the GPS track-heading gate
+  // keeps judging geometry on the receiver's real reported noise.
+  if (zupt_holds_pos_noise_ && config_.zupt_gnss_noise_scale != 1.0) {
+    R *= config_.zupt_gnss_noise_scale;
+  }
+
   // Captured BEFORE the position update, because the GPS track-heading gates
   // below must judge the motion the robot was actually doing over the baseline,
   // not the velocity that this very fix just corrected. Same reasoning as Fix 8

@@ -184,6 +184,25 @@ struct FusionCoreConfig {
   // a parked robot's estimate should not drift toward the GNSS mean.
   double zupt_position_noise_scale = 1.0;
 
+  // How much LESS to believe GNSS while the wheels say the robot is stationary.
+  // 1.0 keeps the previous behaviour; larger values inflate the GNSS
+  // measurement noise, so a parked robot stops being dragged by a receiver that
+  // is wandering.
+  //
+  // The justification is that a stationary robot's fixes all measure the SAME
+  // physical point, so their spread is a direct measurement of whether the
+  // receiver deserves to be believed. On the 2026-09-07 bags the receiver's
+  // reported position moved 9.76 m over 57 parked seconds while declaring 3.6 m
+  // of accuracy: wrong, and wrong by more than it admits to. Suppressing
+  // position process noise alone (zupt_position_noise_scale) got the fused
+  // position's drift from 10.16 m down to 3.06 m, but could not remove the rest,
+  // because the filter still weighs a lying sensor by its stated covariance.
+  //
+  // THE COST, and it is real: a robot parked for a long time cannot re-acquire
+  // if it was genuinely lost before it stopped. For a stop of tens of seconds
+  // that does not matter. For one parked overnight it does.
+  double zupt_gnss_noise_scale = 1.0;
+
   // Nominal IMU rate in Hz. Above zero, the PREDICT step between IMU messages
   // advances by exactly 1/rate instead of the gap between two stamps. Zero
   // keeps the previous behaviour.

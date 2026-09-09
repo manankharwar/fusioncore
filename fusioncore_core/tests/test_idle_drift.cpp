@@ -19,7 +19,7 @@ using namespace fusioncore;
 // the Kalman gain stayed high and every fix dragged the estimate.
 namespace {
 
-FusionCoreConfig idle_config(double zupt_pos_scale) {
+FusionCoreConfig idle_config(double zupt_pos_scale, double zupt_gnss_scale = 1.0) {
   FusionCoreConfig cfg;
   cfg.imu.gyro_noise_x = cfg.imu.gyro_noise_y = cfg.imu.gyro_noise_z = 0.005;
   cfg.imu.accel_noise_x = cfg.imu.accel_noise_y = cfg.imu.accel_noise_z = 0.1;
@@ -28,6 +28,7 @@ FusionCoreConfig idle_config(double zupt_pos_scale) {
   cfg.gnss.base_noise_z  = 1.0;
   cfg.outlier_rejection = true;
   cfg.zupt_position_noise_scale = zupt_pos_scale;
+  cfg.zupt_gnss_noise_scale     = zupt_gnss_scale;
   cfg.motion_model = create_motion_model("DifferentialDrive");
   return cfg;
 }
@@ -54,8 +55,8 @@ double wander(double t) {
 // Hold a stationary robot for 60 s while the receiver wanders around it. The
 // robot never moves, so its true position stays at the origin and the worst
 // excursion of the estimate IS the error. Returns that excursion in metres.
-double idle_drift(double zupt_pos_scale) {
-  FusionCore fc(idle_config(zupt_pos_scale));
+double idle_drift(double zupt_pos_scale, double zupt_gnss_scale = 1.0) {
+  FusionCore fc(idle_config(zupt_pos_scale, zupt_gnss_scale));
   State s0;
   fc.init(s0, 0.0);
 
@@ -127,4 +128,30 @@ TEST(IdleDriftTest, MotionRestoresTheNoiseScale) {
   EXPECT_GT(p_moving, p_parked)
     << "position covariance did not grow again after the robot started moving, "
     << "so the ZUPT noise suppression was never handed back";
+}
+
+// ─── Suppressing process noise alone cannot finish the job ──────────────────
+// Holding the covariance down stops it GROWING, but the filter still weighs
+// each fix by the covariance the receiver claims, and a receiver that wanders
+// 9.76 m while declaring 3.6 m of accuracy is wrong by more than it admits.
+// While the wheels say stationary, every fix measures the SAME point, so their
+// spread is itself evidence that the claim is not credible.
+//
+// Measured on the 2026-09-07 bag, parked 57 s: 10.16 m of drift with neither,
+// 3.23 m with process noise alone, 0.10 m with both.
+TEST(IdleDriftTest, DistrustingGnssWhileParkedFinishesTheJob) {
+  const double baseline = idle_drift(1.0);            // neither
+  const double noise    = idle_drift(0.001);          // process noise only
+  const double both     = idle_drift(0.001, 100.0);   // and distrust GNSS
+
+  EXPECT_LT(noise, baseline)
+    << "suppressing position process noise should already help";
+  EXPECT_LT(both, noise * 0.5)
+    << "distrusting GNSS while the wheels confirm stillness should go "
+       "substantially further: baseline " << baseline << " m, process noise "
+    << noise << " m, both " << both << " m";
+}
+
+TEST(IdleDriftTest, GnssDistrustIsOffByDefault) {
+  EXPECT_DOUBLE_EQ(FusionCoreConfig{}.zupt_gnss_noise_scale, 1.0);
 }
