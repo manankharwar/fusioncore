@@ -1,7 +1,7 @@
 # Bosch BNO085 + u-blox ZED-F9P (outdoor, differential drive)
 
 **Platform:** Differential drive outdoor robots
-**Status: Community contributed** — running on Oakland University Robotics Association "Erdferkel" (IGVC competition, Michigan) and Agroecology Lab agricultural robot (UK). Field validation results pending.
+**Status: Community contributed.** Running on Oakland University Robotics Association "Erdferkel" (IGVC competition, Michigan) and Agroecology Lab agricultural robot (UK). Field validation results pending.
 
 ---
 

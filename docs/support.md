@@ -13,7 +13,7 @@ FusionCore is Apache 2.0 and free to use forever. If you need guaranteed results
 
 ---
 
-## Integration — $750 fixed price
+## Integration: $750 fixed price
 
 You provide your sensor setup. I configure FusionCore, verify it works on your hardware, and hand you a tested launch file and YAML config.
 
@@ -31,7 +31,7 @@ You provide your sensor setup. I configure FusionCore, verify it works on your h
 
 ---
 
-## Production Support — $500/month
+## Production Support: $500/month
 
 For teams running FusionCore on deployed hardware.
 

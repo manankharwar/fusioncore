@@ -1,7 +1,7 @@
 # Microstrain 3DM-GX3-45 + Novatel SPAN-CPT GPS
 
 **Platform:** Segway RMP campus rover (University of Michigan NCLT dataset)
-**Status: Field validated** — 12 sequences, 940 minutes total, evaluated against RTK GPS ground truth. [Full benchmark results](../reference/benchmark.md).
+**Status: Field validated.** 12 sequences, 940 minutes total, evaluated against RTK GPS ground truth. [Full benchmark results](../reference/benchmark.md).
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## Config
 
-This is the exact configuration used for the [NCLT benchmark](../reference/benchmark.md). Identical across all 12 sequences — no per-sequence tuning.
+This is the exact configuration used for the [NCLT benchmark](../reference/benchmark.md). Identical across all 12 sequences, no per-sequence tuning.
 
 ```yaml
 fusioncore:

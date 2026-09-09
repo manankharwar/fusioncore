@@ -1,7 +1,7 @@
 # Xsens MTi-680G IMU + GNSS (Formula Student driverless race car)
 
 **Platform:** Formula Student / FSAE driverless race car (Ackermann kinematics)
-**Status: Validation in progress** — contributed by [UniNa Corse](https://www.instagram.com/uninacorse/), Università degli Studi di Napoli Federico II, 2nd place FSAE Italy 2025 driverless category. Field validation results will be published after competition season.
+**Status: Validation in progress.** Contributed by [UniNa Corse](https://www.instagram.com/uninacorse/), Università degli Studi di Napoli Federico II, 2nd place FSAE Italy 2025 driverless category. Field validation results will be published after competition season.
 
 ---
 
@@ -174,6 +174,6 @@ gnss.base_noise_z: 3.0
 
 ## Deployer
 
-**Pasquale Cannavacciuolo** ([@pakyCannavacciuolo05](https://github.com/pakyCannavacciuolo05)), UniNa Corse — Università degli Studi di Napoli Federico II. FSAE Italy 2025 driverless category, 2nd place overall.
+**Pasquale Cannavacciuolo** ([@pakyCannavacciuolo05](https://github.com/pakyCannavacciuolo05)), UniNa Corse, Università degli Studi di Napoli Federico II. FSAE Italy 2025 driverless category, 2nd place overall.
 
 Running FusionCore with this config on your Xsens platform? Open a [pull request](https://github.com/manankharwar/fusioncore/pulls) to update the status and add your validation results.

@@ -28,9 +28,9 @@ docker pull ghcr.io/manankharwar/fusioncore:0.3.9
 ```
 
 !!! note "Available tags"
-    - `latest` — built from the latest commit on `main`
-    - `0.3.9`, `0.3.7`, `0.3.6`, `0.3.5`, `0.3.4`, `0.3.3`, `0.3.2`, … — semantic version tags matching GitHub Releases
-    - `<commit-sha>` — one tag per commit that triggered the CI build
+    - `latest`: built from the latest commit on `main`
+    - `0.3.9`, `0.3.7`, `0.3.6`, `0.3.5`, `0.3.4`, `0.3.3`, `0.3.2`, ...: semantic version tags matching GitHub Releases
+    - `<commit-sha>`: one tag per commit that triggered the CI build
 
 ---
 
