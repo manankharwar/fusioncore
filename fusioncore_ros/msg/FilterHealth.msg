@@ -87,3 +87,27 @@ float64[] outcome_last_seen
 float64 gnss_chi2_max
 float64 gnss_chi2_threshold
 int32   gnss_chi2_samples
+
+# What the GNSS receiver was measured to be during the last window in which the
+# wheels confirmed the robot was parked, and what that measurement earned it.
+#
+# Standing still is the one moment in a run where a sensor's self-reported
+# confidence can be checked against evidence, because every fix is then sampling
+# the same physical point. Two things come out of that:
+#
+#   gnss_parked_sigma_observed vs _declared: is the receiver as good as it says?
+#   gnss_parked_correlation: lag-1 autocorrelation of those fixes. Near 0 means
+#     consecutive fixes are independent, so averaging N of them is worth the
+#     sqrt(N) the filter assumes. Near 1 means they are largely the same error
+#     repeated, and a filter that averages them anyway ends up far more confident
+#     than the geometry supports.
+#   gnss_parked_inflation: the factor actually applied to the GNSS measurement
+#     noise, horizontal, after the zupt.gnss_noise_scale cap. 1.0 means the
+#     receiver was left alone, which is what an honest uncorrelated one gets.
+#
+# -1 in the sigma fields means no parked window has produced enough fixes yet.
+# These are only populated when zupt.gnss_noise_scale is above 1.0.
+float64 gnss_parked_sigma_observed
+float64 gnss_parked_sigma_declared
+float64 gnss_parked_correlation
+float64 gnss_parked_inflation

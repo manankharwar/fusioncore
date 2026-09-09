@@ -184,24 +184,58 @@ struct FusionCoreConfig {
   // a parked robot's estimate should not drift toward the GNSS mean.
   double zupt_position_noise_scale = 1.0;
 
-  // How much LESS to believe GNSS while the wheels say the robot is stationary.
-  // 1.0 keeps the previous behaviour; larger values inflate the GNSS
-  // measurement noise, so a parked robot stops being dragged by a receiver that
-  // is wandering.
+  // UPPER BOUND on how much less to believe GNSS while the wheels say the robot
+  // is stationary. 1.0 disables it entirely and keeps the previous behaviour.
   //
-  // The justification is that a stationary robot's fixes all measure the SAME
-  // physical point, so their spread is a direct measurement of whether the
-  // receiver deserves to be believed. On the 2026-09-07 bags the receiver's
-  // reported position moved 9.76 m over 57 parked seconds while declaring 3.6 m
-  // of accuracy: wrong, and wrong by more than it admits to. Suppressing
-  // position process noise alone (zupt_position_noise_scale) got the fused
-  // position's drift from 10.16 m down to 3.06 m, but could not remove the rest,
-  // because the filter still weighs a lying sensor by its stated covariance.
+  // This is a CAP on a MEASURED quantity, not a fixed policy, and the difference
+  // is the whole point. A fixed "always distrust GNSS 100x while parked" is
+  // right for one receiver in one place and wrong everywhere else, which is the
+  // same defect that has bitten every absolute-threshold GNSS gate in this
+  // project. Standing still is the one moment in a run where the filter can
+  // check a sensor against evidence instead of against a tuned constant,
+  // because every fix is then sampling the SAME physical point. Two things get
+  // measured from those fixes, per axis:
+  //
+  //   1. MAGNITUDE. Their spread is the receiver's real short-term sigma. Divide
+  //      by the sigma it declares and square: a receiver that is as good as it
+  //      claims scores 1 and is left alone.
+  //
+  //   2. CORRELATION, and this one is usually the larger of the two. A Kalman
+  //      filter assumes measurement errors are white, so N fixes of a fixed
+  //      point shrink its uncertainty like sqrt(N). GNSS error is not white:
+  //      multipath, ionosphere and satellite geometry drift over minutes, so
+  //      consecutive fixes are largely the same error repeated. Measure the
+  //      lag-1 autocorrelation r of the parked fixes and the honest effective
+  //      sample size is N(1-r)/(1+r), so R has to carry a factor (1+r)/(1-r) for
+  //      the filter's own posterior to mean what it says. At the 0.95 to 0.99
+  //      typical of a parked consumer receiver at 1 Hz, that alone is 39x to
+  //      199x, and it is why a hand-picked 100 happened to work.
+  //
+  // The applied inflation is the product, capped here. So this number bounds how
+  // far one bad parked window can push the filter and does NOT decide the
+  // amount, and there is nothing to retune per environment or per receiver.
+  //
+  // Note that (2) fires for an honest receiver too, and should: an RTK unit
+  // reporting a correct 2 cm sigma still has errors correlated over minutes, so
+  // a filter that parks for a minute and averages 60 of them ends up far more
+  // confident than the geometry supports, and carries that over-confidence into
+  // the next leg. That is a general defect, not a bad-receiver defect.
+  //
+  // Measured origin: on the 2026-09-07 bags the receiver's reported position
+  // moved 9.76 m over 57 parked seconds while declaring 3.6 m of accuracy.
+  // Suppressing position process noise alone (zupt_position_noise_scale) got the
+  // fused drift from 10.16 m down to 3.06 m and could go no further, because the
+  // filter still weighed that receiver by its own stated covariance.
   //
   // THE COST, and it is real: a robot parked for a long time cannot re-acquire
   // if it was genuinely lost before it stopped. For a stop of tens of seconds
   // that does not matter. For one parked overnight it does.
   double zupt_gnss_noise_scale = 1.0;
+
+  // Parked fixes needed before their spread is treated as a measurement of the
+  // receiver's noise rather than as noise itself. Floored at 3 internally, since
+  // the autocorrelation term needs at least two consecutive pairs.
+  int zupt_gnss_min_samples = 5;
 
   // Nominal IMU rate in Hz. Above zero, the PREDICT step between IMU messages
   // advances by exactly 1/rate instead of the gap between two stamps. Zero
@@ -510,6 +544,22 @@ struct FusionCoreStatus {
   // that the filter is integrating the wrong amount of time per step.
   double imu_rate_observed_hz    = -1.0;
   bool   imu_fixed_rate_mismatch = false;
+  // What the receiver was measured to be while the wheels confirmed the robot
+  // was parked, and the inflation that measurement earned. -1 before enough
+  // parked fixes have been seen.
+  //
+  //   sigma_observed vs sigma_declared: is the receiver as good as it claims?
+  //   correlation:    lag-1 autocorrelation of the parked fixes. Near 0 means
+  //                   consecutive fixes are independent and averaging them is
+  //                   worth what the filter assumes. Near 1 means they are
+  //                   nearly the same error repeated, so averaging N of them
+  //                   buys far less than sqrt(N) and the filter is otherwise
+  //                   over-converging on a stationary robot.
+  //   inflation:      what was actually applied, horizontal, after the cap.
+  double gnss_parked_sigma_observed = -1.0;
+  double gnss_parked_sigma_declared = -1.0;
+  double gnss_parked_correlation    = 0.0;
+  double gnss_parked_inflation      = 1.0;
   double gnss_chi2_max = -1.0;
   double gnss_chi2_threshold = 0.0;
   int    gnss_chi2_samples = 0;
@@ -743,6 +793,24 @@ private:
   // Largest Mahalanobis distance the GNSS gate has seen, and how many fixes it
   // has judged. Compare against outlier_threshold_gnss: a large ratio means the
   // gate cannot fire, which is invisible in any per-fix field.
+  // Drop every parked-fix statistic. Called on init, on reset, and the moment
+  // the wheels report motion, because a spread measured while stationary says
+  // nothing about a receiver that is moving.
+  void reset_parked_gnss_evidence();
+
+  // GNSS fixes seen while the wheels confirm the robot is parked. All of them
+  // sample the same physical point, so their spread and how strongly one fix
+  // predicts the next are direct measurements of the receiver, not estimates.
+  double parked_fix_n_ = 0.0;
+  std::array<double, 3> parked_fix_s_{};       // sum
+  std::array<double, 3> parked_fix_ss_{};      // sum of squares
+  std::array<double, 3> parked_fix_slag_{};    // sum of consecutive products
+  std::array<double, 3> parked_fix_prev_{};
+  bool   parked_fix_has_prev_ = false;
+  double gnss_parked_sigma_observed_ = -1.0;
+  double gnss_parked_sigma_declared_ = -1.0;
+  double gnss_parked_correlation_    = 0.0;
+  double gnss_parked_inflation_      = 1.0;
   double imu_rate_prev_stamp_    = -1.0;
   double imu_rate_observed_sum_  = 0.0;
   int    imu_rate_observed_n_    = 0;

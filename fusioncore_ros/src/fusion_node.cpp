@@ -342,11 +342,20 @@ public:
     // the old behaviour. Below 1.0 stops P growing on a parked robot, so the
     // filter averages a wandering receiver instead of following it.
     declare_parameter("zupt.position_noise_scale", 1.0);
-    // How much less to believe GNSS while the wheels say the robot is parked.
-    // 1.0 keeps the old behaviour. A stationary robot's fixes all measure the
-    // same point, so their spread says directly whether the receiver deserves
-    // belief.
+    // UPPER BOUND on how much less to believe GNSS while the wheels say the
+    // robot is parked. 1.0 keeps the old behaviour and disables it.
+    //
+    // This caps a MEASURED quantity, it does not set one. Every fix arriving
+    // while the robot is stationary samples the same physical point, so the
+    // spread of those fixes is the receiver's real short-term sigma and their
+    // lag-1 autocorrelation says how much of each fix the previous one already
+    // told you. A receiver that is as good as it claims and whose errors are
+    // independent gets no inflation at all, whatever this is set to. Watch
+    // gnss_parked_* on the filter_health topic to see what it measured.
     declare_parameter("zupt.gnss_noise_scale", 1.0);
+    // Parked fixes needed before their spread is treated as a measurement
+    // rather than as noise. Floored at 3 internally.
+    declare_parameter("zupt.gnss_min_samples", 5);
     // Nominal IMU rate. Above 0, propagate by 1/rate instead of by the gap
     // between stamps, so stamp jitter cannot reach the integrator. Only set a
     // rate you have measured: a wrong one is a systematic dt error and will
@@ -652,6 +661,8 @@ public:
       get_parameter("zupt.position_noise_scale").as_double();
     config.zupt_gnss_noise_scale =
       get_parameter("zupt.gnss_noise_scale").as_double();
+    config.zupt_gnss_min_samples =
+      static_cast<int>(get_parameter("zupt.gnss_min_samples").as_int());
     config.imu_fixed_rate_hz = get_parameter("imu.fixed_rate_hz").as_double();
 
     mag_enabled_ = get_parameter("magnetometer.enabled").as_bool();
@@ -3228,6 +3239,10 @@ private:
       fh.heading_validated = status.heading_validated;
       fh.heading_source    = heading_src_str(status.heading_source);
 
+      fh.gnss_parked_sigma_observed = status.gnss_parked_sigma_observed;
+      fh.gnss_parked_sigma_declared = status.gnss_parked_sigma_declared;
+      fh.gnss_parked_correlation    = status.gnss_parked_correlation;
+      fh.gnss_parked_inflation      = status.gnss_parked_inflation;
       fh.gnss_chi2_max       = status.gnss_chi2_max;
       fh.gnss_chi2_threshold = status.gnss_chi2_threshold;
       fh.gnss_chi2_samples   = status.gnss_chi2_samples;

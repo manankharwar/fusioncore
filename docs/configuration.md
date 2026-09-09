@@ -559,6 +559,69 @@ The default stays at 1.0 until this has been checked against the full NCLT
 regression suite. It is measured on one robot with one receiver, which is not
 enough to move a default.
 
+### Measuring the receiver while the robot is parked
+
+Suppressing process noise stops the covariance growing, but it does not fix the
+other half of the problem. A Kalman filter assumes measurement errors are white,
+so sixty parked fixes of a fixed point shrink its position uncertainty by about
+sqrt(60). GNSS error is not white over a minute: multipath, ionosphere and
+satellite geometry drift slowly, so consecutive fixes are largely the same error
+repeated. The filter ends up far more confident than the geometry supports, each
+fix keeps dragging the estimate, and it carries that over-confidence into the
+next leg of the run.
+
+Standing still is the one moment in a run where this is checkable, because every
+fix is then sampling the same physical point. `zupt.gnss_noise_scale` turns that
+into a correction:
+
+```yaml
+zupt.gnss_noise_scale: 1.0     # UPPER BOUND on the inflation; 1.0 disables it
+zupt.gnss_min_samples: 5       # parked fixes before the measurement is trusted
+```
+
+Two things are measured from the parked fixes, per axis:
+
+- **Magnitude.** Their spread is the receiver's real short-term sigma. Divided by
+  the sigma it declares and squared, a receiver that is as good as it claims
+  scores 1 and is left alone.
+- **Correlation.** The lag-1 autocorrelation `r` of those fixes. The honest
+  effective sample size is `N(1-r)/(1+r)`, so the measurement noise has to carry
+  a factor `(1+r)/(1-r)` for the filter's own posterior to mean what it says.
+
+The applied inflation is the product of the two, capped by
+`zupt.gnss_noise_scale`. So that number bounds how far one bad parked window can
+push the filter and does not decide the amount. Nothing here is tuned per
+environment or per receiver.
+
+The correlation term fires for an honest receiver too, and it should. An RTK unit
+correctly reporting a 2 cm sigma still has errors correlated over minutes, so a
+filter that parks for a minute and averages sixty of them is wrong about how much
+it knows. That is a general defect, not a bad-receiver defect.
+
+On the same 57-second parked window as above, with a receiver declaring 21 to 45 m
+of sigma while actually spreading 0.4 to 3.3 m, the magnitude term stayed at 1.0
+throughout: the receiver was not over-confident. The lag-1 autocorrelation
+measured 0.63 rising to 0.985, which is an inflation of 5x rising to the 100x cap,
+and it took idle drift from 0.56 m to **0.10 m**. Whole-run loop closure was
+unchanged within noise.
+
+Watch what it actually measured on `filter_health`:
+
+```bash
+ros2 topic echo /fusioncore/filter_health --field gnss_parked_correlation
+```
+
+`gnss_parked_sigma_observed` and `_declared` report the magnitude side,
+`gnss_parked_correlation` the correlation side, and `gnss_parked_inflation` what
+was applied after the cap. All are -1 or 1.0 until a parked window has produced
+`zupt.gnss_min_samples` fixes.
+
+**The cost, and it is real.** A robot parked for a long time cannot re-acquire if
+it was genuinely lost before it stopped. For a stop of tens of seconds that does
+not matter. For one parked overnight it does. The evidence is dropped the moment
+the encoders report motion, so a robot that parks once does not stay
+over-confident for the rest of the run.
+
 ## GNSS Doppler velocity bridge (ublox F9P / M8U)
 
 FusionCore itself has no dependency on any specific GPS driver. It accepts velocity from any receiver via `gnss.velocity_topic`, which expects `nav_msgs/Odometry` with ENU velocity (`linear.x=east`, `linear.y=north`).

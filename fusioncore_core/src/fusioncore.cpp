@@ -159,6 +159,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   imu_rate_observed_sum_ = 0.0;
   imu_rate_observed_n_ = 0;
   imu_rate_prev_stamp_ = -1.0;
+  reset_parked_gnss_evidence();
   last_mag_rejection_reason_     = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
@@ -177,6 +178,19 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
 
   // Initialize adaptive noise matrices
   init_adaptive_R();
+}
+
+void FusionCore::reset_parked_gnss_evidence() {
+  parked_fix_n_ = 0.0;
+  parked_fix_s_.fill(0.0);
+  parked_fix_ss_.fill(0.0);
+  parked_fix_slag_.fill(0.0);
+  parked_fix_prev_.fill(0.0);
+  parked_fix_has_prev_ = false;
+  gnss_parked_sigma_observed_ = -1.0;
+  gnss_parked_sigma_declared_ = -1.0;
+  gnss_parked_correlation_    = 0.0;
+  gnss_parked_inflation_      = 1.0;
 }
 
 void FusionCore::reset() {
@@ -216,6 +230,7 @@ void FusionCore::reset() {
   imu_rate_observed_sum_ = 0.0;
   imu_rate_observed_n_ = 0;
   imu_rate_prev_stamp_ = -1.0;
+  reset_parked_gnss_evidence();
   last_mag_rejection_reason_    = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
@@ -743,6 +758,9 @@ void FusionCore::update_encoder(
       std::sqrt(vx * vx + vy * vy) > config_.zupt_velocity_threshold) {
     ukf_.set_position_noise_scale(1.0);
     zupt_holds_pos_noise_ = false;
+    // Clear the parked-fix evidence: those samples described a stationary
+    // receiver and say nothing about a moving one.
+    reset_parked_gnss_evidence();
   }
 
   if (reject_stale_from_skew(timestamp_seconds, last_enc_raw_stamp_, enc_stale_rejects_))
@@ -1041,20 +1059,70 @@ bool FusionCore::apply_gnss_update(
       R(i,i) = std::max(R(i,i), R_gnss_(i,i));
   }
 
-  // Believe GNSS less while the wheels say the robot is parked.
-  //
-  // A stationary robot's fixes all measure the SAME point, so their spread is a
-  // direct statement about whether the receiver deserves belief. On 2026-09-07
-  // it spread 9.76 m over 57 parked seconds while declaring 3.6 m: wrong, and
-  // wrong by more than it admits. Suppressing position process noise alone got
-  // the drift from 10.16 m to 3.06 m and could go no further, because the filter
-  // still weighs a lying sensor by its own stated covariance. This is the part
-  // that says: while I KNOW you have not moved, that covariance is not credible.
+  // While the wheels say the robot is parked, measure what the receiver actually
+  // is and correct R by that, per axis. See zupt_gnss_noise_scale in the header
+  // for why there are two factors and why the correlation one usually dominates.
   //
   // Applied to the update only, never to R_meas, so the GPS track-heading gate
   // keeps judging geometry on the receiver's real reported noise.
-  if (zupt_holds_pos_noise_ && config_.zupt_gnss_noise_scale != 1.0) {
-    R *= config_.zupt_gnss_noise_scale;
+  if (zupt_holds_pos_noise_ && config_.zupt_gnss_noise_scale > 1.0) {
+    const std::array<double, 3> z{fix.x, fix.y, fix.z};
+    parked_fix_n_ += 1.0;
+    for (int k = 0; k < 3; ++k) {
+      parked_fix_s_[k]  += z[k];
+      parked_fix_ss_[k] += z[k] * z[k];
+      if (parked_fix_has_prev_) parked_fix_slag_[k] += z[k] * parked_fix_prev_[k];
+      parked_fix_prev_[k] = z[k];
+    }
+    parked_fix_has_prev_ = true;
+
+    const double n = parked_fix_n_;
+    if (n >= std::max(config_.zupt_gnss_min_samples, 3) ) {
+      std::array<double, 3> scale{1.0, 1.0, 1.0};
+      double obs_xy = 0.0, decl_xy = 0.0, corr_xy = 0.0;
+
+      for (int k = 0; k < 3; ++k) {
+        const double mean = parked_fix_s_[k] / n;
+        // Bessel-corrected: at 5 samples the naive variance is 20% low and would
+        // systematically under-correct a receiver that deserves correcting.
+        const double var =
+          std::max(parked_fix_ss_[k] - parked_fix_s_[k] * mean, 0.0) / (n - 1.0);
+        const double observed = std::sqrt(var);
+        const double declared = std::sqrt(std::max(R_meas(k, k), 1e-12));
+
+        // How much worse the receiver measurably is than it says it is.
+        const double ratio     = observed / declared;
+        const double magnitude = std::max(ratio * ratio, 1.0);
+
+        // How much of each fix the previous fix already told us. Clamped below
+        // at 0 because a negative sample correlation on a short window is noise,
+        // not evidence that the receiver is better than white, and above at 0.99
+        // so a near-frozen receiver produces a large number rather than infinity.
+        double correlation = 1.0;
+        if (var > 1e-12) {
+          const double r = std::clamp(
+            (parked_fix_slag_[k] / (n - 1.0) - mean * mean) / var, 0.0, 0.99);
+          correlation = (1.0 + r) / (1.0 - r);
+          if (k < 2) corr_xy += 0.5 * r;
+        }
+
+        scale[k] = std::clamp(magnitude * correlation,
+                              1.0, config_.zupt_gnss_noise_scale);
+        if (k < 2) { obs_xy += 0.5 * observed; decl_xy += 0.5 * declared; }
+      }
+
+      // R' = D R D with D = diag(sqrt(scale)) inflates each axis by its own
+      // evidence while preserving the receiver's reported X/Y correlation, which
+      // a single scalar multiply would also do but a per-axis one would not.
+      const Eigen::Vector3d d(std::sqrt(scale[0]), std::sqrt(scale[1]),
+                              std::sqrt(scale[2]));
+      R = d.asDiagonal() * R * d.asDiagonal();
+
+      gnss_parked_sigma_observed_ = obs_xy;
+      gnss_parked_sigma_declared_ = decl_xy;
+      gnss_parked_correlation_    = corr_xy;
+      gnss_parked_inflation_      = 0.5 * (scale[0] + scale[1]);
+    }
   }
 
   // Captured BEFORE the position update, because the GPS track-heading gates
@@ -1562,6 +1630,10 @@ FusionCoreStatus FusionCore::get_status() const {
       status.imu_fixed_rate_mismatch = (ratio < 0.98 || ratio > 1.02);
     }
   }
+  status.gnss_parked_sigma_observed = gnss_parked_sigma_observed_;
+  status.gnss_parked_sigma_declared = gnss_parked_sigma_declared_;
+  status.gnss_parked_correlation    = gnss_parked_correlation_;
+  status.gnss_parked_inflation      = gnss_parked_inflation_;
   status.gnss_chi2_max       = gnss_chi2_max_;
   status.gnss_chi2_threshold = config_.outlier_threshold_gnss;
   status.gnss_chi2_samples   = gnss_chi2_samples_;
