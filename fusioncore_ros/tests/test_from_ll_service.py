@@ -11,7 +11,25 @@
 # So this test asserts the advertised TYPE STRING, not just that /fromLL exists.
 
 import math
+import os
 import unittest
+
+# Run on a domain of our own, chosen before rclpy or the launched node reads the
+# environment.
+#
+# This test binds /fromLL and /fusioncore/change_state by ABSOLUTE name, because
+# the absolute name is the contract nav2_waypoint_follower depends on and is the
+# whole point of the test. That also means ANY other fusioncore node reachable on
+# the DDS domain answers instead. It is not hypothetical: running this while an
+# NCLT benchmark was replaying in the background made it fail two runs in three,
+# with the origin conversion coming back as 308 km rather than 0, which is the
+# distance from this test's Ontario datum to the benchmark's Michigan one. On an
+# isolated domain the same build passed six times out of six.
+#
+# Derived from the pid so two test processes on one machine cannot collide
+# either. Kept under 101 because the default RMW settings map higher domain ids
+# onto ports that are not always free.
+os.environ.setdefault('ROS_DOMAIN_ID', str(42 + os.getpid() % 40))
 
 import launch
 import launch_ros.actions

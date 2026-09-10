@@ -160,6 +160,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   imu_rate_observed_n_ = 0;
   imu_rate_prev_stamp_ = -1.0;
   reset_parked_gnss_evidence();
+  cont_n_ = 0;
   last_mag_rejection_reason_     = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_     = 0.0;
   last_imu_innovation_norm_      = 0.0;
@@ -231,6 +232,7 @@ void FusionCore::reset() {
   imu_rate_observed_n_ = 0;
   imu_rate_prev_stamp_ = -1.0;
   reset_parked_gnss_evidence();
+  cont_n_ = 0;
   last_mag_rejection_reason_    = MagRejectionReason::NOT_PROCESSED;
   last_gnss_innovation_norm_    = 0.0;
   last_imu_innovation_norm_     = 0.0;
@@ -1158,25 +1160,47 @@ bool FusionCore::apply_gnss_update(
   // its scale is S = H P H' + R and nothing under about 25 m looks surprising on
   // a consumer receiver. This compares a fix against the two before it, which
   // never involves P at all. See GnssParams::continuity_max_m.
-  if (config_.gnss.continuity_max_m > 0.0 && cont_t2_ >= 0.0) {
-    const double dt1 = cont_t1_ - cont_t2_;
-    const double dt2 = timestamp_seconds - cont_t1_;
-    // Only when the three fixes are evenly spaced. Across a gap the second
-    // difference is legitimately large, and rejecting the first fix after an
-    // outage is exactly the failure gnss_coast_min_gap_s exists to avoid.
-    if (dt1 > 1e-6 && dt2 > 1e-6 && dt2 <= 2.0 * dt1 && dt2 >= 0.5 * dt1) {
-      const double r = dt2 / dt1;
-      // Where the fix should be if the receiver kept moving as it was.
-      const double px = cont_x1_ + (cont_x1_ - cont_x2_) * r;
-      const double py = cont_y1_ + (cont_y1_ - cont_y2_) * r;
-      const double resid = std::hypot(fix.x - px, fix.y - py);
-      if (resid > config_.gnss.continuity_max_m) {
-        gnss_debug_.accepted = false;
-        gnss_debug_.reason   = GnssRejectionReason::CONTINUITY_BREAK;
-        note_gnss_outcome(timestamp_seconds);
-        ++gnss_outliers_;
-        ++gnss_consecutive_rejects_;
-        return false;
+  if (config_.gnss.continuity_max_m > 0.0 && cont_n_ == CONT_HISTORY) {
+    const double span = cont_t_[CONT_HISTORY - 1] - cont_t_[0];
+    const double mean_dt = span / (CONT_HISTORY - 1);
+    const double dt_new  = timestamp_seconds - cont_t_[CONT_HISTORY - 1];
+    // Only while the fixes keep their cadence. Across a gap the receiver has
+    // really travelled, and rejecting the first fix after an outage is exactly
+    // the failure gnss_coast_min_gap_s exists to avoid.
+    if (mean_dt > 1e-6 && dt_new > 1e-6 &&
+        dt_new <= 2.0 * mean_dt && dt_new >= 0.5 * mean_dt) {
+      // Least-squares line through the history, evaluated at the new stamp.
+      // Time is measured from the history mean so the normal equations stay
+      // well conditioned whatever the epoch.
+      double t_bar = 0.0;
+      for (int i = 0; i < CONT_HISTORY; ++i) t_bar += cont_t_[i];
+      t_bar /= CONT_HISTORY;
+
+      double sxx = 0.0, sx_x = 0.0, sx_y = 0.0, mx = 0.0, my = 0.0;
+      for (int i = 0; i < CONT_HISTORY; ++i) {
+        const double d = cont_t_[i] - t_bar;
+        sxx  += d * d;
+        sx_x += d * cont_x_[i];
+        sx_y += d * cont_y_[i];
+        mx   += cont_x_[i];
+        my   += cont_y_[i];
+      }
+      mx /= CONT_HISTORY;
+      my /= CONT_HISTORY;
+
+      if (sxx > 1e-12) {
+        const double d  = timestamp_seconds - t_bar;
+        const double px = mx + (sx_x / sxx) * d;
+        const double py = my + (sx_y / sxx) * d;
+        const double resid = std::hypot(fix.x - px, fix.y - py);
+        if (resid > config_.gnss.continuity_max_m) {
+          gnss_debug_.accepted = false;
+          gnss_debug_.reason   = GnssRejectionReason::CONTINUITY_BREAK;
+          note_gnss_outcome(timestamp_seconds);
+          ++gnss_outliers_;
+          ++gnss_consecutive_rejects_;
+          return false;
+        }
       }
     }
   }
@@ -1306,8 +1330,22 @@ bool FusionCore::apply_gnss_update(
 
   // Only accepted fixes become the continuity reference, so a rejected spike can
   // never poison the baseline that judges the next fix.
-  cont_x2_ = cont_x1_; cont_y2_ = cont_y1_; cont_t2_ = cont_t1_;
-  cont_x1_ = fix.x;    cont_y1_ = fix.y;    cont_t1_ = timestamp_seconds;
+  // Newest at the end, oldest dropped off the front once it is full.
+  if (cont_n_ < CONT_HISTORY) {
+    cont_x_[cont_n_] = fix.x;
+    cont_y_[cont_n_] = fix.y;
+    cont_t_[cont_n_] = timestamp_seconds;
+    ++cont_n_;
+  } else {
+    for (int i = 0; i + 1 < CONT_HISTORY; ++i) {
+      cont_x_[i] = cont_x_[i + 1];
+      cont_y_[i] = cont_y_[i + 1];
+      cont_t_[i] = cont_t_[i + 1];
+    }
+    cont_x_[CONT_HISTORY - 1] = fix.x;
+    cont_y_[CONT_HISTORY - 1] = fix.y;
+    cont_t_[CONT_HISTORY - 1] = timestamp_seconds;
+  }
 
   // GPS accepted normally: exit coast mode and reset counter
   if (gnss_in_coast_) {

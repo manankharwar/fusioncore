@@ -93,15 +93,32 @@ struct GnssParams {
   // perfect heading fixes that: heading actually made it slightly worse.
   //
   // Continuity asks a different question, one that never touches P: does this fix
-  // agree with the two fixes either side of it? A spike breaks that badly.
-  // Measured on the same log, the median second difference of a good fix is
-  // 0.171 m, so a 10 m spike is roughly 58 times the normal scale. Invisible to
-  // chi2, unmissable here.
+  // agree with where the last few put it? A least-squares line through the last
+  // five accepted fixes predicts the next one, and a spike breaks that badly.
+  // Measured on the same log, the median residual of a good fix is 0.171 m, so a
+  // 10 m spike is roughly 58 times the normal scale. Invisible to chi2,
+  // unmissable here.
   //
-  // Set it WELL above the figure tools/nis_from_bag.py reports, because the second
-  // difference also contains real acceleration and the cost of being wrong is
-  // rejecting good fixes, which is the failure that has cost this project most.
-  // On a 0.171 m receiver, 2.0 to 3.0 is generous and still catches a 10 m spike.
+  // WHY FIVE POINTS AND NOT TWO. A two-point extrapolation puts an error in the
+  // newest reference point into the prediction multiplied by about two, so a
+  // spike small enough to pass this limit threw the NEXT good fix over it: the
+  // gate kept the bad sample and rejected the good one, which is worse than not
+  // gating. Over five points the weight on the newest is 0.8, so a spike that
+  // passes can only move the next prediction by 0.8 of itself and can never
+  // reach the limit, whatever the limit is set to.
+  //
+  // HOW TO SET IT. Above the p99 of the residual your own receiver produces, not
+  // by feel. The cost of being wrong is rejecting good fixes, which is the
+  // failure that has cost this project most, and an accepted spike of a few
+  // metres does very little damage anyway: measured on the 2026-09-07 log, an
+  // accepted 3 m spike moved the trajectory 0.25 m while an accepted 60 m spike
+  // moved it 15.73 m. The gate earns its keep in the tail, so set it to catch
+  // the tail and leave ordinary noise alone.
+  //
+  // Measured across 1287 fixes from six 2026-09 rover logs: median residual 0.18
+  // to 0.59 m, p99 0.95 to 3.00 m, largest 3.81 m. At 4.0 there were no
+  // rejections at all on clean data and every injected spike from 4 m up was
+  // caught, so 4.0 is the right number FOR THAT RECEIVER. Measure yours.
   double continuity_max_m = 0.0;
 
   double base_noise_xy = 1.0;

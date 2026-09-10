@@ -688,11 +688,27 @@ private:
   double last_imu_time_     = -1.0;
   double last_encoder_time_ = -1.0;
   double last_gnss_time_    = -1.0;
-  // Fix-to-fix continuity: the last two ACCEPTED fixes, for the second difference.
-  // Only accepted fixes, so a rejected spike can never become the reference that
-  // makes the next good fix look like a break.
-  double cont_x1_ = 0.0, cont_y1_ = 0.0, cont_t1_ = -1.0;   // most recent
-  double cont_x2_ = 0.0, cont_y2_ = 0.0, cont_t2_ = -1.0;   // the one before
+  // Fix-to-fix continuity: the last few ACCEPTED fixes, oldest first, used to
+  // predict where the next one should land.
+  //
+  // Only accepted fixes go in, so a REJECTED spike can never become the
+  // reference that makes the next good fix look like a break. That was never the
+  // whole problem though. A spike small enough to pass the limit still gets in,
+  // and with a two-point extrapolation (px = x1 + (x1 - x2) * r) an error in the
+  // newest reference point lands in the prediction multiplied by about two. So a
+  // 1.5 m spike passed a 3 m limit and then threw the NEXT good fix over it:
+  // measured on the 2026-09-07 rover log, the gate accepted the spike and
+  // rejected the good fix after it, which is worse than not gating at all.
+  //
+  // A least-squares line over CONT_HISTORY points fixes that by arithmetic. For
+  // five evenly spaced points extrapolating one step, the weight on the newest
+  // is 0.8 rather than 2.0, so a spike that passes the limit can only move the
+  // next prediction by 0.8 of itself and can no longer reach the limit. Five is
+  // the smallest history where that holds: four gives exactly 1.0, which is
+  // borderline, and three gives 1.33, which is not enough.
+  static constexpr int CONT_HISTORY = 5;
+  std::array<double, CONT_HISTORY> cont_x_{}, cont_y_{}, cont_t_{};
+  int cont_n_ = 0;
   double last_vslam_time_   = -1.0;
   double last_mag_time_     = -1.0;
   int    update_count_      = 0;

@@ -789,6 +789,121 @@ TEST(GNSSTest, ContinuityAcceptsOrdinaryFixToFixNoise) {
   EXPECT_FALSE(continuity_rejects(2.0, 3.0));
 }
 
+// ─── A spike small enough to pass must not take the next fix down with it ───
+//
+// This is the defect the least-squares predictor exists to fix. With the old
+// two-point extrapolation px = x1 + (x1 - x2) * r, an error in the newest
+// reference point reached the prediction multiplied by about two, so a spike
+// that passed the limit threw the FOLLOWING good fix over it. Measured on the
+// 2026-09-07 rover log at a 3 m limit: a 1.5 m spike was accepted and the good
+// fix after it was rejected instead, which is worse than not gating at all,
+// because you keep the bad sample and throw away the good one.
+//
+// Over five points the weight on the newest is 0.8, so a spike that passes the
+// limit can only move the next prediction by 0.8 of itself and can never reach
+// the limit. That holds for any threshold, which is why this is arithmetic
+// rather than tuning.
+TEST(GNSSTest, SubThresholdSpikeDoesNotGetTheNextFixRejected) {
+  for (double spike : {0.5, 1.0, 1.5, 2.0, 2.5, 2.9}) {
+    FusionCoreConfig cfg;
+    cfg.outlier_rejection = true;
+    cfg.gnss.continuity_max_m = 3.0;
+    cfg.gnss_max_speed = 0.0;
+    FusionCore fc(cfg);
+    State s0;
+    fc.init(s0, 0.0);
+
+    double t = 0.0, x = 0.0;
+    auto feed = [&](double ex) {
+      sensors::GnssFix f;
+      f.x = ex; f.y = 0.0; f.z = 0.0;
+      f.sigma_xy = f.sigma_z = 3.24;
+      f.hdop = f.vdop = 3.24;
+      f.fix_type = sensors::GnssFixType::RTK_FLOAT;
+      f.satellites = 12;
+      return fc.update_gnss(t, f);
+    };
+
+    for (int i = 0; i < 10; ++i) { t += 1.0; x += 0.4; feed(x); }
+
+    t += 1.0; x += 0.4;
+    EXPECT_TRUE(feed(x + spike))
+      << "a " << spike << " m offset is under the 3 m limit and must be accepted";
+
+    // The good fix that follows. This is the one the old predictor threw away.
+    t += 1.0; x += 0.4;
+    EXPECT_TRUE(feed(x))
+      << "the good fix after a " << spike << " m spike was REJECTED: the gate "
+         "kept the bad sample and discarded the good one";
+  }
+}
+
+// ─── The gate must reject the spike itself, not its neighbour ───────────────
+TEST(GNSSTest, ContinuityRejectsTheSpikeAndThenRecovers) {
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection = true;
+  cfg.gnss.continuity_max_m = 3.0;
+  cfg.gnss_max_speed = 0.0;
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+
+  double t = 0.0, x = 0.0;
+  auto feed = [&](double ex) {
+    sensors::GnssFix f;
+    f.x = ex; f.y = 0.0; f.z = 0.0;
+    f.sigma_xy = f.sigma_z = 3.24;
+    f.hdop = f.vdop = 3.24;
+    f.fix_type = sensors::GnssFixType::RTK_FLOAT;
+    f.satellites = 12;
+    return fc.update_gnss(t, f);
+  };
+  for (int i = 0; i < 10; ++i) { t += 1.0; x += 0.4; feed(x); }
+
+  t += 1.0; x += 0.4;
+  EXPECT_FALSE(feed(x + 30.0)) << "a 30 m spike must be rejected";
+
+  // A rejected fix never enters the history, so the next good one is judged
+  // against clean references and must come straight back.
+  for (int i = 0; i < 3; ++i) {
+    t += 1.0; x += 0.4;
+    EXPECT_TRUE(feed(x)) << "good fix " << i << " after the spike was rejected";
+  }
+}
+
+TEST(GNSSTest, ContinuityNeedsAFullHistoryBeforeItJudges) {
+  // Five accepted fixes are needed before the fit means anything. Until then the
+  // gate must stay out of the way rather than guess from two points.
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection = true;
+  cfg.gnss.continuity_max_m = 3.0;
+  cfg.gnss_max_speed = 0.0;
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+  double t = 0.0;
+  auto feed = [&](double ex) {
+    sensors::GnssFix f;
+    f.x = ex; f.y = 0.0; f.z = 0.0;
+    f.sigma_xy = f.sigma_z = 3.24;
+    f.hdop = f.vdop = 3.24;
+    f.fix_type = sensors::GnssFixType::RTK_FLOAT;
+    f.satellites = 12;
+    return fc.update_gnss(t, f);
+  };
+  double x = 0.0;
+  for (int i = 0; i < 4; ++i) { t += 1.0; x += 0.4; EXPECT_TRUE(feed(x)); }
+  t += 1.0;
+  feed(x + 50.0);
+  // Whatever happens to this fix, continuity must not be the gate that decided
+  // it. With four points there is no fit yet, so the question is not answerable
+  // and guessing from a shorter history is what caused the defect above. chi2 is
+  // free to reject it on its own terms, and here it does.
+  EXPECT_NE(fc.get_status().gnss_last_rejection_reason,
+            GnssRejectionReason::CONTINUITY_BREAK)
+    << "continuity judged a fix before it had a full history to judge against";
+}
+
 TEST(GNSSTest, ContinuityIgnoresUnevenlySpacedFixes) {
   // Across a gap the second difference is legitimately large, and rejecting the
   // first fix after an outage is exactly the failure gnss_coast_min_gap_s exists
