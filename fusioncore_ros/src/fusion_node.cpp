@@ -1966,17 +1966,28 @@ private:
 
     // Drop the channels this source does not measure (encoder2.channels).
     //
-    // Substituting the filter's own current estimate makes the innovation
-    // exactly zero for that channel, so it contributes nothing whatever the
-    // gain works out to. Inflating the variance alone would leave a small
-    // residual pull toward whatever the message happened to contain, which for
-    // an unfilled field is 0.0, and 0.0 is a real claim about a rotating robot.
+    // Substituting what the measurement function would PREDICT makes the
+    // innovation exactly zero for that channel, so it contributes nothing
+    // whatever the gain works out to. Inflating the variance alone would leave a
+    // small residual pull toward whatever the message happened to contain, which
+    // for an unfilled field is 0.0, and 0.0 is a real claim about a robot that
+    // may well be rotating.
+    //
+    // Note the bias term on wz. encoder_measurement_function is
+    //   z[0] = VX,  z[1] = VY,  z[2] = WZ + B_EWZ
+    // so predicting the yaw channel means adding the encoder WZ bias the filter
+    // is currently estimating. Substituting bare WZ would leave an innovation of
+    // -B_EWZ rather than zero: tiny once the variance is 1e12, but not zero, and
+    // this is the one channel the whole option exists to suppress.
     if (!enc2_use_vx_ || !enc2_use_vy_ || !enc2_use_wz_) {
       const auto & st = fc_->get_state().x;
       const double kIgnored = 1e12;   // variance, not sigma
       if (!enc2_use_vx_) { vx = st[fusioncore::VX]; var_vx = kIgnored; }
       if (!enc2_use_vy_) { vy = st[fusioncore::VY]; var_vy = kIgnored; }
-      if (!enc2_use_wz_) { wz = st[fusioncore::WZ]; var_wz = kIgnored; }
+      if (!enc2_use_wz_) {
+        wz = st[fusioncore::WZ] + st[fusioncore::B_EWZ];
+        var_wz = kIgnored;
+      }
     }
 
     fc_->update_encoder(t, vx, vy, wz, var_vx, var_vy, var_wz);

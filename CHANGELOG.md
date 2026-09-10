@@ -49,7 +49,7 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   encoder2.channels: ["vx", "vy"]     # default is all three, so nothing changes
   ```
 
-  An omitted channel is not fused. The implementation substitutes the filter's own current estimate for it, which makes that channel's innovation exactly zero, so it contributes nothing whatever the gain works out to. Inflating the variance alone would leave a small residual pull toward whatever the message contained, and for an unfilled field that is 0.0.
+  An omitted channel is not fused. The implementation substitutes what the measurement function would predict for it, which makes that channel's innovation exactly zero, so it contributes nothing whatever the gain works out to. Inflating the variance alone would leave a small residual pull toward whatever the message contained, and for an unfilled field that is 0.0. The yaw channel needs the encoder WZ bias added to the prediction, since `encoder_measurement_function` maps it to `WZ + B_EWZ`, and bare `WZ` would leave an innovation of `-B_EWZ` instead of zero.
 
   Unknown channel names warn rather than fail, and an empty list warns that nothing from that topic will be fused. Same reasoning applies to `encoder`, `imu2` and the radar velocity input, tracked in #108.
 
