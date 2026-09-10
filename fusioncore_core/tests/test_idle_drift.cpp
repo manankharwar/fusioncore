@@ -137,8 +137,9 @@ TEST(IdleDriftTest, MotionRestoresTheNoiseScale) {
 // up more certain than the geometry supports and each fix keeps dragging it.
 //
 // Measured on the 2026-09-07 bag, parked 57 s, with the rover config:
-// 8.73 m of drift with neither, 0.56 m with process noise alone, 0.10 m once
-// the parked evidence is measured and applied.
+// 8.73 m of drift with neither, 0.53 m with process noise alone, 0.10 m once
+// the parked evidence is measured and applied. Across all 11 parked windows in
+// six runs the means are 3.49 m, 1.64 m and 0.74 m.
 TEST(IdleDriftTest, DistrustingGnssWhileParkedFinishesTheJob) {
   const double baseline = idle_drift(1.0);            // neither
   const double noise    = idle_drift(0.001);          // process noise only

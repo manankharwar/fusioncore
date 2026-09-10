@@ -545,10 +545,11 @@ zupt.position_noise_scale: 1.0     # scale on POSITION process noise while still
 `zupt.position_noise_scale` is the one that fixes the drift. At 1.0 nothing
 changes. Below 1.0 the position covariance stops growing while the robot is
 known to be still, so it decays as fixes arrive, the gain falls, and consecutive
-fixes are **averaged** rather than followed. On the run above, 0.001 reduced the
-idle drift from 10.16 m to 3.06 m, improved whole-run loop closure slightly
-(12.99 m to 12.72 m), and rejected no additional fixes. The effect saturates
-below about 0.001.
+fixes are **averaged** rather than followed. Measured at 0.001 across 11 parked
+windows from six field runs, mean excursion falls from 3.49 m to 1.64 m, loop
+closure over the whole run is unchanged within noise, and no additional fixes
+are rejected. The effect saturates below about 0.001, and it goes no further on
+its own: see the next section for why.
 
 It is deliberately **not** applied while GNSS coast mode is active. Coast
 inflation exists so the filter can re-admit GNSS after a blackout, and silently
@@ -602,8 +603,9 @@ On the same 57-second parked window as above, with a receiver declaring 21 to 45
 of sigma while actually spreading 0.4 to 3.3 m, the magnitude term stayed at 1.0
 throughout: the receiver was not over-confident. The lag-1 autocorrelation
 measured 0.63 rising to 0.985, which is an inflation of 5x rising to the 100x cap,
-and it took idle drift from 0.56 m to **0.10 m**. Whole-run loop closure was
-unchanged within noise.
+and it took that window's idle drift from 0.53 m to **0.10 m**. Across all 11
+windows the mean falls from 1.64 m to 0.74 m, helping in 8 and hurting in none.
+Whole-run loop closure was unchanged within noise.
 
 Watch what it actually measured on `filter_health`:
 
