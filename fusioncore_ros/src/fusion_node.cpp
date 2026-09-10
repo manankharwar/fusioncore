@@ -31,6 +31,7 @@
 #include "fusioncore_ros/stale_rate_tracker.hpp"
 #include "fusioncore_ros/msg/gnss_status.hpp"
 #include "fusioncore_ros/msg/filter_health.hpp"
+#include <lifecycle_msgs/msg/state.hpp>
 #include <lifecycle_msgs/msg/transition.hpp>
 #include <mutex>
 #include <optional>
@@ -57,6 +58,39 @@ public:
     // assigns each group its own thread, giving the publish timer its own lane.
     sensor_cb_group_  = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
     publish_cb_group_ = create_callback_group(rclcpp::CallbackGroupType::MutuallyExclusive);
+
+    // Say something if nobody ever configures us.
+    //
+    // This is a lifecycle node, so launching it the way every non-lifecycle ROS
+    // node is launched (plain `Node(...)`, or `ros2 run`) leaves it UNCONFIGURED
+    // forever: no subscriptions, no publishers, no TF, and not one line of log
+    // after the one above. It looks exactly like a node that started fine.
+    //
+    // That is a real failure mode and not a hypothetical one. A public robot
+    // repo was found running FusionCore from a hand-written launch file with a
+    // plain Node and no transitions, in a directory since renamed
+    // OLD_NOT-IN-USE. `autostart` does not save you here: it only covers
+    // configure -> activate, and nothing in this node triggers the configure.
+    //
+    // Ten seconds, because a lifecycle manager legitimately takes time and a
+    // warning that fires while nav2 is still bringing up would be worse than
+    // useless. Cancelled the moment on_configure runs.
+    unconfigured_warn_timer_ = create_wall_timer(10s, [this]() {
+      unconfigured_warn_timer_->cancel();
+      if (get_current_state().id() ==
+          lifecycle_msgs::msg::State::PRIMARY_STATE_UNCONFIGURED) {
+        RCLCPP_WARN(get_logger(),
+          "Still UNCONFIGURED after 10 s: not subscribed to anything, and "
+          "nothing will ever be published. FusionCore is a lifecycle node. "
+          "Fix it one of three ways: (1) use the shipped launch file, "
+          "`ros2 launch fusioncore_ros fusioncore.launch.py`; (2) in your own "
+          "launch file use LifecycleNode and emit the configure and activate "
+          "transitions, see fusioncore_ros/launch/fusioncore.launch.py; "
+          "(3) by hand, `ros2 lifecycle set %s configure`. Ignore this if a "
+          "lifecycle manager is about to configure this node.",
+          get_name());
+      }
+    });
   }
 
   // ─── Lifecycle: Configure ──────────────────────────────────────────────────
@@ -786,6 +820,8 @@ public:
         "gnss.track_heading_min_dist, dual antenna, or a compass). Until then "
         "the frame is aligned to the robot's starting heading.");
     }
+
+    if (unconfigured_warn_timer_) unconfigured_warn_timer_->cancel();
 
     autostart_ = get_parameter("autostart").as_bool();
     if (autostart_) {
@@ -2839,6 +2875,7 @@ private:
       case fusioncore::GnssRejectionReason::SIGMA_XY_HIGH:   return "SIGMA_XY_HIGH";
       case fusioncore::GnssRejectionReason::CONTINUITY_BREAK: return "CONTINUITY_BREAK";
       case fusioncore::GnssRejectionReason::SIGMA_Z_HIGH:    return "SIGMA_Z_HIGH";
+      case fusioncore::GnssRejectionReason::NOT_FINITE:      return "NOT_FINITE";
       case fusioncore::GnssRejectionReason::NOT_PROCESSED:   return "NOT_PROCESSED";
     }
     return "NOT_PROCESSED";
@@ -3602,6 +3639,7 @@ private:
   // Autostart: self-transition configure -> activate without external lifecycle management
   bool autostart_ = true;
   rclcpp::TimerBase::SharedPtr autostart_timer_;
+  rclcpp::TimerBase::SharedPtr unconfigured_warn_timer_;
 
   // Deterministic replay checkpoint (#27)
   std::string checkpoint_path_;
