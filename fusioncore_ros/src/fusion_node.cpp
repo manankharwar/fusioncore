@@ -31,6 +31,7 @@
 #include "fusioncore_ros/stale_rate_tracker.hpp"
 #include "fusioncore_ros/msg/gnss_status.hpp"
 #include "fusioncore_ros/msg/filter_health.hpp"
+#include <algorithm>
 #include <lifecycle_msgs/msg/state.hpp>
 #include <lifecycle_msgs/msg/transition.hpp>
 #include <mutex>
@@ -177,6 +178,22 @@ public:
     declare_parameter("encoder2.topic",     std::string(""));
     declare_parameter("encoder2.vel_noise", 0.05);
     declare_parameter("encoder2.yaw_noise", 0.02);
+    // Which channels this source actually MEASURES. Anything left out is not
+    // fused, rather than fused with a large noise value.
+    //
+    // A twist message always carries all three fields, so a source that fills
+    // only some of them publishes a zero for the rest, and a zero is
+    // indistinguishable from a measured zero by the time it reaches here. Real
+    // case, issue #107: the PMW3901 optical flow driver never assigns
+    // angular.z, so it publishes 0.0 every message and leaves the covariance at
+    // zero. Without this, every sample arrived as a confident "the robot is not
+    // rotating" at the 0.02 default, competing with the gyro on every turn. The
+    // sensor cannot measure yaw rate at all; it reported a zero because the
+    // field is a zero, not because it looked.
+    //
+    // Default lists all three, so existing configs are unchanged.
+    declare_parameter("encoder2.channels",
+                      std::vector<std::string>{"vx", "vy", "wz"});
 
     // GPS velocity topic: fuses horizontal speed from any receiver that outputs
     // nav_msgs/Odometry with velocity in the ENU (world) frame.
@@ -545,6 +562,23 @@ public:
     encoder2_topic_     = get_parameter("encoder2.topic").as_string();
     enc2_vel_noise_     = get_parameter("encoder2.vel_noise").as_double();
     enc2_yaw_noise_     = get_parameter("encoder2.yaw_noise").as_double();
+    {
+      const auto ch = get_parameter("encoder2.channels").as_string_array();
+      enc2_use_vx_ = std::find(ch.begin(), ch.end(), "vx") != ch.end();
+      enc2_use_vy_ = std::find(ch.begin(), ch.end(), "vy") != ch.end();
+      enc2_use_wz_ = std::find(ch.begin(), ch.end(), "wz") != ch.end();
+      for (const auto & c : ch) {
+        if (c != "vx" && c != "vy" && c != "wz")
+          RCLCPP_WARN(get_logger(),
+            "encoder2.channels contains '%s', which is not one of vx, vy, wz. "
+            "It is ignored.", c.c_str());
+      }
+      if (!enc2_use_vx_ && !enc2_use_vy_ && !enc2_use_wz_ &&
+          !encoder2_topic_.empty())
+        RCLCPP_WARN(get_logger(),
+          "encoder2.channels is empty, so nothing from %s will be fused.",
+          encoder2_topic_.c_str());
+    }
     gnss_vel_topic_    = get_parameter("gnss.velocity_topic").as_string();
     radar_vel_topic_   = get_parameter("radar.velocity_topic").as_string();
     radar_vel_noise_   = get_parameter("radar.vel_noise").as_double();
@@ -1926,9 +1960,24 @@ private:
     double var_vy = (cov[7]  > 0.0) ? cov[7]  : enc2_vel_noise_ * enc2_vel_noise_;
     double var_wz = (cov[35] > 0.0) ? cov[35] : enc2_yaw_noise_ * enc2_yaw_noise_;
 
-    const double vx = msg->twist.twist.linear.x;
-    const double vy = msg->twist.twist.linear.y;
-    const double wz = msg->twist.twist.angular.z;
+    double vx = msg->twist.twist.linear.x;
+    double vy = msg->twist.twist.linear.y;
+    double wz = msg->twist.twist.angular.z;
+
+    // Drop the channels this source does not measure (encoder2.channels).
+    //
+    // Substituting the filter's own current estimate makes the innovation
+    // exactly zero for that channel, so it contributes nothing whatever the
+    // gain works out to. Inflating the variance alone would leave a small
+    // residual pull toward whatever the message happened to contain, which for
+    // an unfilled field is 0.0, and 0.0 is a real claim about a rotating robot.
+    if (!enc2_use_vx_ || !enc2_use_vy_ || !enc2_use_wz_) {
+      const auto & st = fc_->get_state().x;
+      const double kIgnored = 1e12;   // variance, not sigma
+      if (!enc2_use_vx_) { vx = st[fusioncore::VX]; var_vx = kIgnored; }
+      if (!enc2_use_vy_) { vy = st[fusioncore::VY]; var_vy = kIgnored; }
+      if (!enc2_use_wz_) { wz = st[fusioncore::WZ]; var_wz = kIgnored; }
+    }
 
     fc_->update_encoder(t, vx, vy, wz, var_vx, var_vy, var_wz);
   }
@@ -3506,6 +3555,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::MagneticField>::SharedPtr mag_sub_;
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
+  bool enc2_use_vx_ = true, enc2_use_vy_ = true, enc2_use_wz_ = true;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder2_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        vslam_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        gnss_vel_sub_;

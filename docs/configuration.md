@@ -624,6 +624,38 @@ not matter. For one parked overnight it does. The evidence is dropped the moment
 the encoders report motion, so a robot that parks once does not stay
 over-confident for the rest of the run.
 
+## Secondary twist sources (`encoder2`)
+
+`encoder2.topic` accepts a second `nav_msgs/Odometry` source and fuses it through
+the same path as the wheel encoder. Typical uses are LiDAR odometry (KISS-ICP),
+a tracking camera, or an optical flow sensor.
+
+```yaml
+encoder2.topic: "/odom/flow"
+encoder2.vel_noise: 0.05
+encoder2.yaw_noise: 0.02
+encoder2.channels: ["vx", "vy"]     # default ["vx", "vy", "wz"]
+```
+
+**`encoder2.channels` matters more than it looks.** A `Twist` message always
+carries all three of vx, vy and wz, so a source that measures only some of them
+still publishes a number for the rest, and that number is 0.0. Once it reaches
+the filter there is nothing to distinguish it from a measured zero.
+
+The concrete case: the PMW3901 and PAA5100 optical flow drivers never assign
+`angular.z` and leave `twist.covariance` at zero. Without listing channels, the
+filter falls back to `encoder2.yaw_noise` and every sample arrives as a confident
+"the robot is not rotating", competing with the gyro on every turn. The sensor
+cannot measure yaw rate; it reported a zero because the field is a zero.
+
+List only what the sensor genuinely measures. Anything omitted is not fused at
+all, rather than fused with a large noise value.
+
+**Optical flow specifically:** the driver converts pixels to metres using a
+`z_height` parameter and the relationship is linear, so a sensor mounted at 0.25 m
+while the parameter is left at its 0.025 default reports every velocity 10x too
+small. Measure the real mount height.
+
 ## GNSS Doppler velocity bridge (ublox F9P / M8U)
 
 FusionCore itself has no dependency on any specific GPS driver. It accepts velocity from any receiver via `gnss.velocity_topic`, which expects `nav_msgs/Odometry` with ENU velocity (`linear.x=east`, `linear.y=north`).

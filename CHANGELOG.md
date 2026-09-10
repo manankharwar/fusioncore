@@ -41,6 +41,18 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **The cost is real:** a robot parked for a long time cannot re-acquire if it was genuinely lost before it stopped. For a stop of tens of seconds that does not matter; for one parked overnight it does. The evidence is dropped the moment the encoders report motion. Prompted, like `zupt.position_noise_scale`, by Martin Pecka's phase-lock explanation on ROS Discourse.
 
 ### Fixed
+- **`encoder2.channels`: a secondary twist source can say which channels it actually measures.** A `Twist` message always carries all three of vx, vy and wz, so a source that fills only some of them publishes a zero for the rest. By the time it reaches the callback, that zero is indistinguishable from a measured zero.
+
+  Reported as #107. The PMW3901 optical flow driver never assigns `angular.z`, so it publishes 0.0 on every message and leaves `twist.covariance` at zero. FusionCore fell back to `encoder2.yaw_noise`, whose default is 0.02, so every optical flow sample arrived as a confident "the robot is not rotating right now", roughly 1.1 deg/s of claimed uncertainty, competing with the gyro and the wheel encoder on every turn. The sensor cannot measure yaw rate at all. It reported a zero because the field is a zero, not because it looked.
+
+  ```yaml
+  encoder2.channels: ["vx", "vy"]     # default is all three, so nothing changes
+  ```
+
+  An omitted channel is not fused. The implementation substitutes the filter's own current estimate for it, which makes that channel's innovation exactly zero, so it contributes nothing whatever the gain works out to. Inflating the variance alone would leave a small residual pull toward whatever the message contained, and for an unfilled field that is 0.0.
+
+  Unknown channel names warn rather than fail, and an empty list warns that nothing from that topic will be fused. Same reasoning applies to `encoder`, `imu2` and the radar velocity input, tracked in #108.
+
 - **FusionCore now says something when it is left unconfigured.** It is a lifecycle node, so launching it the way every non-lifecycle ROS node is launched, a plain `Node(...)` in your own launch file or a bare `ros2 run`, leaves it UNCONFIGURED forever: no subscriptions, no publishers, no TF, and not one line of log after `FusionCore node created`. It looks exactly like a node that started cleanly. `autostart` does not save you, because it only covers configure to activate and nothing in the node triggers the configure.
 
   This is not hypothetical. A public robot repository was found running FusionCore from a hand-written launch file with a plain `Node` and no transitions, in a directory since renamed `OLD_NOT-IN-USE`. Silence is indistinguishable from a broken filter, and the user has no way to tell which they have.
