@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 #include <cmath>
+#include <limits>
 #include "fusioncore/ukf.hpp"
 #include "fusioncore/state.hpp"
 #include "fusioncore/sensors/gnss.hpp"
@@ -929,4 +930,74 @@ TEST(GNSSTest, ContinuityIgnoresUnevenlySpacedFixes) {
   feed(2.0, 0.8);
   EXPECT_TRUE(feed(10.0, 4.0))
       << "a fix after an 8 s gap must not be rejected for breaking continuity";
+}
+
+// ─── A fix carrying NaN must never reach the filter ─────────────────────────
+//
+// This one is worth a test out of proportion to how often it happens, because
+// there is no recovery. A NaN in the state or the covariance propagates through
+// the sigma points on the next predict, and every value the filter reports for
+// the rest of the run is NaN. There is no gate downstream that catches it and
+// no way back short of a reset.
+//
+// The subtle part is that a NaN does not fail the other gates, it passes them.
+// Every comparison against a NaN is false, so `sigma_xy > max_sigma_xy` is false
+// for a NaN sigma exactly as it is for a good one. Checking finiteness last
+// would therefore never fire, which is why is_valid() checks it first.
+TEST(GNSSTest, NonFiniteFixIsRejectedAndNamed) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  for (int field = 0; field < 5; ++field) {
+    FusionCoreConfig cfg;
+    cfg.outlier_rejection = true;
+    cfg.gnss_max_speed = 0.0;
+    FusionCore fc(cfg);
+    State s0;
+    fc.init(s0, 0.0);
+
+    // A fix that is otherwise entirely acceptable.
+    sensors::GnssFix f;
+    f.x = 1.0; f.y = 2.0; f.z = 0.0;
+    f.sigma_xy = f.sigma_z = 1.0;
+    f.hdop = f.vdop = 1.0;
+    f.fix_type = sensors::GnssFixType::RTK_FIXED;
+    f.satellites = 12;
+
+    switch (field) {
+      case 0: f.x = nan; break;
+      case 1: f.y = inf; break;
+      case 2: f.z = nan; break;
+      case 3: f.sigma_xy = nan; break;
+      case 4: f.hdop = nan; break;
+    }
+
+    EXPECT_FALSE(fc.update_gnss(1.0, f)) << "non-finite field " << field
+        << " was accepted; a NaN reaching the state is unrecoverable";
+    EXPECT_EQ(fc.get_status().gnss_last_rejection_reason,
+              GnssRejectionReason::NOT_FINITE)
+        << "field " << field << " was rejected but blamed on the wrong gate, "
+           "which sends people tuning a parameter that was never involved";
+
+    // And the filter must still be usable afterwards.
+    EXPECT_TRUE(std::isfinite(fc.get_state().x[X]));
+    EXPECT_TRUE(std::isfinite(fc.get_state().P(X, X)));
+  }
+}
+
+TEST(GNSSTest, AnOrdinaryFixIsStillAccepted) {
+  // The guard runs on every fix, so pin that it lets a good one through.
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection = true;
+  cfg.gnss_max_speed = 0.0;
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+  sensors::GnssFix f;
+  f.x = 1.0; f.y = 2.0; f.z = 0.0;
+  f.sigma_xy = f.sigma_z = 1.0;
+  f.hdop = f.vdop = 1.0;
+  f.fix_type = sensors::GnssFixType::RTK_FIXED;
+  f.satellites = 12;
+  EXPECT_TRUE(fc.update_gnss(1.0, f));
 }

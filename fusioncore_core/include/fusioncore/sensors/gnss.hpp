@@ -219,7 +219,26 @@ struct GnssFix {
   // work with and must not compare them against the DOP thresholds.
   bool has_sigma() const { return sigma_xy > 0.0 && sigma_z > 0.0; }
 
+  // A fix carrying NaN or infinity. Checked before anything else because every
+  // comparison below silently answers false against a NaN, so a garbage fix
+  // would pass every gate it was tested against rather than failing them.
+  //
+  // Nothing recovers from this one. A NaN reaching the state or the covariance
+  // propagates through the sigma points on the next predict and every value the
+  // filter reports afterwards is NaN, for the rest of the run, with no way back.
+  // That makes it worth a check even though a well-behaved driver never sends
+  // one: seen on a 2026-09-05 rover log, 17 of 246 fixes had NaN latitude and
+  // longitude. All 17 also carried status -1, so min_fix_type happened to stop
+  // them, but that is the driver being tidy rather than the filter being safe.
+  bool is_finite() const {
+    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z) &&
+           std::isfinite(sigma_xy) && std::isfinite(sigma_z) &&
+           std::isfinite(hdop) && std::isfinite(vdop) &&
+           (!has_full_covariance || full_covariance.allFinite());
+  }
+
   bool is_valid(const GnssParams& p) const {
+    if (!is_finite())                   return false;
     if (fix_type < p.min_fix_type)      return false;
     if (satellites < p.min_satellites)  return false;
     if (has_sigma())

@@ -973,7 +973,9 @@ bool FusionCore::update_gnss(
     // Order matches is_valid() so the reported reason is the gate that
     // actually fired. Naming the wrong gate sends people tuning a parameter
     // that was never involved, which is what happened on issue #73.
-    if (fix.fix_type < config_.gnss.min_fix_type)
+    if (!fix.is_finite())
+      gnss_debug_.reason = GnssRejectionReason::NOT_FINITE;
+    else if (fix.fix_type < config_.gnss.min_fix_type)
       gnss_debug_.reason = GnssRejectionReason::FIX_TYPE_LOW;
     else if (fix.satellites < config_.gnss.min_satellites)
       gnss_debug_.reason = GnssRejectionReason::MIN_SATS;

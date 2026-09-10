@@ -224,8 +224,9 @@ struct FusionCoreConfig {
   // Measured origin: on the 2026-09-07 bags the receiver's reported position
   // moved 9.76 m over 57 parked seconds while declaring 3.6 m of accuracy.
   // Suppressing position process noise alone (zupt_position_noise_scale) got the
-  // fused drift from 10.16 m down to 3.06 m and could go no further, because the
-  // filter still weighed that receiver by its own stated covariance.
+  // fused drift down from 10.16 m, but no further than 1.64 m mean across 11
+  // parked windows, because the filter still weighed that receiver by its own
+  // stated covariance.
   //
   // THE COST, and it is real: a robot parked for a long time cannot re-acquire
   // if it was genuinely lost before it stopped. For a stop of tens of seconds
@@ -396,6 +397,7 @@ enum class GnssRejectionReason {
   SIGMA_XY_HIGH   = 9,  // reported horizontal sigma in METRES > max_sigma_xy
   SIGMA_Z_HIGH    = 10, // reported vertical sigma in METRES > max_sigma_z
   CONTINUITY_BREAK = 11, // fix disagrees with the two fixes before it
+  NOT_FINITE      = 12, // position or covariance contained NaN or infinity
 };
 
 // Why GPS track heading did or did not fuse on a given fix.
