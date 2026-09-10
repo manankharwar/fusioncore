@@ -1,0 +1,144 @@
+# Hardware config: BNO085 IMU + u-blox F9P + PMW3901 optical flow, tracked base
+#
+# Platform:  Tracked / skid-steer ground robot (requested for Sowbot, issue #107)
+# IMU:       Bosch BNO085 (9-axis, magnetometer left disabled by default)
+# GPS:       u-blox F9P, RTK capable
+# Flow:      PMW3901 or PAA5100 via adityakamath/optical_flow_ros
+# Tested:    NOT field validated. Noise values below are starting points, not
+#            measurements. See "what to measure first" at the bottom.
+#
+# Why optical flow on a tracked machine: tracks slip badly, turning especially,
+# and wheel odometry over-reports distance while they do. Optical flow measures
+# actual ground motion so it does not share that failure. Fusing both does NOT
+# detect slip, it blends them by their noise, so the two vel_noise values below
+# are what decide who wins when they disagree.
+#
+# Launch:
+#   ros2 launch fusioncore_ros fusioncore.launch.py \
+#     fusioncore_config:=$(ros2 pkg prefix fusioncore_ros)/share/fusioncore_ros/config/tracked_flow_f9p.yaml
+#
+# Typical remaps:
+#   -r /imu/data:=/bno085/imu  -r /gnss/fix:=/ublox/fix  -r /odom/wheels:=/your/odom
+
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+    publish.force_2d: true
+
+    # Tracks are skid-steer. DifferentialDrive is still the right model: it
+    # forbids lateral sliding, which is what you want, and the slip that tracks
+    # do produce shows up as encoder error rather than as a sideways velocity.
+    motion_model: "DifferentialDrive"
+
+    # ── IMU: Bosch BNO085 ─────────────────────────────────────────────────────
+    # Magnetometer off. A tracked machine has large motor currents close to the
+    # chassis, and a mag that is confidently wrong is worse than no mag at all.
+    imu.has_magnetometer: false
+    imu.gyro_noise: 0.005
+    imu.accel_noise: 0.1
+    imu.remove_gravitational_acceleration: false
+    imu.frame_id: "imu_link"
+
+    # ── Wheel / track encoders ────────────────────────────────────────────────
+    # Deliberately looser than the wheeled defaults, because track odometry is
+    # genuinely worse. This is the number to lower only after you have measured
+    # closure on your own ground.
+    encoder.vel_noise: 0.10         # m/s
+    encoder.yaw_noise: 0.03         # rad/s
+
+    # ── Optical flow, as a second twist source ────────────────────────────────
+    # The driver publishes nav_msgs/Odometry, which is exactly what this input
+    # takes, so no new sensor type is involved.
+    #
+    # channels is the important line. optical_flow_ros never assigns angular.z,
+    # so it publishes 0.0 on every message and leaves twist.covariance at zero.
+    # Listing only vx and vy stops that zero being fused as a confident "the
+    # robot is not rotating", which would fight the gyro on every turn. See #108.
+    #
+    # On a release older than that fix, delete the channels line and set
+    # encoder2.yaw_noise: 1000.0 instead, which achieves the same thing crudely.
+    encoder2.topic: "/odom"         # remap the flow driver here
+    encoder2.channels: ["vx", "vy"]
+    encoder2.vel_noise: 0.05        # starting point, see below
+    encoder2.yaw_noise: 0.02        # unused while wz is not in channels
+
+    # ── GPS: u-blox F9P ───────────────────────────────────────────────────────
+    gnss.base_noise_xy: 1.0
+    gnss.base_noise_z: 2.0
+    gnss.min_sigma_xy: 0.05         # floor: an RTK fix that claims 2 mm is lying
+    gnss.min_sigma_z: 0.10
+    gnss.heading_noise: 0.02
+    gnss.max_hdop: 4.0
+    gnss.min_satellites: 4
+    gnss.min_fix_type: 1            # raise to 4 to demand RTK fixed
+
+    # Measure from base_link to the antenna phase centre: x fwd, y left, z up.
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    gnss.fix2_topic: ""
+    gnss.heading_topic: ""
+    gnss.azimuth_topic: ""
+
+    # Fix-to-fix continuity. Catches metre-scale GPS spikes that the chi2 gate
+    # structurally cannot see, because chi2 scales with the filter's own
+    # covariance. Set it above the p99 of YOUR receiver's second difference:
+    # tools/nis_from_bag.py reports it. 4.0 suited an M9N; an F9P on RTK should
+    # be far tighter, so measure before trusting this number.
+    gnss.continuity_max_m: 4.0
+
+    magnetometer.enabled: false
+    magnetometer.topic: "/imu/mag"
+
+    # ── Outlier rejection ─────────────────────────────────────────────────────
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27
+    outlier_threshold_imu: 15.09
+    outlier_threshold_enc: 11.34
+    outlier_threshold_hdg: 10.83
+    outlier_threshold_vslam: 22.46
+
+    # ── Adaptive noise ────────────────────────────────────────────────────────
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.ground_constraint: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # ── UKF process noise ─────────────────────────────────────────────────────
+    ukf.q_position: 0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity: 0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias: 1.0e-5
+    ukf.q_accel_bias: 1.0e-5
+    ukf.q_encoder_wz_bias: 1.0e-7
+
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true
+
+# ── What to measure first, before trusting any number above ──────────────────
+#
+# 1. z_height in the FLOW DRIVER, not here. It converts pixels to metres and the
+#    relationship is linear, so a sensor at 0.25 m with the 0.025 default reports
+#    every velocity 10x too small. That is the single most likely reason this
+#    looks broken on first run.
+#
+# 2. encoder2.vel_noise against encoder.vel_noise. These two decide who wins when
+#    tracks slip. Drive a measured straight line on loose ground and compare what
+#    each source says the distance was. Whichever is closer to the tape deserves
+#    the smaller number.
+#
+# 3. gnss.continuity_max_m from your own bag, via tools/nis_from_bag.py.
+#
+# Things that give optical flow trouble outdoors, none of them measured here:
+# wet ground or standing water, very uniform soil with no texture, low light
+# under canopy, and tall crop where it may track leaves moving in wind rather
+# than the ground going past.
