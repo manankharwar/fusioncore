@@ -1,34 +1,45 @@
 {
-  "_note": "Honest per-sequence baseline for FusionCore NCLT regression tracking. This is NOT the published marketing table: it is the reference the regression checker (tools/check_benchmark_regression.py) diffs new runs against, so a change that helps one sequence but hurts another is caught the same day instead of drifting silently for weeks. Numbers are FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth. Regenerate a sequence entry from its results/metrics.json (produced by tools/evaluate.py --json).",
-  "_status": "MEASURED 2026-08-14 on current main with ukf.alpha=1.0. Sequence 2013-04-05 at 1x playback: FusionCore 131.85 m ATE RMSE 3D, robot_localization 229.66 m. This is a 97.5% improvement over the same run at the previous alpha=0.1 default (5268.80 m), and RL was within 1.2 m across all three runs as the control. It is still 5.7x worse than c8b8b1f (19 May) which measured 22.96 m on this machine, so a SECOND regression remains unidentified between May and now: alpha was the dominant cause, not the only one. Only 2013-04-05 has been re-measured; every other entry below predates the alpha fix and is NOT a valid reference. SUPERSEDED as of 2026-08-05. Every number below was measured with gnss.max_speed active and no sigma term in its bound, a configuration since shown to reject good GPS and cascade into drift: on 1200 s of 2013-04-05, the old bound gave 125 IMPLAUSIBLE_JUMP rejections and 915.0 m ATE where the fixed bound gives 3 rejections and 5.5 m. These entries are therefore not a valid reference for current main and must NOT be used to judge a regression. A controlled full-suite re-run on current main is owed before any entry here or any published number is updated. Previous status: PARTIAL, only 3 of 12 sequences staged. PARTIAL. Only 3 of 12 NCLT sequences are staged on this machine, so only these are tracked. A controlled full-suite re-run on current main is still owed before any published number is updated. 'verified' marks a run confirmed on the recorded commit; 'provisional' entries were measured mid-investigation and should be re-run under a controlled current-main config before being trusted.",
-  "baseline_commit": "9bcbb9d",
-  "recorded": "2026-07-01",
+  "_note": "Per-sequence reference for the NCLT regression checker (tools/check_benchmark_regression.py). NOT the published table. FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth, regenerated from a run's results/metrics.json via tools/evaluate.py --json.",
+  "_status": "MEASURED 2026-09-10/11 on 5e2e0e4, the first controlled re-run under the current harness. All three sequences rate-checked from message stamps (91-94% of realtime), so none is a starved run. robot_localization is the control: its code does not change between FusionCore runs, so a sequence where RL moved is not a valid comparison. On 2013-04-05 RL moved 17%, traced to 93f04d8 (18 Aug) flipping use_odometry_yaw in navsat_transform.yaml four days after the previous baseline was recorded, so that sequence is marked void rather than regressed. Everything measured before 18 Aug 2026 is non-comparable and the old 54.6 / 101.3 entries must not be quoted.",
+  "baseline_commit": "5e2e0e4",
+  "recorded": "2026-09-11",
   "regression_threshold_pct": 10.0,
   "sequences": {
-    "2013-04-05": {
-      "fusioncore_ate_rmse_3d": 131.85,
-      "fusioncore_ate_rmse_xy": 18.189,
-      "rl_ate_rmse_3d": 229.66,
-      "verified": true,
-      "measured": "2026-08-14",
-      "commit": "9bcbb9d",
-      "note": "Measured at 1x playback with the filter achieving 88.3 Hz (comparable runs: main 90.2 Hz, c8b8b1f 87.7 Hz). ALWAYS check the achieved filter rate before trusting an NCLT number on this machine: the same data gave 182/318/4878/5268 m purely by playback rate. c8b8b1f measured 22.96 m here, so a residual gap remains."
-    },
     "2012-06-15": {
-      "fusioncore_ate_rmse_3d": 54.624,
-      "fusioncore_ate_rmse_xy": 49.874,
-      "rl_ate_rmse_3d": 18.509,
-      "verified": false,
-      "measured": "2026-06-30",
-      "note": "Provisional. Long-blackout loss (RL's 2D model drifts less). Re-run under controlled current-main config to promote to verified."
+      "fusioncore_ate_rmse_3d": 73.608,
+      "fusioncore_ate_rmse_xy": 69.425,
+      "fusioncore_rpe10_rmse": 22.326,
+      "fusioncore_drift_m_per_km": 12.55,
+      "rl_ate_rmse_3d": 18.427,
+      "rl_rpe10_rmse": 22.534,
+      "rl_drift_m_per_km": 3.14,
+      "verified": true,
+      "measured": "2026-09-10",
+      "commit": "5e2e0e4",
+      "note": "Long-blackout loss, issue #63: one 461.5 s GNSS gap, 13.9% of the run. Local accuracy is NOT the problem: RPE@10m 22.33 m against RL's 22.53 m. Aligning on the pre-blackout segment only, FusionCore tracks to 4.74 m median while fixes are present (RL 3.65 m), reaches 397.7 m at the end of the blackout (RL 72.8 m), and is still 277.2 m out 300 s after 5 Hz fixes return, where RL is back to 17.4 m within 30 s. The failure to re-acquire was a chi2 lockout, fixed in d2a41f2; this entry predates that fix."
     },
     "2012-08-20": {
-      "fusioncore_ate_rmse_3d": 101.255,
-      "fusioncore_ate_rmse_xy": 99.927,
-      "rl_ate_rmse_3d": 10.503,
+      "fusioncore_ate_rmse_3d": 122.883,
+      "fusioncore_ate_rmse_xy": 121.669,
+      "fusioncore_rpe10_rmse": 25.271,
+      "fusioncore_drift_m_per_km": 16.35,
+      "rl_ate_rmse_3d": 10.52,
+      "rl_rpe10_rmse": 18.962,
+      "rl_drift_m_per_km": 1.4,
+      "verified": true,
+      "measured": "2026-09-11",
+      "commit": "5e2e0e4",
+      "note": "Long-blackout loss, issue #64. The outlier cluster at the blackout boundary is a red herring: a physical gate rejects it cleanly and ATE barely moves, because the damage is dead reckoning after the cluster. Config-sensitive through gnss.max_speed, so re-run it after any change to that gate. Predates d2a41f2."
+    },
+    "2013-04-05": {
+      "fusioncore_ate_rmse_3d": 201.097,
+      "fusioncore_ate_rmse_xy": 200.91,
+      "rl_ate_rmse_3d": 268.639,
       "verified": false,
-      "measured": "2026-06-30",
-      "note": "Provisional. Long-blackout loss. gnss.max_speed gate targets this sequence's outlier cluster, so its score is config-sensitive; re-run to promote to verified."
+      "measured": "2026-09-10",
+      "commit": "5e2e0e4",
+      "note": "VOID as a regression reference: the control moved. RL went 229.66 to 268.64 (+17%) because 93f04d8 changed navsat_transform.yaml after the previous baseline. FusionCore still beats RL here (201.10 vs 268.64). Re-record both sides together before using this sequence to judge anything."
     }
-  }
+  },
+  "_read_this_before_judging_any_regression": "This filter is chaotic at the microsecond level while quaternion covariance is unbounded (tools/repro/sensitivity.cpp, and tools/repro/README.md 'What this settles'). Eight runs of 2013-04-05 on identical code and data returned FusionCore 32 m to 345 m, a 9x spread, with achieved-filter-rate correlation r=+0.05 so it is not CPU load. A SINGLE run is therefore not evidence of anything, and regression_threshold_pct of 10 is far inside the noise. Treat a single-run diff as a prompt to re-run, never as a verdict, and prefer a median over at least three runs plus the error distribution (median and fraction over 50 m) to ATE RMSE, which on a heavy-tailed distribution measures the tail rather than the accuracy."
 }
