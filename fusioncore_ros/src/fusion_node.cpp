@@ -255,6 +255,9 @@ public:
     // RTK_FLOAT (3) is unreachable via NavSatFix alone.
     declare_parameter("gnss.min_fix_type",  1);
 
+    // Master switch for GNSS fusion: when false, no GNSS subscriptions created
+    declare_parameter("gnss.enabled", true);
+
     // Topic for dual antenna heading: sensor_msgs/Imu used as heading carrier.
     // The yaw component of orientation is the heading.
     // Set to empty string to disable dual antenna heading.
@@ -522,6 +525,7 @@ public:
     gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
     azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
     use_gps_fix_    = get_parameter("gnss.use_gps_fix").as_bool();
+    gnss_enabled_   = get_parameter("gnss.enabled").as_bool();
 
     fusioncore::FusionCoreConfig config;
 
@@ -978,24 +982,28 @@ public:
         "Radar Doppler velocity fusion enabled on topic: %s", radar_vel_topic_.c_str());
     }
 
-    if (use_gps_fix_) {
-      gps_fix_sub_ = create_subscription<gps_msgs::msg::GPSFix>(
-        gnss_fix_topic_, sensor_qos,
-        [this](const gps_msgs::msg::GPSFix::SharedPtr msg) {
-          std::lock_guard<std::mutex> lock(fc_mutex_);
-          gps_fix_callback(msg, 0);
-        }, sensor_opts);
-      RCLCPP_INFO(get_logger(),
-        "GNSS topic: %s (gps_msgs/GPSFix, RTK_FLOAT capable)", gnss_fix_topic_.c_str());
+    if (gnss_enabled_) {
+      if (use_gps_fix_) {
+        gps_fix_sub_ = create_subscription<gps_msgs::msg::GPSFix>(
+          gnss_fix_topic_, sensor_qos,
+          [this](const gps_msgs::msg::GPSFix::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(fc_mutex_);
+            gps_fix_callback(msg, 0);
+          }, sensor_opts);
+        RCLCPP_INFO(get_logger(),
+          "GNSS topic: %s (gps_msgs/GPSFix, RTK_FLOAT capable)", gnss_fix_topic_.c_str());
+      } else {
+        gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
+          gnss_fix_topic_, sensor_qos,
+          [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
+            std::lock_guard<std::mutex> lock(fc_mutex_);
+            gnss_callback(msg, 0);
+          }, sensor_opts);
+        RCLCPP_INFO(get_logger(),
+          "GNSS topic: %s (sensor_msgs/NavSatFix)", gnss_fix_topic_.c_str());
+      }
     } else {
-      gnss_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
-        gnss_fix_topic_, sensor_qos,
-        [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
-          std::lock_guard<std::mutex> lock(fc_mutex_);
-          gnss_callback(msg, 0);
-        }, sensor_opts);
-      RCLCPP_INFO(get_logger(),
-        "GNSS topic: %s (sensor_msgs/NavSatFix)", gnss_fix_topic_.c_str());
+      RCLCPP_INFO(get_logger(), "GNSS disabled");
     }
 
     // compass_msgs/Azimuth heading: optional, preferred over sensor_msgs/Imu
@@ -1023,7 +1031,7 @@ public:
     }
 
     // Second GNSS receiver: optional
-    if (!gnss2_topic_.empty()) {
+    if (gnss_enabled_ && !gnss2_topic_.empty()) {
       gnss2_sub_ = create_subscription<sensor_msgs::msg::NavSatFix>(
         gnss2_topic_, sensor_qos,
         [this](const sensor_msgs::msg::NavSatFix::SharedPtr msg) {
@@ -3627,6 +3635,7 @@ private:
   bool        force_2d_    = false;
   bool        publish_tf_  = true;
   bool        use_gps_fix_  = false;
+  bool        gnss_enabled_ = true;
   std::string heading_topic_;
   std::string gnss_fix_topic_;
   std::string gnss_frame_override_;
