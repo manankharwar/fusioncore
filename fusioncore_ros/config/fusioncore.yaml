@@ -366,3 +366,105 @@ fusioncore:
     # ros2 service call /fusioncore/save_checkpoint std_srvs/srv/Trigger
     # ros2 service call /fusioncore/load_checkpoint std_srvs/srv/Trigger
     replay.checkpoint_path: "/tmp/fusioncore_checkpoint.txt"
+
+    # ── GNSS quality gates ────────────────────────────────────────────────────
+    # All of these ship OFF or wide. Every one was added because a gate tuned on
+    # clean data rejected good fixes on a real receiver, so none of them turns
+    # itself on for you. Measure your own receiver before enabling any.
+
+    # Floor on the sigma a receiver is allowed to claim, in METRES. Receivers lie
+    # in both directions: one M9N declared 0.076 m 1-sigma while its own position
+    # scattered 1.03 m over 70 stationary fixes. A floor is safer than a
+    # multiplier, because a multiplier tuned for one receiver mode is wrong the
+    # moment it switches to the other.
+    gnss.min_sigma_xy: 0.02
+    gnss.min_sigma_z: 0.05
+
+    # Fix-to-fix continuity. This is the ONLY gate that can see a metre-scale
+    # spike, because chi2 tests a fix against the filter and so scales with the
+    # filter's own covariance: on one rover log the largest of 222 innovations
+    # sat 39x below firing while every fix reported ACCEPTED. Continuity predicts
+    # from a least-squares line over the last five accepted fixes instead.
+    # 0.0 disables it. Set it above the p99 of YOUR receiver's residual, which
+    # tools/nis_from_bag.py reports. Measured across six rover logs: median 0.18
+    # to 0.59 m, largest 3.81 m, so 4.0 rejected nothing clean and caught every
+    # injected spike from 4 m up.
+    gnss.continuity_max_m: 0.0
+
+    # Physical plausibility: reject a fix further from the prediction than the
+    # robot could possibly have travelled. max_speed is your robot's real top
+    # speed in m/s; 0.0 disables the gate. The bound is
+    # max_speed*dt + margin + sigma_k*sigma, and the sigma term is not optional:
+    # without it this gate rejected 39% of good fixes on real hardware.
+    gnss.max_speed: 0.0
+    gnss.max_speed_margin: 5.0
+    gnss.max_speed_sigma_k: 5.0
+    gnss.max_speed_drift_k: 3.0
+
+    # Gate the chi2 test on SHORT-TERM consistency rather than absolute accuracy,
+    # in metres. The two differ by a factor of tens on a smoothing receiver.
+    # 0.0 keeps chi2 judging against the full R.
+    gnss.outlier_sigma_xy: 0.0
+
+    # A rejected fix only triggers coast inflation if GNSS was already absent for
+    # this long. Without it a sustained outlier inflates P until the gate opens
+    # and the filter lurches to the spike.
+    gnss.coast_min_gap_s: 1.0
+
+    # Distance the robot must travel before GPS track heading is trusted as an
+    # absolute yaw reference.
+    gnss.heading_observable_distance: 5.0
+
+    # ── Parked robot: ZUPT position and GNSS handling ─────────────────────────
+    # ZUPT fuses [VX=0, VY=0, WZ=0], which pins VELOCITY and says nothing about
+    # POSITION. So a stationary robot's position covariance kept growing between
+    # fixes and every fix dragged the estimate. Measured parked for 57 s with
+    # encoders confirming stillness: the receiver moved 9.76 m and the filter
+    # followed it 10.16 m.
+
+    # Below 1.0 holds position covariance down while the wheels say stationary.
+    # 1.0 disables. Across 11 parked windows this took mean excursion from
+    # 3.49 m to 1.64 m. The effect saturates below about 0.001.
+    zupt.position_noise_scale: 1.0
+
+    # UPPER BOUND on how much less to believe GNSS while parked. 1.0 disables.
+    # This caps a MEASURED quantity rather than setting one: while parked, every
+    # fix samples the same point, so their spread and their lag-1 autocorrelation
+    # are measurements of the receiver. An honest, uncorrelated receiver earns no
+    # inflation whatever this is set to. Took those 11 windows from 1.64 m to
+    # 0.74 m. Costs re-acquisition if the robot was already lost before stopping.
+    zupt.gnss_noise_scale: 1.0
+    zupt.gnss_min_samples: 5
+
+    # ── IMU timing ────────────────────────────────────────────────────────────
+    # Above 0, propagate by 1/rate instead of by the gap between stamps, so stamp
+    # jitter cannot reach the integrator. Only set a rate you have MEASURED: a
+    # wrong one is a systematic dt error on every step and will eventually get
+    # your IMU rejected as stale. FilterHealth flags a mismatch above 2%.
+    imu.fixed_rate_hz: 0.0
+
+    # Reject any measurement older than this, in seconds.
+    max_measurement_delay: 0.5
+
+    # ── Magnetometer disturbance rejection ────────────────────────────────────
+    # Reject a reading whose field magnitude deviates from Earth's field by more
+    # than the tolerance, which catches motor and steel interference that the
+    # chi2 gate passes because the DIRECTION still looks plausible. Set
+    # field_strength to your local field in tesla (see NOAA NCEI); 0.0 disables.
+    magnetometer.field_strength: 0.0
+    magnetometer.field_tolerance: 0.2
+
+    # ── Secondary twist source channels ───────────────────────────────────────
+    # Which channels encoder2 actually MEASURES. A Twist always carries all three,
+    # so a source filling only some publishes a zero for the rest, and that zero
+    # is indistinguishable from a measured zero. Optical flow drivers never set
+    # angular.z, so without trimming this they assert "not rotating" on every
+    # sample. Anything omitted is not fused at all.
+    encoder2.channels: ["vx", "vy", "wz"]
+
+    # ── Lifecycle ─────────────────────────────────────────────────────────────
+    # Self-transition configure -> activate about 200 ms after configuring. Set
+    # false when your launch file or nav2_lifecycle_manager drives transitions,
+    # to avoid a double-activate. Note this does NOT configure the node for you:
+    # nothing happens at all until something triggers the configure transition.
+    autostart: true
