@@ -380,15 +380,34 @@ struct FusionCoreConfig {
   // Typical: 120.0 (2 minutes). Must be >= gnss_coast_timeout_s.
   double gnss_recovery_timeout_s = 0.0;
 
-  // After this many consecutive chi2 rejections, inflate P[x,x] and P[y,y]
-  // directly so the next GPS fix passes the gate and corrects via a proper
-  // Bayesian update. This breaks the cascade where GPS is present but the
-  // filter has drifted far enough that all incoming fixes fail chi2.
-  // Fires exactly once per cascade (when counter first reaches this value).
-  // Must be > gnss_coast_n. 0 = disabled; typical value: 15.
-  int    gnss_recovery_rejection_n = 0;
-  // XY sigma for P inflation (meters). 50m covers any realistic drift from
-  // a chi2 cascade, allowing GPS to pull the filter back from up to ~100m off.
+  // After this many consecutive chi2 rejections that FOLLOW a GNSS gap, inflate
+  // P[x,x] and P[y,y] so the next fix passes the gate and corrects through a
+  // normal Bayesian update. This is what breaks the cascade where GNSS is
+  // present and healthy but the filter has dead-reckoned far enough that every
+  // incoming fix fails chi2, so the one measurement that would fix the drift is
+  // the one thing the filter refuses to look at.
+  //
+  // This used to default to 0, off. Measured cost of that default, on NCLT
+  // 2012-06-15 (issue #63) with the trajectories aligned on the pre-blackout
+  // segment: FusionCore tracks to 4.74 m median while GNSS is present, drifts to
+  // 397.7 m across a 461 s blackout, and is still 277.2 m out 300 s after fixes
+  // return at 5 Hz. robot_localization, same data, is back to 17.4 m within 30 s.
+  // Drifting more than a 2D filter during the blackout is the known cost of the
+  // 3D model. Never coming back afterwards was a separate defect, and it is the
+  // one that matters to a robot that drives under a bridge.
+  //
+  // Gap-gated: only a rejection sequence that STARTED after a GNSS gap can
+  // trigger it, so a continuous multipath spike cannot inflate P and talk its
+  // way in (see gnss_coast_min_gap_s, and SustainedSpikeStaysRejected).
+  // Must be > gnss_coast_n. 0 = disabled.
+  int    gnss_recovery_rejection_n = 15;
+  // Floor for the P inflation, in metres of XY sigma. The inflation itself is
+  // sized from the rejected innovation, because the error to be covered is
+  // however far the dead reckoning went and no constant brackets that: 50 m is
+  // fine after a 60 s outage and does nothing after eight minutes. Measured in
+  // test_gnss_reacquire against 379 m of drift: at 50 m the filter still never
+  // re-acquired (0 of 1501 fixes accepted), at 200 m it was back inside 0.4 m
+  // within 5 s. Sizing from the innovation removes the guess.
   double gnss_p_inflate_sigma = 50.0;
 };
 

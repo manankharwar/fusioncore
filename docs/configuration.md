@@ -259,13 +259,18 @@ fusioncore:
     # R_imu[WZ,WZ] multiplier in coast mode. Makes IMU heading rate less trusted
     # so encoder WZ dominates. 1.0 = disabled. 500.0 typical for long blackouts.
 
-    gnss.recovery_rejection_n: 0
-    # After this many consecutive rejections, inflate P[x,x] and P[y,y] directly.
-    # Fires once per cascade. Must be > gnss.coast_n. 0 = disabled. Typical: 15.
+    gnss.recovery_rejection_n: 15
+    # After this many consecutive rejections that follow a GNSS gap, inflate
+    # P[x,x] and P[y,y] so the next fix passes chi2 and corrects through a normal
+    # update. This is what lets the filter come back after a blackout long enough
+    # that its own drift makes every returning fix look like an outlier. It is
+    # gap-gated: a continuous spike cannot trigger it. Must be > gnss.coast_n.
+    # 0 = disabled.
 
     gnss.p_inflate_sigma: 50.0
-    # XY sigma used for the P inflation above (meters). Only used when
-    # gnss.recovery_rejection_n > 0.
+    # Floor for that inflation (metres of XY sigma). The inflation is sized from
+    # the rejected innovation, so this is only a lower bound. A fixed value cannot
+    # work for both a 60 s outage and an eight minute one.
 
     gnss.recovery_timeout_s: 0.0
     # GPS absence (seconds) before entering position-injection recovery mode, which

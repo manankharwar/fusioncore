@@ -1370,8 +1370,29 @@ bool FusionCore::apply_gnss_update(
         }
         if (reject_after_gap_ &&
             config_.gnss_recovery_rejection_n > 0 &&
-            gnss_consecutive_rejects_ == config_.gnss_recovery_rejection_n) {
-          double s2 = config_.gnss_p_inflate_sigma * config_.gnss_p_inflate_sigma;
+            gnss_consecutive_rejects_ % config_.gnss_recovery_rejection_n == 0) {
+          // Size the inflation from what the receiver is actually saying, not
+          // from a fixed constant. After a blackout the filter's position error
+          // is whatever its dead reckoning accumulated, and no constant brackets
+          // that: the old fixed 50 m covers a short outage and does nothing
+          // after several minutes, which is the case this exists for. Measured
+          // on NCLT 2012-06-15 and reproduced in test_gnss_reacquire: 379 m of
+          // drift, 1501 consecutive fixes rejected, the 50 m inflation changed
+          // nothing, and the filter never re-acquired.
+          //
+          // The innovation is the measurement of how far off the filter is, and
+          // the receiver has now said the same thing N times running, so use it.
+          // gnss_p_inflate_sigma stays as a floor so a config that raised it
+          // keeps its behaviour.
+          //
+          // Re-armed every N rejections rather than fired once, because one
+          // inflation is not guaranteed to be enough: if the drift is still
+          // growing, the counter would sail past a single == N trigger and the
+          // filter would stay locked out for good.
+          const double innov_xy = std::hypot(innovation_pre[0], innovation_pre[1]);
+          const double s2 = std::max(
+              config_.gnss_p_inflate_sigma * config_.gnss_p_inflate_sigma,
+              innov_xy * innov_xy);
           ukf_.inflate_position_covariance(s2);
         }
       }

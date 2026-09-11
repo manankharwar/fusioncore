@@ -194,13 +194,17 @@ fusioncore:
     # 0.0 = disabled. Set 30.0 for tunnels, underground, or power-loss scenarios.
     gnss.coast_timeout_s: 0.0
 
-    # After this many consecutive rejections, inflate P[x,x]/P[y,y] directly to break
-    # the cascade where all returning fixes fail chi2. Fires exactly once. 0 = disabled.
-    gnss.recovery_rejection_n: 0
-    # XY sigma for direct P inflation (meters). 50m covers any realistic dead-reckoning drift.
+    # After this many consecutive rejections that FOLLOW a GNSS gap, inflate P[x,x]/P[y,y]
+    # so the next fix passes chi2 and corrects normally. Without it, a filter that has
+    # dead-reckoned far enough rejects every returning fix forever: measured on NCLT
+    # 2012-06-15, still 277 m out 300 s after 5 Hz fixes came back. Gap-gated, so a
+    # continuous multipath spike cannot use it to talk its way in. 0 = disabled.
+    gnss.recovery_rejection_n: 15
+    # Floor for that inflation (metres of XY sigma). The inflation itself is sized from
+    # the rejected innovation, because the error to cover is however far dead reckoning
+    # went: 50 m is right after a 60 s outage and useless after eight minutes.
     gnss.p_inflate_sigma: 50.0
-    # Minimum GPS absence (seconds) before entering recovery mode (bypass gate for first
-    # returning fix). Must be >= coast_timeout_s. 0.0 = enter recovery at same time as coast.
+    # Declared but NOT read by the filter. Left in place so existing configs still load.
     gnss.recovery_timeout_s: 0.0
 
     # ── Lever arm heading gating ──────────────────────────────────────────────

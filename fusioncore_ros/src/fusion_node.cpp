@@ -355,7 +355,7 @@ public:
     declare_parameter("gnss.coast_timeout_s",       0.0);
     declare_parameter("gnss.coast_q_bias_factor",   100.0);
     declare_parameter("gnss.coast_imu_wz_scale",    1.0);
-    declare_parameter("gnss.recovery_rejection_n",  0);
+    declare_parameter("gnss.recovery_rejection_n",  15);
     declare_parameter("gnss.p_inflate_sigma",       50.0);
     declare_parameter("gnss.recovery_timeout_s",    0.0);
     // How far the robot must travel before heading is declared observable and
