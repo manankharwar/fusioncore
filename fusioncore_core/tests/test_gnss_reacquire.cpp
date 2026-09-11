@@ -248,3 +248,59 @@ TEST(GnssReacquireTest, OutlierClusterAtTheBlackoutBoundary) {
   }
   SUCCEED();
 }
+
+// A sustained spike must stay rejected. test_gnss_coast proves that at 5 Hz.
+// This asks the same question at 1 Hz, which is what every consumer receiver in
+// this project's own field logs actually runs at (six 2026-09 rover bags, median
+// inter-fix interval 1.00 s, zero dropouts).
+//
+// It matters because the protection is an ABSOLUTE threshold:
+//   reject_after_gap_ = (gap >= gnss_coast_min_gap_s), default 1.0 s
+// and "the gap since the last accepted fix" on a healthy 1 Hz receiver is 1.0 s
+// on every single fix. So the test that is supposed to separate "the receiver
+// went away and came back" from "the receiver is lying to me continuously"
+// is being asked to resolve a difference that does not exist at this cadence.
+TEST(GnssReacquireTest, SustainedSpikeAtOneHertz) {
+  for (double rate_hz : {5.0, 1.0}) {
+    FusionCoreConfig cfg = blackout_config();
+    FusionCore fc(cfg);
+    State s0;
+    fc.init(s0, 0.0);
+
+    const double dt = 0.01, g = 9.80665, speed = 1.5;
+    const int    fix_every = static_cast<int>(std::round((1.0 / rate_hz) / dt));
+    const double T = 240.0, SPIKE_FROM = 60.0, SPIKE_TO = 180.0;
+    const double SPIKE_M = 300.0;
+
+    double true_x = 0.0, worst_in_spike = 0.0, final_err = 0.0;
+    int accepted_in_spike = 0, rejected_in_spike = 0;
+
+    for (int step = 1; step * dt <= T + 1e-9; ++step) {
+      const double t = step * dt;
+      true_x += speed * dt;
+      fc.update_imu(t, 0, 0, 0, 0, 0, g);
+      if (step % 2 == 0) {
+        fc.update_encoder(t, speed, 0.0, 0.0);
+        fc.update_ground_constraint(t);
+      }
+      const bool in_spike = (t >= SPIKE_FROM && t < SPIKE_TO);
+      if (step % fix_every == 0) {
+        fc.update_gnss(t, fix_at(true_x, in_spike ? SPIKE_M : 0.0));
+        if (in_spike) {
+          if (fc.get_gnss_debug().accepted) ++accepted_in_spike;
+          else                              ++rejected_in_spike;
+        }
+      }
+      if (in_spike)
+        worst_in_spike = std::max(worst_in_spike, std::abs(fc.get_state().x[Y]));
+      final_err = std::abs(fc.get_state().x[Y]);
+    }
+    std::cerr << "  GNSS at " << rate_hz << " Hz, 120 s sustained " << SPIKE_M
+              << " m spike\n"
+              << "    spike fixes accepted / rejected : " << accepted_in_spike
+              << " / " << rejected_in_spike << "\n"
+              << "    worst lateral error during spike: " << worst_in_spike << " m\n"
+              << "    lateral error at end of run     : " << final_err << " m\n";
+  }
+  SUCCEED();
+}

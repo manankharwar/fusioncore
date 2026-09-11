@@ -949,7 +949,27 @@ void FusionCore::note_rejection_cascade_start(double timestamp_seconds) {
   const double gap = (last_gnss_time_ < 0.0)
                        ? std::numeric_limits<double>::infinity()
                        : (timestamp_seconds - last_gnss_time_);
-  reject_after_gap_ = (gap >= config_.gnss_coast_min_gap_s);
+
+  // The threshold has to be relative to how fast this receiver actually
+  // publishes, not an absolute number of seconds. "A gap" means the receiver
+  // missed an epoch it owed us, and at 1 Hz the healthy spacing between fixes IS
+  // gnss_coast_min_gap_s, so an absolute 1.0 s test calls every single fix "after
+  // a gap" and the protection it provides disappears exactly where it is needed.
+  //
+  // That is not a hypothetical rate. Six 2026-09 rover logs all run at a median
+  // 1.00 s with no dropouts, and measured in SustainedSpikeAtOneHertz, a 120 s
+  // sustained 300 m spike is rejected 600 times out of 600 at 5 Hz and dragged
+  // the filter 301 m off at 1 Hz.
+  //
+  // cont_t_ holds the last few ACCEPTED fixes and is maintained whatever the
+  // continuity gate is set to, so it is a clean reference: during a spike nothing
+  // is accepted, so it still describes the cadence from before the trouble began.
+  double min_gap = config_.gnss_coast_min_gap_s;
+  if (cont_n_ >= 2) {
+    const double mean_dt = (cont_t_[cont_n_ - 1] - cont_t_[0]) / (cont_n_ - 1);
+    if (mean_dt > 1e-6) min_gap = std::max(min_gap, 2.0 * mean_dt);
+  }
+  reject_after_gap_ = (gap >= min_gap);
 }
 
 // Record the outcome currently in gnss_debug_ and stamp it. See OutcomeTally in
