@@ -41,6 +41,20 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **The cost is real:** a robot parked for a long time cannot re-acquire if it was genuinely lost before it stopped. For a stop of tens of seconds that does not matter; for one parked overnight it does. The evidence is dropped the moment the encoders report motion. Prompted, like `zupt.position_noise_scale`, by Martin Pecka's phase-lock explanation on ROS Discourse.
 
 ### Fixed
+- **A turn inside the GPS track-heading baseline no longer collapses the yaw covariance.** Contributed by Ignacio Villanua (#109), found on a real UGV running low-rate GPS with noisy IMU and encoders.
+
+  Two yaw-rate gates already existed and neither closed this hole. One stops distance ACCUMULATING while turning; the other stops heading FUSING when the yaw rate is high at the instant of the fix. Between them a robot can drive straight, turn, then drive straight again, and fuse on the third leg while the reference position is still from before the turn. `atan2(dy, dx)` then returns the chord across an L-shaped path rather than the heading of either leg.
+
+  The damage comes from `sigma_hdg = sigma_xy / baseline`: a long baseline makes that wrong bearing look extremely confident, so the filter's own yaw covariance collapses onto it. Confidently wrong, which is the worst failure mode this project has.
+
+  A turn anywhere in the window now discards it and restarts the baseline from the current fix. The detection sits before the `MIN_STEP` early return deliberately, because an in-place spin barely moves the antenna and gating it on distance would miss the case it exists to catch.
+
+  Follow-up on merge: the new flag is also cleared in `init()` and `reset()`, alongside the heading state it belongs with, and `TurnInsideTheBaselineDiscardsTheWindow` pins it.
+
+- **`gnss.enabled`: a master switch for GNSS.** Contributed by Ignacio Villanua (#110). Defaults to `true`, so nothing changes for anyone. Set it false and no GNSS subscription is created at all, which lets the same stack run indoors without binding to absent topics or logging about fixes that will never arrive.
+
+  Follow-up on merge: the sensor-wait no longer expects a GNSS fix when the switch is off (otherwise an indoor robot blocked for the full timeout on the exact case the feature exists for), and the GNSS Doppler velocity input is covered by the same switch.
+
 - **The filter now notices when its wheel odometry has died mid-run.** ZUPT fires on near-zero encoder velocity, and encoders that lose power report ZERO rather than going silent, which is indistinguishable from a parked robot. With `zupt.position_noise_scale` and `zupt.gnss_noise_scale` enabled that became far worse than it used to be: the filter holds its position covariance down AND distrusts GNSS by up to the cap, so the robot drives away while the estimate sits still, actively ignoring the GPS telling it otherwise. Enabling the idle-drift work turned a sensor dropout into a frozen pose.
 
   Not hypothetical: on the development rover all four encoders share one breadboard power rail, and it worked loose on 2026-09-11, taking out every wheel at once.

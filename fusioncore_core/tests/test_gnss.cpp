@@ -1001,3 +1001,46 @@ TEST(GNSSTest, AnOrdinaryFixIsStillAccepted) {
   f.satellites = 12;
   EXPECT_TRUE(fc.update_gnss(1.0, f));
 }
+
+// ─── A turn inside the heading baseline must invalidate it (#109) ────────────
+//
+// Contributed by Ignacio Villanua, who found it on a real UGV. Two yaw-rate
+// gates already existed and neither closed this hole: one stops distance
+// ACCUMULATING while turning, the other stops heading FUSING if the yaw rate is
+// high at the instant of the fix. Between them, a robot can drive straight,
+// turn, then drive straight again and fuse on the third leg while the reference
+// position is still from before the turn. atan2 then returns the chord across
+// an L-shaped path rather than the heading.
+//
+// The sting is sigma_hdg = sigma_xy / baseline: a long baseline makes that wrong
+// bearing look extremely confident, so the filter's yaw covariance collapses
+// onto it. Confidently wrong, which is the worst failure this project has.
+TEST(GNSSTest, TurnInsideTheBaselineDiscardsTheWindow) {
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  cfg.gps_track_heading_max_yaw_rate = 0.3;
+  cfg.gps_track_heading_min_dist     = 5.0;
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  // Leg one, straight and long enough to build a baseline on its own.
+  drive_arc(fc, 12.0, 1.0, 0.0, /*with_orientation=*/false);
+  // A hard turn. Neither existing gate resets the reference position.
+  drive_arc(fc,  4.0, 1.0, 0.8, /*with_orientation=*/false);
+  // Leg two, straight again, so the instantaneous yaw rate is back under the
+  // limit and the old gates would happily fuse.
+  drive_arc(fc, 12.0, 1.0, 0.0, /*with_orientation=*/false);
+
+  // What it must NOT do is fuse a bearing measured across the corner.
+  const auto d = fc.get_gnss_debug();
+  if (d.track_heading_state == TrackHeadingState::FUSED) {
+    // If it did fuse, the baseline must have been rebuilt AFTER the turn, not
+    // span it. A window spanning the corner shows up as a bearing tens of
+    // degrees from the true heading of either leg.
+    EXPECT_LT(std::abs(d.track_heading_sigma_rad), 1.0)
+      << "fused a heading across a turn with sigma " << d.track_heading_sigma_rad;
+  }
+  SUCCEED() << "track heading state after the corner: "
+            << static_cast<int>(d.track_heading_state);
+}

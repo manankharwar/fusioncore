@@ -134,6 +134,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_hdg_fix_x_       = 0.0;
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
+  hdg_window_had_turn_  = false;
 
   // Reset snapshot buffer
   snapshot_buffer_.clear();
@@ -213,6 +214,7 @@ void FusionCore::reset() {
   last_hdg_fix_x_       = 0.0;
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
+  hdg_window_had_turn_  = false;
   snapshot_buffer_.clear();
   imu_buffer_.clear();
   gnss_consecutive_rejects_ = 0;

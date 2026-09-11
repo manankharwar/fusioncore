@@ -960,7 +960,8 @@ public:
         "VSLAM pose fusion enabled on topic: %s", vslam_topic_.c_str());
     }
 
-    if (!gnss_vel_topic_.empty()) {
+    // GNSS Doppler velocity is GNSS, so the master switch covers it as well.
+    if (gnss_enabled_ && !gnss_vel_topic_.empty()) {
       gnss_vel_sub_ = create_subscription<nav_msgs::msg::Odometry>(
         gnss_vel_topic_, sensor_qos,
         [this](const nav_msgs::msg::Odometry::SharedPtr msg) {
@@ -1218,7 +1219,11 @@ public:
       sensor_wait_done_ = false;
       sensors_expected_.insert("IMU");
       sensors_expected_.insert("Encoder");
-      if (reference_use_first_fix_)        sensors_expected_.insert("GNSS");
+      // gnss_enabled_ too: otherwise an indoor robot with GNSS switched off
+      // still blocks for the full sensor-wait timeout on a fix that is
+      // never coming, which is the exact case gnss.enabled exists for.
+      if (gnss_enabled_ && reference_use_first_fix_)
+        sensors_expected_.insert("GNSS");
       if (!imu2_topic_.empty())            sensors_expected_.insert("IMU2");
       if (!encoder2_topic_.empty())        sensors_expected_.insert("Encoder2");
       if (!vslam_topic_.empty())           sensors_expected_.insert("VSLAM");
