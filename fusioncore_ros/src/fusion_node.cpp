@@ -407,6 +407,15 @@ public:
     // Parked fixes needed before their spread is treated as a measurement
     // rather than as noise. Floored at 3 internally.
     declare_parameter("zupt.gnss_min_samples", 5);
+    // Catch wheel odometry that has died while the robot is still driving.
+    // Encoders that lose power report ZERO, not silence, so ZUPT believes the
+    // robot is parked and the suppression above freezes the estimate. The
+    // discriminator is straightness (net displacement over path length through
+    // the fixes), because a genuinely parked receiver wanders and returns
+    // (measured 0.37 on a real 57 s window) while a driving robot approaches 1.
+    // Metres of displacement before it can fire; 0.0 disables.
+    declare_parameter("zupt.parked_motion_m", 5.0);
+    declare_parameter("zupt.parked_motion_straightness", 0.70);
     // Nominal IMU rate. Above 0, propagate by 1/rate instead of by the gap
     // between stamps, so stamp jitter cannot reach the integrator. Only set a
     // rate you have measured: a wrong one is a systematic dt error and will
@@ -731,6 +740,10 @@ public:
       get_parameter("zupt.gnss_noise_scale").as_double();
     config.zupt_gnss_min_samples =
       static_cast<int>(get_parameter("zupt.gnss_min_samples").as_int());
+    config.zupt_parked_motion_m =
+      get_parameter("zupt.parked_motion_m").as_double();
+    config.zupt_parked_motion_straightness =
+      get_parameter("zupt.parked_motion_straightness").as_double();
     config.imu_fixed_rate_hz = get_parameter("imu.fixed_rate_hz").as_double();
 
     mag_enabled_ = get_parameter("magnetometer.enabled").as_bool();
@@ -3336,6 +3349,21 @@ private:
       fh.heading_validated = status.heading_validated;
       fh.heading_source    = heading_src_str(status.heading_source);
 
+      // Wheel odometry has died while the robot is still driving. Loud, once,
+      // because the symptom downstream is a pose that simply stops updating and
+      // nothing else says why.
+      if (status.zupt_parked_but_moving && !warned_parked_but_moving_) {
+        warned_parked_but_moving_ = true;
+        RCLCPP_ERROR(get_logger(),
+          "WHEEL ODOMETRY IS LYING. ZUPT says the robot is stationary, but the "
+          "GNSS fixes have moved in a straight line (straightness %.2f, needed "
+          "%.2f). Encoders that lose power report ZERO rather than going silent, "
+          "which looks exactly like a parked robot. ZUPT and the parked GNSS "
+          "suppression are now DISABLED for the rest of this run so GNSS can "
+          "still drive the estimate. Check the encoder power rail: on this "
+          "hardware all four share one. Position from here is GNSS and IMU only.",
+          status.zupt_parked_straightness, 0.70);
+      }
       fh.gnss_parked_sigma_observed = status.gnss_parked_sigma_observed;
       fh.gnss_parked_sigma_declared = status.gnss_parked_sigma_declared;
       fh.gnss_parked_correlation    = status.gnss_parked_correlation;
@@ -3567,6 +3595,7 @@ private:
   rclcpp::Subscription<sensor_msgs::msg::Imu>::SharedPtr          gnss_heading_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder_sub_;
   bool enc2_use_vx_ = true, enc2_use_vy_ = true, enc2_use_wz_ = true;
+  bool warned_parked_but_moving_ = false;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        encoder2_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        vslam_sub_;
   rclcpp::Subscription<nav_msgs::msg::Odometry>::SharedPtr        gnss_vel_sub_;

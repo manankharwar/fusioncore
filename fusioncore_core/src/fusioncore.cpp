@@ -192,6 +192,8 @@ void FusionCore::reset_parked_gnss_evidence() {
   gnss_parked_sigma_declared_ = -1.0;
   gnss_parked_correlation_    = 0.0;
   gnss_parked_inflation_      = 1.0;
+  parked_ref_x_ = parked_ref_y_ = 0.0;
+  parked_path_len_ = 0.0;
 }
 
 void FusionCore::reset() {
@@ -883,6 +885,13 @@ void FusionCore::update_ground_constraint(double timestamp_seconds) {
 void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
   if (!initialized_) return;
 
+  // Once the GNSS has caught the wheels lying (see zupt_parked_motion_m), stop
+  // believing them at all. Releasing the covariance suppression alone is not
+  // enough: ZUPT itself pins velocity to zero, so it keeps fighting the GNSS
+  // that is trying to pull the estimate along. Measured on a synthetic dead
+  // encoder driving 20 m, releasing only the suppression recovered 7.4 m of it.
+  if (parked_moving_detected_) return;
+
   // ZUPT is an opportunistic pseudo-measurement triggered by another sensor's
   // stamp. If that stamp lags the filter clock (inter-sensor skew), skip it
   // rather than let predict_to re-base the clock backward.
@@ -1069,6 +1078,37 @@ bool FusionCore::apply_gnss_update(
   //
   // Applied to the update only, never to R_meas, so the GPS track-heading gate
   // keeps judging geometry on the receiver's real reported noise.
+  // Is the robot actually parked, or has the wheel odometry died?
+  //
+  // Encoders that lose power report ZERO, not silence, so ZUPT fires and the
+  // suppression below kicks in while the robot drives away. Net displacement
+  // alone cannot separate the two: a genuinely parked receiver wandered 12.85 m
+  // over 57 s on the 2026-09-07 log. Straightness can. That window measured
+  // 0.37, because a parked receiver wanders and comes back, while a driving
+  // robot goes one way and approaches 1.0.
+  if (zupt_holds_pos_noise_ && config_.zupt_parked_motion_m > 0.0 &&
+      !parked_moving_detected_) {
+    if (!parked_fix_has_prev_) {
+      parked_ref_x_ = fix.x; parked_ref_y_ = fix.y; parked_path_len_ = 0.0;
+    } else {
+      parked_path_len_ += std::hypot(fix.x - parked_fix_prev_[0],
+                                     fix.y - parked_fix_prev_[1]);
+    }
+    const double disp = std::hypot(fix.x - parked_ref_x_, fix.y - parked_ref_y_);
+    gnss_parked_straightness_ =
+      (parked_path_len_ > 1e-6) ? disp / parked_path_len_ : 0.0;
+
+    if (disp >= config_.zupt_parked_motion_m &&
+        gnss_parked_straightness_ >= config_.zupt_parked_motion_straightness) {
+      // The wheels are lying. Hand back everything the ZUPT suppression took so
+      // GNSS can pull the estimate along instead of being drowned out.
+      parked_moving_detected_ = true;
+      ukf_.set_position_noise_scale(1.0);
+      zupt_holds_pos_noise_ = false;
+      reset_parked_gnss_evidence();
+    }
+  }
+
   if (zupt_holds_pos_noise_ && config_.zupt_gnss_noise_scale > 1.0) {
     const std::array<double, 3> z{fix.x, fix.y, fix.z};
     parked_fix_n_ += 1.0;
@@ -1673,6 +1713,8 @@ FusionCoreStatus FusionCore::get_status() const {
   status.gnss_parked_sigma_observed = gnss_parked_sigma_observed_;
   status.gnss_parked_sigma_declared = gnss_parked_sigma_declared_;
   status.gnss_parked_correlation    = gnss_parked_correlation_;
+  status.zupt_parked_but_moving     = parked_moving_detected_;
+  status.zupt_parked_straightness   = gnss_parked_straightness_;
   status.gnss_parked_inflation      = gnss_parked_inflation_;
   status.gnss_chi2_max       = gnss_chi2_max_;
   status.gnss_chi2_threshold = config_.outlier_threshold_gnss;

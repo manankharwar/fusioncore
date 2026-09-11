@@ -288,3 +288,76 @@ TEST(IdleDriftTest, GnssDistrustIsOffByDefault) {
   EXPECT_EQ(FusionCoreConfig{}.zupt_gnss_min_samples, 5);
 }
 
+
+// ─── Dead wheel odometry must not freeze the estimate ───────────────────────
+//
+// Encoders that lose power report ZERO, not silence, which is indistinguishable
+// from a parked robot. ZUPT then fires, and once zupt.position_noise_scale and
+// zupt.gnss_noise_scale are enabled the filter holds its covariance down AND
+// distrusts GNSS by the cap, so the robot drives away while the estimate sits
+// still, actively ignoring the GPS telling it otherwise. On this rover all four
+// encoders share one breadboard power rail, so that is one loose wire away.
+//
+// The discriminator cannot be displacement: a genuinely parked receiver wandered
+// 12.85 m over 57 s on the 2026-09-07 log. It is STRAIGHTNESS, displacement over
+// path length. That window measured 0.37. A driving robot approaches 1.0.
+TEST(IdleDriftTest, DeadEncodersDoNotFreezeTheEstimate) {
+  FusionCore fc(idle_config(0.001, 100.0));
+  State s0;
+  fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  double t = 0.0;
+  // The robot really is driving east at 0.5 m/s, but every encoder reads zero.
+  for (int step = 1; step * dt <= 40.0 + 1e-9; ++step) {
+    t = step * dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) {
+      fc.update_encoder(t, 0.0, 0.0, 0.0);     // the lie
+      fc.update_zupt(t, 0.01);                 // which ZUPT believes
+    }
+    if (step % 100 == 0) fc.update_gnss(t, fix_at(0.5 * t, 0.0));  // the truth
+  }
+
+  const auto st = fc.get_status();
+  EXPECT_TRUE(st.zupt_parked_but_moving)
+    << "the filter never noticed its wheel odometry had died. straightness was "
+    << st.zupt_parked_straightness;
+  EXPECT_GT(fc.get_state().x[X], 8.0)
+    << "the estimate stayed put while the robot drove 20 m. It reached only "
+    << fc.get_state().x[X] << " m, which is the failure this check exists to stop.";
+}
+
+// ─── And it must NOT fire on a robot that is genuinely parked ───────────────
+// The bar that matters. A parked receiver wandering several metres must not be
+// mistaken for a dead encoder, or the check would disable the idle-drift fix on
+// exactly the runs it was built for.
+TEST(IdleDriftTest, GenuineWanderDoesNotTripTheDeadEncoderCheck) {
+  FusionCore fc(idle_config(0.001, 100.0));
+  State s0;
+  fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  for (int step = 1; step * dt <= 60.0 + 1e-9; ++step) {
+    const double t = step * dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) {
+      fc.update_encoder(t, 0.0, 0.0, 0.0);
+      fc.update_ground_constraint(t);
+      fc.update_zupt(t, 0.01);
+    }
+    // Genuinely parked. The receiver wanders and returns, as a real one does.
+    if (step % 100 == 0) fc.update_gnss(t, fix_at(wander(t), wander(t + 40.0)));
+  }
+
+  const auto st = fc.get_status();
+  EXPECT_FALSE(st.zupt_parked_but_moving)
+    << "wander was mistaken for motion at straightness "
+    << st.zupt_parked_straightness << ", which would disable the idle-drift fix "
+       "on exactly the runs it exists for";
+  // 1.54 m is what this scenario produces with the suppression working (see
+  // EstimateStopsMovingOnceTheEvidenceIsIn), against 3.36 m with it off. The bar
+  // is that the suppression is still ACTIVE, not that drift is zero.
+  EXPECT_LT(std::hypot(fc.get_state().x[X], fc.get_state().x[Y]), 2.0)
+    << "the parked robot drifted as if the suppression had been released";
+}

@@ -41,6 +41,21 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **The cost is real:** a robot parked for a long time cannot re-acquire if it was genuinely lost before it stopped. For a stop of tens of seconds that does not matter; for one parked overnight it does. The evidence is dropped the moment the encoders report motion. Prompted, like `zupt.position_noise_scale`, by Martin Pecka's phase-lock explanation on ROS Discourse.
 
 ### Fixed
+- **The filter now notices when its wheel odometry has died mid-run.** ZUPT fires on near-zero encoder velocity, and encoders that lose power report ZERO rather than going silent, which is indistinguishable from a parked robot. With `zupt.position_noise_scale` and `zupt.gnss_noise_scale` enabled that became far worse than it used to be: the filter holds its position covariance down AND distrusts GNSS by up to the cap, so the robot drives away while the estimate sits still, actively ignoring the GPS telling it otherwise. Enabling the idle-drift work turned a sensor dropout into a frozen pose.
+
+  Not hypothetical: on the development rover all four encoders share one breadboard power rail, and it worked loose on 2026-09-11, taking out every wheel at once.
+
+  **Displacement cannot tell the two apart.** A genuinely parked receiver wandered 12.85 m over 57 seconds on the 2026-09-07 log, so any distance threshold that catches a driving robot also fires on real wander. The discriminator is STRAIGHTNESS, net displacement divided by the path length through the fixes: a parked receiver wanders and returns, measured at 0.37 on that same window, while a robot actually driving goes one way and approaches 1.0.
+
+  ```yaml
+  zupt.parked_motion_m: 5.0              # metres of displacement before it can fire, 0 disables
+  zupt.parked_motion_straightness: 0.70  # above this, the displacement is real motion
+  ```
+
+  When it fires, ZUPT and the parked GNSS suppression are both disabled for the rest of the run and the node logs an error naming the encoder power rail. Disabling ZUPT as well as the suppression is the part that matters: releasing the covariance alone still left ZUPT pinning velocity to zero and fighting the GNSS, which recovered only 7.4 m of a 20 m drive in test. `zupt_parked_but_moving` and `zupt_parked_straightness` are on `filter_health` so a bag shows it.
+
+  Two tests pin both directions: a dead-encoder robot must be caught and must keep tracking GNSS, and a genuinely wandering parked receiver must NOT trip it, since a false positive would disable the idle-drift fix on exactly the runs it exists for.
+
 - **`encoder2.channels`: a secondary twist source can say which channels it actually measures.** A `Twist` message always carries all three of vx, vy and wz, so a source that fills only some of them publishes a zero for the rest. By the time it reaches the callback, that zero is indistinguishable from a measured zero.
 
   Reported as #107. The PMW3901 optical flow driver never assigns `angular.z`, so it publishes 0.0 on every message and leaves `twist.covariance` at zero. FusionCore fell back to `encoder2.yaw_noise`, whose default is 0.02, so every optical flow sample arrived as a confident "the robot is not rotating right now", roughly 1.1 deg/s of claimed uncertainty, competing with the gyro and the wheel encoder on every turn. The sensor cannot measure yaw rate at all. It reported a zero because the field is a zero, not because it looked.

@@ -238,6 +238,30 @@ struct FusionCoreConfig {
   // the autocorrelation term needs at least two consecutive pairs.
   int zupt_gnss_min_samples = 5;
 
+  // Catch wheel odometry that has died while the robot is still driving.
+  //
+  // ZUPT fires when the encoders report near-zero velocity. Encoders that lose
+  // power do not go silent, they report ZERO, which is indistinguishable from a
+  // parked robot. The two settings above then make that far worse than it used
+  // to be: the filter holds its position covariance down AND distrusts GNSS by
+  // up to the cap, so the robot drives away while the estimate sits still,
+  // actively ignoring the GPS that is telling it otherwise. On this rover a
+  // loose breadboard power rail took out all four encoders at once, and that
+  // rail is shared, so it is a single point of failure.
+  //
+  // Displacement alone cannot tell the two apart: a genuinely parked receiver
+  // wandered 12.85 m over 57 s on the 2026-09-07 log. What separates them is
+  // STRAIGHTNESS, the ratio of net displacement to the path length through the
+  // fixes. A parked receiver wanders and returns, so its path is much longer
+  // than its displacement: measured 0.37 on that same window. A robot actually
+  // driving goes one way, so the two converge on 1.0.
+  //
+  // Metres of net displacement before the check can fire. 0.0 disables it.
+  // Only active while the ZUPT suppression above is doing something.
+  double zupt_parked_motion_m = 5.0;
+  // Straightness above which the displacement is real motion, not wander.
+  double zupt_parked_motion_straightness = 0.70;
+
   // Nominal IMU rate in Hz. Above zero, the PREDICT step between IMU messages
   // advances by exactly 1/rate instead of the gap between two stamps. Zero
   // keeps the previous behaviour.
@@ -562,6 +586,11 @@ struct FusionCoreStatus {
   double gnss_parked_sigma_declared = -1.0;
   double gnss_parked_correlation    = 0.0;
   double gnss_parked_inflation      = 1.0;
+  // True when ZUPT says parked but the GNSS fixes are moving in a straight line,
+  // which means the wheel odometry is lying. Published so it is visible in a bag
+  // rather than only in a log line nobody was watching.
+  bool   zupt_parked_but_moving     = false;
+  double zupt_parked_straightness   = 0.0;
   double gnss_chi2_max = -1.0;
   double gnss_chi2_threshold = 0.0;
   int    gnss_chi2_samples = 0;
@@ -829,6 +858,11 @@ private:
   double gnss_parked_sigma_declared_ = -1.0;
   double gnss_parked_correlation_    = 0.0;
   double gnss_parked_inflation_      = 1.0;
+  // Straightness check on the parked fixes, see zupt_parked_motion_m.
+  double parked_ref_x_ = 0.0, parked_ref_y_ = 0.0;
+  double parked_path_len_ = 0.0;
+  bool   parked_moving_detected_ = false;
+  double gnss_parked_straightness_ = 0.0;
   double imu_rate_prev_stamp_    = -1.0;
   double imu_rate_observed_sum_  = 0.0;
   int    imu_rate_observed_n_    = 0;
