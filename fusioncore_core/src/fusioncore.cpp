@@ -937,6 +937,21 @@ void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
 }
 
 
+// At the start of a rejection sequence, decide whether GNSS was continuous (a
+// persistent outlier like a multipath spike) or is returning after a gap (the
+// filter may have dead-reckoned away from truth while blind). Only the latter
+// justifies relaxing anything: see gnss_coast_min_gap_s. last_gnss_time_ is the
+// last ACCEPTED fix, so the gap to it is small during a continuous spike and
+// large after an outage. No-op once a cascade is already running, so the
+// decision is made on its first fix and not revised by later ones.
+void FusionCore::note_rejection_cascade_start(double timestamp_seconds) {
+  if (gnss_consecutive_rejects_ != 0) return;
+  const double gap = (last_gnss_time_ < 0.0)
+                       ? std::numeric_limits<double>::infinity()
+                       : (timestamp_seconds - last_gnss_time_);
+  reject_after_gap_ = (gap >= config_.gnss_coast_min_gap_s);
+}
+
 // Record the outcome currently in gnss_debug_ and stamp it. See OutcomeTally in
 // fusioncore.hpp for why a single "last reason" field was not enough.
 void FusionCore::note_gnss_outcome(double timestamp_seconds)
@@ -1251,6 +1266,17 @@ bool FusionCore::apply_gnss_update(
           gnss_debug_.reason   = GnssRejectionReason::CONTINUITY_BREAK;
           note_gnss_outcome(timestamp_seconds);
           ++gnss_outliers_;
+          // This path increments the same counter the chi2 path uses to decide
+          // whether a rejection sequence is a returning receiver or a spike, so
+          // it has to answer that question too. Without this the chi2 block
+          // below sees a non-zero counter, skips its own evaluation, and reuses
+          // whatever reject_after_gap_ was left from an earlier cascade: a spike
+          // during normal driving could inherit "this follows a gap" from a
+          // genuine outage minutes earlier and unlock the recovery inflation.
+          // A continuity rejection can only happen while fixes keep their
+          // cadence (see the dt_new test above), so the answer here is normally
+          // false, which is exactly the protection wanted.
+          note_rejection_cascade_start(timestamp_seconds);
           ++gnss_consecutive_rejects_;
           return false;
         }
@@ -1353,12 +1379,7 @@ bool FusionCore::apply_gnss_update(
         // latter justifies inflating P to re-admit GPS. last_gnss_time_ is the
         // last ACCEPTED fix, so the gap to it is small during a continuous
         // spike and large after an outage.
-        if (gnss_consecutive_rejects_ == 0) {
-          double gap = (last_gnss_time_ < 0.0)
-                         ? std::numeric_limits<double>::infinity()
-                         : (timestamp_seconds - last_gnss_time_);
-          reject_after_gap_ = (gap >= config_.gnss_coast_min_gap_s);
-        }
+        note_rejection_cascade_start(timestamp_seconds);
         ++gnss_consecutive_rejects_;
         gnss_debug_.consecutive_rejects = gnss_consecutive_rejects_;
         if (reject_after_gap_ &&

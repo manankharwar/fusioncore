@@ -176,3 +176,75 @@ TEST(GnssReacquireTest, SweepTheExistingRecoveryKnobs) {
   }
   SUCCEED();
 }
+
+// The interaction that makes the recovery path dangerous, and the thing that is
+// supposed to contain it.
+//
+// Recovery inflates P so a returning fix can be believed. An adversarial outlier
+// cluster sitting at the blackout boundary (NCLT 2012-08-20, issue #64) arrives
+// in exactly the same position: after a gap, far from the prediction, and
+// internally self-consistent, so it looks like a legitimate recovery fix to
+// every test based on the fix alone. The header for gnss_max_speed says so
+// outright: "chi2 alone cannot tell a 700 m outlier from a legitimate recovery
+// fix after a long gap, but physics can".
+//
+// The physical gate is what tells them apart, and it defaults to OFF. This
+// measures what the filter does in both configurations.
+TEST(GnssReacquireTest, OutlierClusterAtTheBlackoutBoundary) {
+  struct Case { const char* label; double max_speed; };
+  const Case cases[] = {
+    {"gnss.max_speed off (the default)", 0.0},
+    {"gnss.max_speed 3.0 m/s",           3.0},
+  };
+
+  for (const auto& c : cases) {
+    FusionCoreConfig cfg = blackout_config();
+    cfg.gnss_max_speed = c.max_speed;
+    cfg.gnss_max_speed_margin = 5.0;
+    FusionCore fc(cfg);
+    State s0;
+    fc.init(s0, 0.0);
+
+    const double dt = 0.01, g = 9.80665;
+    const double TRUE_SPEED = 1.5;
+    const double T_PRE = 120.0, T_BLACKOUT = 460.0, T_CLUSTER = 20.0, T_POST = 120.0;
+    const double t_out_start = T_PRE, t_out_end = T_PRE + T_BLACKOUT;
+    const double t_cluster_end = t_out_end + T_CLUSTER;
+    const double t_end = t_cluster_end + T_POST;
+    const double CLUSTER_OFFSET = 700.0;      // metres of pure lie, off to the side
+
+    double true_x = 0.0, worst_after_cluster = 0.0;
+    double final_lateral = 0.0, final_along = 0.0;
+    int accepted_cluster = 0;
+
+    for (int step = 1; step * dt <= t_end + 1e-9; ++step) {
+      const double t = step * dt;
+      true_x += TRUE_SPEED * dt;
+      const bool blackout = (t >= t_out_start && t < t_out_end);
+      const bool cluster  = (t >= t_out_end && t < t_cluster_end);
+
+      fc.update_imu(t, 0, 0, 0, 0, 0, g);
+      if (step % 2 == 0) {
+        fc.update_encoder(t, blackout ? 2.1 : TRUE_SPEED, 0.0, 0.0);
+        fc.update_ground_constraint(t);
+      }
+      if (step % 20 == 0 && !blackout) {
+        const double gy = cluster ? CLUSTER_OFFSET : 0.0;
+        fc.update_gnss(t, fix_at(true_x, gy));
+        if (cluster && fc.get_gnss_debug().accepted) ++accepted_cluster;
+      }
+      if (t >= t_cluster_end) {
+        worst_after_cluster = std::max(worst_after_cluster,
+                                       std::abs(fc.get_state().x[Y] - 0.0));
+      }
+      final_lateral = std::abs(fc.get_state().x[Y] - 0.0);
+      final_along   = std::abs(fc.get_state().x[X] - true_x);
+    }
+    std::cerr << "  " << c.label << "\n"
+              << "    cluster fixes accepted         : " << accepted_cluster << "\n"
+              << "    worst lateral error afterwards : " << worst_after_cluster << " m\n"
+              << "    lateral error at end of run    : " << final_lateral << " m\n"
+              << "    along-track error at end       : " << final_along << " m\n";
+  }
+  SUCCEED();
+}

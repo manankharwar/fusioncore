@@ -400,6 +400,22 @@ struct FusionCoreConfig {
   // trigger it, so a continuous multipath spike cannot inflate P and talk its
   // way in (see gnss_coast_min_gap_s, and SustainedSpikeStaysRejected).
   // Must be > gnss_coast_n. 0 = disabled.
+  //
+  // THE TRADE, measured, not hypothesised. Believing a returning receiver means
+  // believing it when it is wrong too. OutlierClusterAtTheBlackoutBoundary drives
+  // the adversarial case: a blackout, then 20 s of self-consistent fixes offset
+  // 700 m (the shape of the NCLT 2012-08-20 cluster, issue #64). 85 of those are
+  // accepted and the filter ends the run 613 m out, and gnss_max_speed does NOT
+  // save it, because that gate's drift term reads the P this inflation just
+  // raised. Worse, once captured the filter cannot escape: escaping needs a
+  // rejection sequence that follows a gap, and the good fixes arrive with no gap.
+  //
+  // It is still the right default. The failure it removes is certain and
+  // universal, every robot that loses GNSS for long enough to drift past the gate
+  // never comes back. The failure it admits needs a sustained, internally
+  // consistent, far-offset cluster arriving in the seconds after an outage. But
+  // the trade is real and #64 is where it would show up, so re-run that sequence
+  // after touching anything here.
   int    gnss_recovery_rejection_n = 15;
   // Floor for the P inflation, in metres of XY sigma. The inflation itself is
   // sized from the rejected innovation, because the error to be covered is
@@ -908,6 +924,9 @@ private:
   // Record the outcome sitting in gnss_debug_/mag_debug_ and stamp it. Called at
   // every terminal point so accepted and rejected fixes are both counted.
   void note_gnss_outcome(double timestamp_seconds);
+  // Decides, on the first fix of a rejection sequence, whether it follows a
+  // GNSS gap. Called from every gate that can start such a sequence.
+  void note_rejection_cascade_start(double timestamp_seconds);
   void note_mag_outcome(double timestamp_seconds);
 
   // Inter-sensor clock-skew protection. Raw per-stream stamps (recorded whether
