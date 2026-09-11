@@ -1008,6 +1008,19 @@ private:
   // heading error exceeds ~75 degrees.
   bool   gps_track_hdg_fused_ = false;
 
+  // True if |yaw_rate| exceeded gps_track_heading_max_yaw_rate at any point
+  // since last_hdg_fix_x_/y_ was last set. The GPS-track heading fusion
+  // computes its bearing as atan2(dy, dx) over that whole displacement --
+  // valid only if the path between the two points was roughly straight. A
+  // turn inside the window makes atan2 return the chord direction across the
+  // curve, not the robot's actual heading, and (because sigma_hdg depends
+  // only on GPS noise vs. distance, not on path curvature) that wrong bearing
+  // can still look "confident" enough to collapse the filter's own yaw
+  // covariance onto it. Set from update_distance_traveled()'s existing
+  // yaw_rate check; consumed and cleared in apply_gnss_update()'s heading
+  // fusion block.
+  bool   hdg_window_had_turn_ = false;
+
   // Returns heading 1-sigma in radians computed from P via quaternion-to-yaw Jacobian.
   double compute_heading_sigma_rad() const;
 
