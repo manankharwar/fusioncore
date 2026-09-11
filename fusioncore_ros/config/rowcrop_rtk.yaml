@@ -40,6 +40,43 @@ fusioncore:
     gnss.max_hdop: 5.0
     gnss.min_satellites: 6
 
+    # ── Spike rejection: OFF here, and that is a deliberate gap ───────────────
+    #
+    # The chi2 outlier gate cannot see a metre-scale GPS spike. It tests a fix
+    # against the FILTER, so its scale is S = H P H' + R, which on a consumer
+    # receiver is tens of square metres. Measured on a rover log: the largest of
+    # 222 innovations sat 39x below the firing threshold for a whole run while
+    # every single fix reported ACCEPTED. That reads exactly like clean GPS.
+    #
+    # gnss.continuity_max_m is the gate that can see it, because it compares a
+    # fix against a least-squares line through the last five accepted fixes and
+    # never touches P. It is left at 0.0 (off) below because the right threshold
+    # depends on YOUR receiver, and shipping a guessed one is the mistake that
+    # produced this whole class of defect four separate times in this project.
+    #
+    # To set it, measure rather than guess:
+    #
+    #   python3 tools/nis_from_bag.py <your_bag> --json
+    #
+    # Take the p99 of the fix-to-fix residual it reports and go comfortably
+    # above it. The cost of being wrong is rejecting good fixes, which has hurt
+    # this project far more than any spike has.
+    #
+    # Scale to expect on RTK FIXED: centimetres, not metres. The 4.0 that suited
+    # an M9N would be roughly a hundred times too loose here and would catch
+    # nothing at all. Measure your own and expect a number below 0.5.
+    # gnss.continuity_max_m: 0.0
+    #
+    # min_sigma_xy/z floor what the receiver is allowed to claim, in METRES.
+    # Receivers lie in both directions: one M9N declared 0.076 m 1-sigma while
+    # its own position scattered 1.03 m over 70 stationary fixes. A floor beats a
+    # multiplier, because a multiplier tuned for one receiver mode is wrong the
+    # moment it switches modes.
+    # gnss.min_sigma_xy: 0.02       # RTK genuinely is this good, so floor it low
+    # gnss.min_sigma_z: 0.05
+
+
+
     # Antenna position relative to base_link. MEASURE THIS, do not guess.
     # A wrong lever arm shows up as a heading error that grows with turn rate.
     gnss.lever_arm_x: 0.0
