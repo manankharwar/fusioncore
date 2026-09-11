@@ -49,8 +49,10 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
   ```yaml
   zupt.parked_motion_m: 5.0              # metres of displacement before it can fire, 0 disables
-  zupt.parked_motion_straightness: 0.70  # above this, the displacement is real motion
+  zupt.parked_motion_straightness: 0.85  # above this, the displacement is real motion
   ```
+
+  The 0.85 is measured, not chosen. Checked against three genuinely parked windows in the 2026-09 rover logs, the worst straightness reached at any point past the distance threshold was 0.59, 0.00 and **0.72**. A first attempt at 0.70 fired on that third window, which would have disabled the idle-drift fix on a robot sitting still. A receiver whose error drifts one way under changing satellite geometry looks considerably straighter than intuition suggests.
 
   When it fires, ZUPT and the parked GNSS suppression are both disabled for the rest of the run and the node logs an error naming the encoder power rail. Disabling ZUPT as well as the suppression is the part that matters: releasing the covariance alone still left ZUPT pinning velocity to zero and fighting the GNSS, which recovered only 7.4 m of a 20 m drive in test. `zupt_parked_but_moving` and `zupt_parked_straightness` are on `filter_health` so a bag shows it.
 

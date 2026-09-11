@@ -260,7 +260,19 @@ struct FusionCoreConfig {
   // Only active while the ZUPT suppression above is doing something.
   double zupt_parked_motion_m = 5.0;
   // Straightness above which the displacement is real motion, not wander.
-  double zupt_parked_motion_straightness = 0.70;
+  //
+  // 0.85, and the margin is measured rather than chosen. Across three genuinely
+  // parked windows on the 2026-09 rover logs the worst straightness reached, at
+  // any point where displacement exceeded the threshold above, was:
+  //     2026-09-07, 57 s, 12.85 m of wander   0.59
+  //     2026-09-05, 30 s,  2.70 m             0.00 (never reached 5 m)
+  //     2026-09-05, 27 s,  8.83 m             0.72   <- the one that matters
+  // A first attempt at 0.70 would have FIRED on that third window and disabled
+  // the idle-drift fix on a robot that was sitting still. A robot genuinely
+  // driving on dead encoders tracks close to 1.0, so 0.85 leaves room on both
+  // sides. Note the parked worst case is not small: a receiver whose error
+  // drifts one way under changing satellite geometry looks quite straight.
+  double zupt_parked_motion_straightness = 0.85;
 
   // Nominal IMU rate in Hz. Above zero, the PREDICT step between IMU messages
   // advances by exactly 1/rate instead of the gap between two stamps. Zero

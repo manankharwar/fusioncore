@@ -415,7 +415,7 @@ public:
     // (measured 0.37 on a real 57 s window) while a driving robot approaches 1.
     // Metres of displacement before it can fire; 0.0 disables.
     declare_parameter("zupt.parked_motion_m", 5.0);
-    declare_parameter("zupt.parked_motion_straightness", 0.70);
+    declare_parameter("zupt.parked_motion_straightness", 0.85);
     // Nominal IMU rate. Above 0, propagate by 1/rate instead of by the gap
     // between stamps, so stamp jitter cannot reach the integrator. Only set a
     // rate you have measured: a wrong one is a systematic dt error and will
@@ -3362,7 +3362,8 @@ private:
           "suppression are now DISABLED for the rest of this run so GNSS can "
           "still drive the estimate. Check the encoder power rail: on this "
           "hardware all four share one. Position from here is GNSS and IMU only.",
-          status.zupt_parked_straightness, 0.70);
+          status.zupt_parked_straightness,
+          get_parameter("zupt.parked_motion_straightness").as_double());
       }
       fh.gnss_parked_sigma_observed = status.gnss_parked_sigma_observed;
       fh.gnss_parked_sigma_declared = status.gnss_parked_sigma_declared;
