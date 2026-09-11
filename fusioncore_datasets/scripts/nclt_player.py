@@ -288,8 +288,24 @@ class NCLTPlayer(Node):
                 continue
             dx, dy = x - px, y - py
             vx    = ( dx * math.cos(h) + dy * math.sin(h)) / dt
-            vy    = (-dx * math.sin(h) + dy * math.cos(h)) / dt  # ≈0 for diff drive
-            omega = angle_diff(h, ph) / dt
+            # NED->ENU, the same conversion _load_imu applies to the gyro. NCLT's
+            # body frame is x-forward y-right z-down, so its heading grows
+            # CLOCKWISE, while REP-103 (and everything downstream) wants
+            # counter-clockwise. Forward is forward in either convention so vx is
+            # untouched, but lateral and yaw rate both flip.
+            #
+            # Without this the player published a yaw rate opposite to its own
+            # gyro. Measured on 2012-06-15 against GPS course over ground as an
+            # independent reference, over 115 turns of more than 25 degrees:
+            # the published gyro agreed with the GPS course sign 101 times (88%),
+            # the published odometry 16 times (14%), and per turn the two were
+            # near-exact negatives (-153.1 vs +148.0 deg, -75.5 vs +72.8).
+            # FusionCore's own cross-check reported it as a 100% sign
+            # disagreement, and the NCLT config leans on the encoder during
+            # blackouts (gnss.coast_imu_wz_scale), so this corrupted heading in
+            # exactly the windows the benchmark loses.
+            vy    = -(-dx * math.sin(h) + dy * math.cos(h)) / dt  # ≈0 for diff drive
+            omega = -angle_diff(h, ph) / dt
             self._events.append((utime, 'odom', [vx, vy, omega]))
             count += 1
         self.get_logger().info(f'  Odom: {count} velocity estimates from {os.path.basename(path)}')
