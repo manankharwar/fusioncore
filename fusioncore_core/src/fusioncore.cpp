@@ -487,6 +487,15 @@ void FusionCore::predict_to(double timestamp_seconds) {
 }
 
 void FusionCore::update_distance_traveled(double x, double y, double pre_update_speed) {
+  // Turn detection for the GPS-track heading fusion's displacement window
+  // (see hdg_window_had_turn_ declaration). Checked unconditionally, before
+  // the MIN_STEP early-return below: an in-place spin barely moves the GNSS
+  // antenna (dist stays near zero), so gating this on dist would miss
+  // exactly the case it exists to catch.
+  if (std::abs(ukf_.state().x[WZ]) > config_.gps_track_heading_max_yaw_rate) {
+    hdg_window_had_turn_ = true;
+  }
+
   if (!gnss_pos_set_) {
     last_gnss_x_  = x;
     last_gnss_y_  = y;
@@ -1462,6 +1471,19 @@ bool FusionCore::apply_gnss_update(
       last_hdg_fix_x_ = fix.x;
       last_hdg_fix_y_ = fix.y;
       hdg_fix_set_    = true;
+    } else if (hdg_window_had_turn_) {
+      // A turn happened somewhere between last_hdg_fix_x_/y_ and this fix.
+      // atan2(dy, dx) over that displacement would return the chord direction
+      // across the turn, not the robot's actual heading -- and since
+      // sigma_hdg below only reflects GPS noise vs. distance (not path
+      // curvature), that wrong bearing could still look "confident" enough
+      // to collapse the filter's own yaw covariance onto it (see
+      // hdg_window_had_turn_'s declaration). Discard this window instead of
+      // fusing: reset the reference to the current fix and start accumulating
+      // a fresh, hopefully-straight baseline from here.
+      last_hdg_fix_x_      = fix.x;
+      last_hdg_fix_y_      = fix.y;
+      hdg_window_had_turn_ = false;
     } else {
       double dx   = fix.x - last_hdg_fix_x_;
       double dy   = fix.y - last_hdg_fix_y_;
