@@ -42,6 +42,7 @@
 #include <proj.h>
 
 #include "fusioncore_ros/gnss_dop_gate_warning.hpp"
+#include "fusioncore_ros/min_satellites_gate.hpp"
 #include "fusioncore_ros/gnss_frame.hpp"
 
 using namespace std::chrono_literals;
@@ -1014,6 +1015,23 @@ public:
           }, sensor_opts);
         RCLCPP_INFO(get_logger(),
           "GNSS topic: %s (sensor_msgs/NavSatFix)", gnss_fix_topic_.c_str());
+
+        // NavSatFix has no satellite count field, so the callback synthesises a
+        // constant 4. Anything above that can therefore never be satisfied, and
+        // the filter rejects 100% of its GNSS for the rest of the run with
+        // MIN_SATS, which points at the receiver when the problem is that the
+        // count is a placeholder. Same shape as #79, where a DOP gate silently
+        // never ran; this is the dangerous direction of it.
+        const int min_sats = get_parameter("gnss.min_satellites").as_int();
+        if (fusioncore_ros::min_satellites_is_unsatisfiable(true, min_sats)) {
+          RCLCPP_ERROR(get_logger(),
+            "gnss.min_satellites is %d, but this input is sensor_msgs/NavSatFix, "
+            "which carries no satellite count: the node substitutes a fixed 4, so "
+            "EVERY fix will be rejected as MIN_SATS and the filter will dead "
+            "reckon for the whole run. Lower it to 4 or below, or switch the "
+            "input to gps_msgs/GPSFix (gnss.use_gps_fix), which carries a real "
+            "status.satellites_used.", min_sats);
+        }
       }
     } else {
       RCLCPP_INFO(get_logger(), "GNSS disabled");
