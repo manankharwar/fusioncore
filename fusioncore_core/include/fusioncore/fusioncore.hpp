@@ -504,6 +504,19 @@ enum class TrackHeadingState {
 constexpr int GNSS_REJECTION_REASON_COUNT = 14;
 constexpr int MAG_REJECTION_REASON_COUNT  = 4;
 
+// Why an encoder measurement was rejected (or ACCEPTED if it passed).
+//
+// The encoder is the sensor nearly every ground robot has, and a rejected
+// encoder update is a direct cause of the drift users report. It used to be
+// discarded with nothing recorded but a counter that never left the core, so the
+// only external symptom was a wrong estimate. See #124 for the audit of the
+// other paths still in that state.
+enum class EncoderRejectionReason {
+  NOT_PROCESSED = 0,
+  ACCEPTED      = 1,
+  CHI2_FAILED   = 2,  // Mahalanobis distance > outlier_threshold_enc
+};
+
 // Why a magnetometer reading was rejected (or ACCEPTED if it passed).
 enum class MagRejectionReason {
   NOT_PROCESSED    = 0,
@@ -584,6 +597,11 @@ struct FusionCoreStatus {
   // Heading observability
   bool          heading_validated   = false;
   HeadingSource heading_source      = HeadingSource::NONE;
+  // Outcome of the most recent encoder update, and how surprising it was against
+  // the gate that judged it. chi2 is -1 when no encoder update has been gated.
+  EncoderRejectionReason encoder_reason = EncoderRejectionReason::NOT_PROCESSED;
+  double encoder_chi2           = -1.0;
+  double encoder_chi2_threshold = 0.0;
   // Median of (filter yaw - GPS track bearing) in degrees over recent straight
   // segments, and how many segments went into it. Only populated while an
   // absolute heading source is in charge, which is when nothing else is checking
@@ -1074,6 +1092,10 @@ private:
   // yaw_rate check; consumed and cleared in apply_gnss_update()'s heading
   // fusion block.
   bool   hdg_window_had_turn_ = false;
+
+  // Outcome of the most recent encoder update (see EncoderRejectionReason).
+  EncoderRejectionReason encoder_reason_ = EncoderRejectionReason::NOT_PROCESSED;
+  double encoder_chi2_ = -1.0;
 
   // Continuity threshold learned from the receiver (see GnssParams::continuity_auto).
   //

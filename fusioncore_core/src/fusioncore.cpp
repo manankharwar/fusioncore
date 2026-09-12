@@ -137,6 +137,8 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
   xchk_ref_set_         = false;
+  encoder_reason_       = EncoderRejectionReason::NOT_PROCESSED;
+  encoder_chi2_         = -1.0;
   cont_learn_max_       = 0.0;
   cont_learn_n_         = 0;
   cont_learned_m_       = 0.0;
@@ -223,6 +225,8 @@ void FusionCore::reset() {
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
   xchk_ref_set_         = false;
+  encoder_reason_       = EncoderRejectionReason::NOT_PROCESSED;
+  encoder_chi2_         = -1.0;
   cont_learn_max_       = 0.0;
   cont_learn_n_         = 0;
   cont_learned_m_       = 0.0;
@@ -829,12 +833,18 @@ void FusionCore::update_encoder(
     sensors::EncoderMeasurement innovation_pre;
     sensors::EncoderNoiseMatrix S;
     ukf_.predict_measurement<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R, innovation_pre, S);
-    if (is_outlier<sensors::ENCODER_DIM>(innovation_pre, S, config_.outlier_threshold_enc)) {
+    // Same quantity is_outlier() tests, computed once here so the number can be
+    // published rather than only compared. Without it a user sees a rejection
+    // count and has no way to tell a marginal reject from a wild one.
+    encoder_chi2_ = innovation_pre.dot(S.ldlt().solve(innovation_pre));
+    if (encoder_chi2_ > config_.outlier_threshold_enc) {
       ++enc_outliers_;
+      encoder_reason_ = EncoderRejectionReason::CHI2_FAILED;
       last_encoder_time_ = timestamp_seconds;
       return;
     }
   }
+  encoder_reason_ = EncoderRejectionReason::ACCEPTED;
 
   auto innovation = ukf_.update<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R);
 
@@ -1901,6 +1911,9 @@ FusionCoreStatus FusionCore::get_status() const {
   status.continuity_limit_m   = (config_.gnss.continuity_max_m > 0.0)
                                   ? config_.gnss.continuity_max_m : cont_learned_m_;
   status.continuity_learned   = (config_.gnss.continuity_max_m <= 0.0 && cont_learned_m_ > 0.0);
+  status.encoder_reason          = encoder_reason_;
+  status.encoder_chi2            = encoder_chi2_;
+  status.encoder_chi2_threshold  = config_.outlier_threshold_enc;
   status.heading_vs_track_deg = xchk_median_deg();
   status.heading_vs_track_n   = xchk_n_;
   status.distance_traveled = distance_traveled_;

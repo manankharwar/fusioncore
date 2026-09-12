@@ -324,3 +324,44 @@ TEST(EncoderTest, AVelocityOnlySourceMustNotMoveYawRate) {
       << "if this ever grows, the zero substitution has started to matter and "
          "the variance or the gain has changed underneath it";
 }
+
+// A rejected encoder update must say so.
+//
+// #124: seven rejection sites discarded a measurement with nothing recorded but
+// a counter that never left the core. The encoder is the one that matters most,
+// because nearly every ground robot has one and a silently rejected encoder
+// update is a direct cause of the drift users report.
+TEST(EncoderTest, RejectionRecordsWhyAndHowSurprising) {
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  for (int step = 1; step <= 400; ++step) {
+    const double t = step * dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) fc.update_encoder(t, 1.0, 0.0, 0.0);
+  }
+
+  const auto good = fc.get_status();
+  EXPECT_EQ(good.encoder_reason, EncoderRejectionReason::ACCEPTED);
+  EXPECT_GE(good.encoder_chi2, 0.0)  << "the gate ran, so its distance must be reported";
+  EXPECT_LT(good.encoder_chi2, good.encoder_chi2_threshold);
+
+  // Something no differential drive does: 40 m/s sideways.
+  fc.update_encoder(4.01, 1.0, 40.0, 0.0);
+  const auto bad = fc.get_status();
+
+  std::cerr << "  accepted: chi2 " << good.encoder_chi2
+            << " against " << good.encoder_chi2_threshold << "\n"
+            << "  rejected: chi2 " << bad.encoder_chi2
+            << " against " << bad.encoder_chi2_threshold << "\n";
+
+  EXPECT_EQ(bad.encoder_reason, EncoderRejectionReason::CHI2_FAILED)
+      << "an encoder update was thrown away without recording why";
+  EXPECT_GT(bad.encoder_chi2, bad.encoder_chi2_threshold)
+      << "the published distance must actually explain the rejection";
+}

@@ -111,3 +111,15 @@ float64 gnss_parked_sigma_observed
 float64 gnss_parked_sigma_declared
 float64 gnss_parked_correlation
 float64 gnss_parked_inflation
+
+# Outcome of the most recent encoder update, and how surprising it was against
+# the gate that judged it:
+#   NOT_PROCESSED | ACCEPTED | CHI2_FAILED
+# A rejected encoder update is a direct cause of the drift users report, and it
+# used to be discarded with nothing recorded but a counter that never left the
+# core. chi2 is -1 until an update has been gated. Compare against the threshold:
+# a value sitting just above it is a tuning problem, one in the thousands is a
+# units or frame problem.
+string  encoder_reason
+float64 encoder_chi2
+float64 encoder_chi2_threshold

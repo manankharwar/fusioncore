@@ -2989,6 +2989,16 @@ private:
       st.continuity_limit_m);
   }
 
+  static const char * encoder_reason_str(fusioncore::EncoderRejectionReason r)
+  {
+    switch (r) {
+      case fusioncore::EncoderRejectionReason::NOT_PROCESSED: return "NOT_PROCESSED";
+      case fusioncore::EncoderRejectionReason::ACCEPTED:      return "ACCEPTED";
+      case fusioncore::EncoderRejectionReason::CHI2_FAILED:   return "CHI2_FAILED";
+    }
+    return "unknown";
+  }
+
   static const char * heading_source_str(fusioncore::HeadingSource src)
   {
     switch (src) {
@@ -3533,6 +3543,9 @@ private:
       fh.gnss_parked_sigma_declared = status.gnss_parked_sigma_declared;
       fh.gnss_parked_correlation    = status.gnss_parked_correlation;
       fh.gnss_parked_inflation      = status.gnss_parked_inflation;
+      fh.encoder_reason             = encoder_reason_str(status.encoder_reason);
+      fh.encoder_chi2               = status.encoder_chi2;
+      fh.encoder_chi2_threshold     = status.encoder_chi2_threshold;
       fh.gnss_chi2_max       = status.gnss_chi2_max;
       fh.gnss_chi2_threshold = status.gnss_chi2_threshold;
       fh.gnss_chi2_samples   = status.gnss_chi2_samples;
