@@ -985,6 +985,22 @@ private:
   // the first rejection of a sequence and used to gate rejection-triggered
   // coast so a continuous outlier (spike) cannot inflate P to defeat the gate.
   bool reject_after_gap_         = false;
+
+  // A GNSS outage is not over because one fix was accepted.
+  //
+  // reject_after_gap_ is decided from the gap to the last ACCEPTED fix, and
+  // after a blackout the filter can accept a fix that happens to land near its
+  // own drifted estimate. That fix corrects nothing but it refreshes the clock,
+  // so every later rejection sequence looks like it followed no gap, recovery is
+  // never armed again, and the filter sits hundreds of metres out with a healthy
+  // receiver in front of it. Measured in OneAcceptedFixMustNotDisarmRecovery:
+  // one decoy fix, then 1 accepted and 1999 rejected, 690 m out at the end.
+  //
+  // So an outage stays latched until GNSS is demonstrably back, meaning several
+  // fixes accepted in a row rather than one. A sustained spike cannot abuse
+  // this, because the latch is only ever SET by a real gap.
+  bool post_outage_unconfirmed_   = false;
+  int  gnss_consecutive_accepts_  = 0;
   // Recovery mode: after a timeout-triggered coast, accept the first returning
   // GPS fix unconditionally (bypass chi2 gate). After 7+ minutes blind, dead
   // reckoning error can be hundreds of meters, far outside the chi2 gate.
@@ -1116,6 +1132,11 @@ private:
   // threshold the same receiver later exceeds honestly. The one log that never
   // arms at 100 is 41 fixes long, and nothing sensible would arm on that.
   static constexpr int CONT_LEARN_N = 100;
+
+  // Accepted fixes in a row before a GNSS outage is considered genuinely over.
+  // One is not enough (see post_outage_unconfirmed_); a handful at any realistic
+  // fix rate is under a couple of seconds.
+  static constexpr int kAcceptsToConfirmReacquisition = 3;
   double cont_learn_max_ = 0.0;
   int    cont_learn_n_   = 0;
   double cont_learned_m_ = 0.0;   // 0 = not learned yet

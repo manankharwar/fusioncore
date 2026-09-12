@@ -360,3 +360,95 @@ TEST(GnssReacquireTest, RecoversWhenTheDriftIsVerticalToo) {
       << "horizontal inflation alone cannot open a 3-DOF gate: "
       << r.accepted_after << " accepted, " << r.rejected_after << " rejected";
 }
+
+// The NCLT configuration, not a clean-room one.
+//
+// The flat synthetic test says recovery works. NCLT 2012-06-15 says it stalls:
+// the Mahalanobis ladder descends and then oscillates just above the threshold
+// for the rest of the run (33.1, 30.1, ... 20.6, 21.0, 22.0, 22.8, 23.1). The
+// difference has to be in the configuration, and the loudest one is that NCLT
+// runs the physical plausibility gate while the synthetic test leaves it off.
+// That gate returns BEFORE the chi2 block on purpose, so an outlier can never
+// inflate P, which also means its rejections never reach the recovery trigger.
+TEST(GnssReacquireTest, RecoversUnderTheNcltConfiguration) {
+  FusionCoreConfig cfg = blackout_config();
+  // Mirrors fusioncore_datasets/config/nclt_fusioncore.yaml.
+  cfg.gnss_max_speed          = 3.0;
+  cfg.gnss_max_speed_margin   = 5.0;
+  cfg.gnss_max_speed_sigma_k  = 5.0;
+  cfg.gnss_coast_n            = 3;
+  cfg.gnss_coast_q_factor     = 10.0;
+  cfg.gnss_coast_timeout_s    = 30.0;
+  cfg.gnss_coast_q_bias_factor = 100.0;
+  cfg.gnss_coast_imu_wz_scale = 500.0;
+
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+
+  const Recovery r = run_blackout(fc);
+  report("NCLT configuration", r);
+
+  EXPECT_LT(r.err_300s, 10.0)
+      << "recovery stalled under the benchmark's own configuration: "
+      << r.accepted_after << " accepted, " << r.rejected_after << " rejected";
+}
+
+// One accepted fix in the middle of a recovery cascade.
+//
+// reject_after_gap_ is decided from the gap to the last ACCEPTED fix. After a
+// blackout the filter may accept one fix that happens to fall near its drifted
+// estimate without that fix fixing anything. From then on the gap is small, so
+// every later rejection sequence is classified as "not after a gap", recovery is
+// never armed again, and the filter stays hundreds of metres out with GNSS
+// present. This is #117's trap reached from the inside.
+TEST(GnssReacquireTest, OneAcceptedFixMustNotDisarmRecovery) {
+  FusionCore fc(blackout_config());
+  State s0;
+  fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  const double TRUE_SPEED = 1.5, SLIP_SPEED = 2.1;
+  const double T_PRE = 120.0, T_BLACKOUT = 460.0, T_POST = 400.0;
+  const double t_out_start = T_PRE, t_out_end = T_PRE + T_BLACKOUT;
+  const double t_end = t_out_end + T_POST;
+
+  double true_x = 0.0, err_300 = 0.0;
+  int accepted = 0, rejected = 0;
+  bool decoy_sent = false;
+
+  for (int step = 1; step * dt <= t_end + 1e-9; ++step) {
+    const double t = step * dt;
+    true_x += TRUE_SPEED * dt;
+    const bool blackout = (t >= t_out_start && t < t_out_end);
+
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (step % 2 == 0) {
+      fc.update_encoder(t, blackout ? SLIP_SPEED : TRUE_SPEED, 0.0, 0.0);
+      fc.update_ground_constraint(t);
+    }
+    if (step % 20 == 0 && !blackout) {
+      double gx = true_x;
+      // Exactly once, shortly after fixes return, deliver a fix sitting on the
+      // filter's own drifted estimate. It passes, it corrects nothing, and it
+      // refreshes last_gnss_time_.
+      if (!decoy_sent && t > t_out_end + 1.0) {
+        gx = fc.get_state().x[X];
+        decoy_sent = true;
+      }
+      fc.update_gnss(t, fix_at(gx, 0.0));
+      if (t > t_out_end) {
+        if (fc.get_gnss_debug().accepted) ++accepted; else ++rejected;
+      }
+    }
+    if (std::abs(t - (t_out_end + 300.0)) < dt * 0.5)
+      err_300 = std::abs(fc.get_state().x[X] - true_x);
+  }
+
+  std::cerr << "  one decoy fix accepted after the blackout\n"
+            << "    error +300 s                  : " << err_300 << " m\n"
+            << "    fixes accepted / rejected     : " << accepted << " / " << rejected << "\n";
+
+  EXPECT_LT(err_300, 10.0)
+      << "a single accepted fix disarmed recovery for the rest of the run";
+}

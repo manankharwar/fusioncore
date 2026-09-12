@@ -137,6 +137,8 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
   xchk_ref_set_         = false;
+  post_outage_unconfirmed_ = false;
+  gnss_consecutive_accepts_ = 0;
   encoder_reason_       = EncoderRejectionReason::NOT_PROCESSED;
   encoder_chi2_         = -1.0;
   cont_learn_max_       = 0.0;
@@ -225,6 +227,8 @@ void FusionCore::reset() {
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
   xchk_ref_set_         = false;
+  post_outage_unconfirmed_ = false;
+  gnss_consecutive_accepts_ = 0;
   encoder_reason_       = EncoderRejectionReason::NOT_PROCESSED;
   encoder_chi2_         = -1.0;
   cont_learn_max_       = 0.0;
@@ -234,6 +238,9 @@ void FusionCore::reset() {
   xchk_i_               = 0;
   snapshot_buffer_.clear();
   imu_buffer_.clear();
+  // Several in a row, not one: see post_outage_unconfirmed_.
+  if (++gnss_consecutive_accepts_ >= kAcceptsToConfirmReacquisition)
+    post_outage_unconfirmed_ = false;
   gnss_consecutive_rejects_ = 0;
   gnss_in_coast_            = false;
   gnss_in_recovery_         = false;
@@ -1021,7 +1028,11 @@ void FusionCore::note_rejection_cascade_start(double timestamp_seconds) {
     const double mean_dt = (cont_t_[cont_n_ - 1] - cont_t_[0]) / (cont_n_ - 1);
     if (mean_dt > 1e-6) min_gap = std::max(min_gap, 2.0 * mean_dt);
   }
-  reject_after_gap_ = (gap >= min_gap);
+  const bool after_gap = (gap >= min_gap);
+  if (after_gap) post_outage_unconfirmed_ = true;
+  // Latched: an outage counts as ongoing until GNSS is demonstrably back, not
+  // merely until one fix slipped through. See post_outage_unconfirmed_.
+  reject_after_gap_ = after_gap || post_outage_unconfirmed_;
 }
 
 // Record the outcome currently in gnss_debug_ and stamp it. See OutcomeTally in
@@ -1390,6 +1401,7 @@ bool FusionCore::apply_gnss_update(
           // cadence (see the dt_new test above), so the answer here is normally
           // false, which is exactly the protection wanted.
           note_rejection_cascade_start(timestamp_seconds);
+          gnss_consecutive_accepts_ = 0;
           ++gnss_consecutive_rejects_;
           return false;
         }
@@ -1493,6 +1505,7 @@ bool FusionCore::apply_gnss_update(
         // last ACCEPTED fix, so the gap to it is small during a continuous
         // spike and large after an outage.
         note_rejection_cascade_start(timestamp_seconds);
+        gnss_consecutive_accepts_ = 0;
         ++gnss_consecutive_rejects_;
         gnss_debug_.consecutive_rejects = gnss_consecutive_rejects_;
         if (reject_after_gap_ &&
