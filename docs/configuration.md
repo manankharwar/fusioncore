@@ -273,12 +273,14 @@ fusioncore:
     # work for both a 60 s outage and an eight minute one.
 
     gnss.recovery_timeout_s: 0.0
-    # GPS absence (seconds) before entering position-injection recovery mode, which
-    # bypasses chi2 for the first returning fix. Useful only when blackouts are very
-    # long (>200s) AND GPS outliers are not a concern at that location.
-    # 0.0 = disabled (chi2 always active, recommended). Must be >= coast_timeout_s.
 
-    # ── GPS track heading fusion ──────────────────────────────────────────────
+    # DEPRECATED and inert. The filter never read this parameter, and the
+
+    # position-injection recovery its old description promised does not exist.
+
+    # It is still declared so existing configs load, and the node warns if you
+
+    # set it. Post-blackout recovery is gnss.recovery_rejection_n.
     gnss.track_heading_enabled: true
     # Fuses GPS displacement bearing as a yaw pseudo-measurement whenever the
     # robot has moved gnss.track_heading_min_dist meters since the last fusion.

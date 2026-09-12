@@ -79,7 +79,7 @@ fusioncore:
                                     # chi2 gate rejects every one of them. Gap-gated, so the
                                     # outlier cluster on 2012-08-20 still cannot trigger it.
     gnss.p_inflate_sigma: 50.0      # floor only; the inflation is sized from the innovation
-    gnss.recovery_timeout_s: 0.0    # declared but never read by the filter, see the issue
+    gnss.recovery_timeout_s: 0.0    # declared for compatibility only; the filter never reads it
 
     adaptive.imu: true
     adaptive.encoder: true

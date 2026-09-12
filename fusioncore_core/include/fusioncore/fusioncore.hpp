@@ -319,13 +319,6 @@ struct FusionCoreConfig {
   //         Lever arm will not activate from IMU orientation alone.
   bool imu_has_magnetometer = false;
 
-  // Non-holonomic constraint: lateral velocity (VY) tightness.
-  // For differential drive robots, VY should be zero (robot can't move sideways).
-  // This is the sigma on that assertion (m/s): lower = harder constraint.
-  // Default 0.05 m/s matches encoder.vel_noise (previous hardcoded behavior).
-  // Increase to 10.0+ to effectively disable for mecanum/omnidirectional robots.
-  // Increase to 0.3-1.0 for Ackermann robots on slippery surfaces with lateral slip.
-  double encoder_nhc_vy_sigma = 0.05;
 
   // Non-holonomic constraint: body-frame vertical velocity (VZ) tightness.
   // For ground robots, VZ should be zero during steady locomotion.
@@ -389,16 +382,6 @@ struct FusionCoreConfig {
   // 0.0 = disabled; typical value: 30.0
   double gnss_coast_timeout_s = 0.0;
 
-  // Enter position-injection recovery mode only after a GPS absence longer than
-  // this many seconds. Recovery mode bypasses the chi2 gate for the first
-  // returning GPS fix, which is needed for very long blackouts (>100s) where
-  // dead-reckoning drift may exceed the chi2 acceptance range. For short
-  // blackouts (30-90s), the chi2 gate handles recovery correctly and recovery
-  // mode is counter-productive: it allows massive GPS outliers (bad multipath
-  // at the blackout boundary) to be injected unconditionally.
-  // 0.0 = enter recovery mode at the same time as coast mode (original behavior).
-  // Typical: 120.0 (2 minutes). Must be >= gnss_coast_timeout_s.
-  double gnss_recovery_timeout_s = 0.0;
 
   // After this many consecutive chi2 rejections that FOLLOW a GNSS gap, inflate
   // P[x,x] and P[y,y] so the next fix passes the gate and corrects through a

@@ -711,7 +711,18 @@ public:
     config.gnss_coast_imu_wz_scale    = get_parameter("gnss.coast_imu_wz_scale").as_double();
     config.gnss_recovery_rejection_n  = get_parameter("gnss.recovery_rejection_n").as_int();
     config.gnss_p_inflate_sigma       = get_parameter("gnss.p_inflate_sigma").as_double();
-    config.gnss_recovery_timeout_s    = get_parameter("gnss.recovery_timeout_s").as_double();
+    // gnss.recovery_timeout_s is still DECLARED so existing configs keep loading,
+    // but the filter never read it and the behaviour its documentation described
+    // does not exist. Recovery is driven by gnss.recovery_rejection_n. Say so
+    // rather than accepting the value in silence (#114).
+    if (get_parameter("gnss.recovery_timeout_s").as_double() != 0.0) {
+      RCLCPP_WARN(get_logger(),
+        "gnss.recovery_timeout_s is set but has no effect and never did: the "
+        "filter does not read it. Post-blackout GNSS recovery is controlled by "
+        "gnss.recovery_rejection_n (currently %ld). This parameter is kept only "
+        "so older configs still load and will be removed.",
+        get_parameter("gnss.recovery_rejection_n").as_int());
+    }
     config.heading_observable_distance     = get_parameter("gnss.heading_observable_distance").as_double();
     config.gps_track_heading_enabled       = get_parameter("gnss.track_heading_enabled").as_bool();
     config.gps_track_heading_min_dist      = get_parameter("gnss.track_heading_min_dist").as_double();
@@ -817,7 +828,6 @@ public:
         config.mag.declination_rad);
     }
 
-    config.encoder_nhc_vy_sigma        = get_parameter("encoder.nhc_vy_sigma").as_double();
     config.ground_constraint_vz_sigma  = get_parameter("ground_constraint.vz_sigma").as_double();
     config.ground_constraint_az_sigma  = get_parameter("ground_constraint.az_sigma").as_double();
     config.ground_z_position_sigma     = get_parameter("ground_constraint.z_position_sigma").as_double();
