@@ -1102,3 +1102,55 @@ TEST(GNSSTest, TurnBetweenTwoFixesIsStillCaught) {
       << cfg.gps_track_heading_max_yaw_rate << "), baseline went "
       << baseline_before << " m to " << baseline_after << " m";
 }
+
+// A quality gate must not judge a number the wrapper invented.
+//
+// #123: a NavSatFix with position_covariance_type 0 carries no uncertainty, so
+// the wrapper substitutes hdop 1.5 / vdop 2.0. Gating on that constant has only
+// two possible behaviours, and neither is the one the parameter promises: above
+// it the gate never fires, at or below it the gate rejects every fix forever.
+TEST(GNSSTest, SyntheticDopIsNotGated) {
+  auto drive = [](bool synthetic, double max_hdop) {
+    FusionCoreConfig cfg;
+    cfg.imu_has_magnetometer = false;
+    cfg.motion_model = create_motion_model("DifferentialDrive");
+    cfg.gnss.max_hdop = max_hdop;
+    FusionCore fc(cfg);
+    State s0; fc.init(s0, 0.0);
+
+    const double dt = 0.01, g = 9.80665;
+    int accepted = 0, rejected_hdop = 0;
+    for (int step = 1; step * dt <= 12.0 + 1e-9; ++step) {
+      const double t = step * dt;
+      fc.update_imu(t, 0, 0, 0, 0, 0, g);
+      if (step % 2 == 0) fc.update_encoder(t, 1.0, 0.0, 0.0);
+      if (step % 20 == 0) {
+        GnssFix f;
+        f.x = 1.0 * t; f.y = 0.0; f.z = 0.0;
+        f.hdop = 1.5; f.vdop = 2.0;        // the wrapper's invented values
+        f.dop_is_synthetic = synthetic;
+        f.satellites = 12;
+        f.fix_type = GnssFixType::GPS_FIX;
+        fc.update_gnss(t, f);
+        const auto d = fc.get_gnss_debug();
+        if (d.accepted) ++accepted;
+        else if (d.reason == GnssRejectionReason::HDOP_HIGH) ++rejected_hdop;
+
+
+      }
+    }
+    return std::make_pair(accepted, rejected_hdop);
+  };
+
+  // A threshold below the invented value used to reject everything, forever.
+  const auto strict_real      = drive(false, 1.0);
+  const auto strict_synthetic = drive(true,  1.0);
+
+  EXPECT_GT(strict_real.second, 0)
+      << "sanity: a REPORTED hdop of 1.5 against a 1.0 limit must be rejected";
+  EXPECT_EQ(strict_synthetic.second, 0)
+      << "an invented hdop was gated: " << strict_synthetic.second
+      << " fixes rejected as HDOP_HIGH against a constant nobody measured";
+  EXPECT_GT(strict_synthetic.first, 0)
+      << "no fix survived, so the filter is dead reckoning on a config typo";
+}

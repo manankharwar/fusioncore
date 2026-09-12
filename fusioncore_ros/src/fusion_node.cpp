@@ -2438,6 +2438,7 @@ private:
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
+        fix.dop_is_synthetic = true;
         fix.satellites = 4;  // Fix 10
       }
     } else if (msg->position_covariance_type >= 1) {
@@ -2455,12 +2456,14 @@ private:
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
+        fix.dop_is_synthetic = true;
         fix.satellites = 4;  // Fix 10
       }
     } else {
       // Unknown covariance: use config defaults
       fix.hdop = 1.5;
       fix.vdop = 2.0;
+      fix.dop_is_synthetic = true;
       fix.satellites = 4;  // Fix 10
     }
 
@@ -2710,6 +2713,7 @@ private:
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
+        fix.dop_is_synthetic = true;
       }
     } else if (msg->position_covariance_type >= gps_msgs::msg::GPSFix::COVARIANCE_TYPE_APPROXIMATED) {
       double var_xy = (msg->position_covariance[0] + msg->position_covariance[4]) / 2.0;
@@ -2724,6 +2728,7 @@ private:
       } else {
         fix.hdop = 1.5;
         fix.vdop = 2.0;
+        fix.dop_is_synthetic = true;
       }
     } else if (msg->err_horz > 0.0 && msg->err_vert > 0.0) {
       // err_horz/err_vert are 95% CI bounds in meters. Convert to 1-sigma variance.
@@ -2751,6 +2756,7 @@ private:
     } else {
       fix.hdop = 1.5;
       fix.vdop = 2.0;
+      fix.dop_is_synthetic = true;
     }
 
     warn_if_dop_gate_bypassed(
@@ -3098,6 +3104,7 @@ private:
       case fusioncore::GnssRejectionReason::CONTINUITY_BREAK: return "CONTINUITY_BREAK";
       case fusioncore::GnssRejectionReason::SIGMA_Z_HIGH:    return "SIGMA_Z_HIGH";
       case fusioncore::GnssRejectionReason::NOT_FINITE:      return "NOT_FINITE";
+      case fusioncore::GnssRejectionReason::QUALITY_OTHER:   return "QUALITY_OTHER";
       case fusioncore::GnssRejectionReason::NOT_PROCESSED:   return "NOT_PROCESSED";
     }
     return "NOT_PROCESSED";

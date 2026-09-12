@@ -250,6 +250,18 @@ struct GnssFix {
   // (correlated X/Y errors). When has_full_covariance is true, this
   // matrix is used directly instead of the diagonal HDOP/VDOP estimate.
   bool has_full_covariance = false;
+
+  // True when hdop/vdop were INVENTED by the wrapper because the message could
+  // not carry them, rather than reported by a receiver. A gate cannot learn
+  // anything from a constant: with a synthetic DOP the quality check either
+  // never fires or fires on every fix forever, depending purely on which side of
+  // the invented value the threshold happens to sit. See #123, and #115 for the
+  // same defect on the satellite count. Quality gates must skip a synthetic
+  // field rather than pretend to judge it.
+  //
+  // hdop stays populated regardless, because the core also uses it as a noise
+  // scale (sigma_xy = base_noise_xy * hdop), so the field is doing two jobs.
+  bool dop_is_synthetic = false;
   Eigen::Matrix3d full_covariance = Eigen::Matrix3d::Identity();
 
   // True when the fix reported a covariance, so the quality gate has metres to
@@ -280,6 +292,10 @@ struct GnssFix {
     if (satellites < p.min_satellites)  return false;
     if (has_sigma())
       return sigma_xy <= p.max_sigma_xy && sigma_z <= p.max_sigma_z;
+    // No reported uncertainty of any kind. If the DOP was invented too there is
+    // nothing here to judge, so judging it means rejecting every fix or none
+    // depending on where the threshold sits. See dop_is_synthetic.
+    if (dop_is_synthetic) return true;
     return hdop <= p.max_hdop && vdop <= p.max_vdop;
   }
 };

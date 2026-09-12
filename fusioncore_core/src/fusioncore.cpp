@@ -1080,12 +1080,19 @@ bool FusionCore::update_gnss(
       gnss_debug_.reason = GnssRejectionReason::SIGMA_XY_HIGH;
     else if (fix.has_sigma() && fix.sigma_z > config_.gnss.max_sigma_z)
       gnss_debug_.reason = GnssRejectionReason::SIGMA_Z_HIGH;
-    else if (!fix.has_sigma() && fix.hdop > config_.gnss.max_hdop)
+    // Skip the DOP branch when the DOP was invented rather than reported: see
+    // GnssFix::dop_is_synthetic. Gating on a constant cannot separate a good fix
+    // from a bad one, it can only reject all of them or none of them.
+    else if (!fix.has_sigma() && !fix.dop_is_synthetic && fix.hdop > config_.gnss.max_hdop)
       gnss_debug_.reason = GnssRejectionReason::HDOP_HIGH;
-    else if (!fix.has_sigma() && fix.vdop > config_.gnss.max_vdop)
+    else if (!fix.has_sigma() && !fix.dop_is_synthetic && fix.vdop > config_.gnss.max_vdop)
       gnss_debug_.reason = GnssRejectionReason::VDOP_HIGH;
     else
-      gnss_debug_.reason = GnssRejectionReason::MIN_SATS;
+      // is_valid() refused it and none of the branches above matched, which
+      // means this chain has drifted out of step with is_valid(). Reporting
+      // MIN_SATS here, as it used to, sends the user to tune a parameter that
+      // was never involved: the exact failure the comment above warns about.
+      gnss_debug_.reason = GnssRejectionReason::QUALITY_OTHER;
     note_gnss_outcome(timestamp_seconds);
     return false;
   }

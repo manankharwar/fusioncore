@@ -472,6 +472,7 @@ enum class GnssRejectionReason {
   SIGMA_Z_HIGH    = 10, // reported vertical sigma in METRES > max_sigma_z
   CONTINUITY_BREAK = 11, // fix disagrees with the two fixes before it
   NOT_FINITE      = 12, // position or covariance contained NaN or infinity
+  QUALITY_OTHER   = 13, // is_valid() refused it and no branch above explained why
 };
 
 // Why GPS track heading did or did not fuse on a given fix.
@@ -500,7 +501,7 @@ enum class TrackHeadingState {
 // Sizes for the tally arrays, which are indexed by static_cast<int>(reason).
 // The static_asserts below hold these to the enums, so adding a reason without
 // bumping the count fails the build instead of silently going uncounted.
-constexpr int GNSS_REJECTION_REASON_COUNT = 12;
+constexpr int GNSS_REJECTION_REASON_COUNT = 14;
 constexpr int MAG_REJECTION_REASON_COUNT  = 4;
 
 // Why a magnetometer reading was rejected (or ACCEPTED if it passed).
@@ -511,7 +512,7 @@ enum class MagRejectionReason {
   FIELD_MAGNITUDE  = 3,  // corrected field magnitude outside configured range
 };
 
-static_assert(static_cast<int>(GnssRejectionReason::CONTINUITY_BREAK) + 1 ==
+static_assert(static_cast<int>(GnssRejectionReason::QUALITY_OTHER) + 1 ==
               GNSS_REJECTION_REASON_COUNT,
               "GNSS_REJECTION_REASON_COUNT must match GnssRejectionReason");
 static_assert(static_cast<int>(MagRejectionReason::FIELD_MAGNITUDE) + 1 ==
