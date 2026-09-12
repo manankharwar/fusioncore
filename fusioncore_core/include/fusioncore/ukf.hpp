@@ -124,9 +124,18 @@ public:
 
   // Inflate P[X,X] and P[Y,Y] to at least sigma_xy_sq using max().
   // Cross-covariances are untouched so the UKF update handles the correction.
-  void inflate_position_covariance(double sigma_xy_sq) {
+  // Raise the position covariance floor so a measurement the filter currently
+  // finds impossible can be reconsidered. Z is included because the GNSS chi2
+  // gate is three dimensional: inflating only X and Y leaves the vertical term
+  // untouched, so a large altitude error alone can hold the gate shut no matter
+  // how far the horizontal covariance is opened, and the filter then rejects
+  // every fix forever while appearing to be trying. Pass 0 for sigma_z_sq to
+  // leave the vertical alone.
+  void inflate_position_covariance(double sigma_xy_sq, double sigma_z_sq = 0.0) {
     state_.P(X, X) = std::max(state_.P(X, X), sigma_xy_sq);
     state_.P(Y, Y) = std::max(state_.P(Y, Y), sigma_xy_sq);
+    if (sigma_z_sq > 0.0)
+      state_.P(Z, Z) = std::max(state_.P(Z, Z), sigma_z_sq);
   }
 
   // Replace the default motion model (ConstantVelocityAcceleration).

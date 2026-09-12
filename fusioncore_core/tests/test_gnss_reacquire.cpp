@@ -67,8 +67,7 @@ struct Recovery {
 // wheels over-report (slip on a loose surface), so the filter runs ahead of the
 // robot and is several hundred metres out by the time fixes return, which is
 // the NCLT condition without needing NCLT.
-Recovery run_blackout(FusionCore& fc, double p_inflate_sigma_unused = 0.0) {
-  (void)p_inflate_sigma_unused;
+Recovery run_blackout(FusionCore& fc, double z_drift_m = 0.0) {
   const double dt = 0.01, g = 9.80665;
   const double TRUE_SPEED = 1.5, SLIP_SPEED = 2.1;
   const double T_PRE = 120.0, T_BLACKOUT = 460.0, T_POST = 300.0;
@@ -76,7 +75,7 @@ Recovery run_blackout(FusionCore& fc, double p_inflate_sigma_unused = 0.0) {
   const double t_end = t_out_end + T_POST;
 
   Recovery r;
-  double true_x = 0.0;
+  double true_x = 0.0, true_z = 0.0;
   bool   measured_return = false;
 
   for (int step = 1; step * dt <= t_end + 1e-9; ++step) {
@@ -85,6 +84,11 @@ Recovery run_blackout(FusionCore& fc, double p_inflate_sigma_unused = 0.0) {
 
     const bool blackout = (t >= t_out_start && t < t_out_end);
     const double enc_speed = blackout ? SLIP_SPEED : TRUE_SPEED;
+    // Height the filter cannot see: the ground constraint pins its z near zero,
+    // so when fixes return they carry a vertical innovation as well as a
+    // horizontal one. Real terrain does this and NCLT has plenty of it.
+    if (blackout && z_drift_m != 0.0)
+      true_z += (z_drift_m / T_BLACKOUT) * dt;
 
     fc.update_imu(t, 0, 0, 0, 0, 0, g);
     if (step % 2 == 0) {
@@ -95,7 +99,11 @@ Recovery run_blackout(FusionCore& fc, double p_inflate_sigma_unused = 0.0) {
     if (step % 20 == 0 && !blackout) {          // 5 Hz GNSS, at the true position
       const auto before = fc.get_gnss_debug();
       (void)before;
-      fc.update_gnss(t, fix_at(true_x, 0.0));
+      {
+        auto f = fix_at(true_x, 0.0);
+        f.z = true_z;
+        fc.update_gnss(t, f);
+      }
       if (t >= t_out_end) {
         if (fc.get_gnss_debug().accepted) {
           ++r.accepted_after;
@@ -327,5 +335,28 @@ TEST(GnssReacquireTest, RecoveryStillWorksWithTheContinuityGateArmed) {
   // gate: this must keep passing then too.
   EXPECT_LT(r.err_300s, 10.0)
       << "the continuity gate is blocking re-acquisition: "
+      << r.accepted_after << " accepted, " << r.rejected_after << " rejected";
+}
+
+// The NCLT failure the flat test could not see.
+//
+// inflate_position_covariance raises P(X,X) and P(Y,Y). The GNSS chi2 gate is
+// three dimensional (GNSS_POS_DIM = 3, threshold chi2(3, 0.999)), so a vertical
+// innovation contributes to d2 and no amount of horizontal inflation removes it.
+// On NCLT 2012-06-15 that showed up as the ladder descending and then stalling
+// just above the line and oscillating there for the rest of the run:
+//
+//   working  : d2 = 2402, 2369, 53.4, 31.5, 21.7, 16.9  -> accepted
+//   stalled  : d2 = 75.4, 61.1, ... 18.4, 18.8, 19.7, 20.7, 18.9  -> never
+TEST(GnssReacquireTest, RecoversWhenTheDriftIsVerticalToo) {
+  FusionCore fc(blackout_config());
+  State s0;
+  fc.init(s0, 0.0);
+
+  const Recovery r = run_blackout(fc, /*z_drift_m=*/25.0);
+  report("blackout with 25 m of vertical drift", r);
+
+  EXPECT_LT(r.err_300s, 10.0)
+      << "horizontal inflation alone cannot open a 3-DOF gate: "
       << r.accepted_after << " accepted, " << r.rejected_after << " rejected";
 }

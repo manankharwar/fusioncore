@@ -1493,7 +1493,16 @@ bool FusionCore::apply_gnss_update(
           const double s2 = std::max(
               config_.gnss_p_inflate_sigma * config_.gnss_p_inflate_sigma,
               innov_xy * innov_xy);
-          ukf_.inflate_position_covariance(s2);
+          // Vertical too, sized from the vertical innovation alone rather than
+          // the horizontal floor. The gate is 3-DOF, so an altitude error the
+          // inflation never reaches can hold it shut on its own: measured on
+          // NCLT 2012-06-15, the Mahalanobis ladder descended 75 -> 18.4 and
+          // then oscillated between 18 and 21 against a threshold of 16.27 for
+          // the rest of the run, never opening. No floor here, because a robot
+          // whose altitude is fine should not have its vertical certainty
+          // thrown away to fix a horizontal problem.
+          const double innov_z = std::abs(innovation_pre[2]);
+          ukf_.inflate_position_covariance(s2, innov_z * innov_z);
         }
       }
       return false;
