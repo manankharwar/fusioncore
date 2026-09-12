@@ -27,6 +27,10 @@ FusionCoreConfig base_config() {
   cfg.outlier_rejection = true;
   cfg.outlier_threshold_gnss = 16.27;
   cfg.motion_model = create_motion_model("DifferentialDrive");
+  // Opt in explicitly. The shipped default is OFF, because the gate currently
+  // cancels post-blackout re-acquisition (see GnssParams::continuity_auto), and
+  // DefaultsToOffUntilRecoveryIsGateAgnostic below is what holds that.
+  cfg.gnss.continuity_auto = true;
   return cfg;
 }
 
@@ -132,6 +136,18 @@ TEST(ContinuityAutoTest, ExplicitValueWinsAndSkipsLearning) {
   EXPECT_DOUBLE_EQ(r.learned_m, 4.0) << "an explicit setting must be used verbatim";
   EXPECT_FALSE(r.learned)            << "explicit means no learning happened";
   EXPECT_TRUE(r.spike_rejected);
+}
+
+// The shipped default. Measured on NCLT 2012-06-15: with this gate armed, error
+// 300 s after a 461 s blackout is 259.5 m, against 13.4 m with recovery alone,
+// because the P inflation that re-admits GNSS sits inside the chi2 block and a
+// continuity rejection returns before reaching it. Flip this back when the
+// recovery path fires from whichever gate did the rejecting.
+TEST(ContinuityAutoTest, DefaultsToOffUntilRecoveryIsGateAgnostic) {
+  FusionCoreConfig shipped;                       // untouched defaults
+  EXPECT_FALSE(shipped.gnss.continuity_auto)
+      << "the learned gate is on by default again: confirm post-blackout "
+         "re-acquisition still works on NCLT before landing that";
 }
 
 TEST(ContinuityAutoTest, CanStillBeTurnedOff) {

@@ -251,7 +251,7 @@ public:
     // Leave continuity_max_m at 0 and let the filter measure the threshold from
     // this receiver's own fix-to-fix scatter, rather than shipping the only gate
     // that can see a metre-scale spike in the off position. See issue #116.
-    declare_parameter("gnss.continuity_auto", true);
+    declare_parameter("gnss.continuity_auto", false);
     declare_parameter("gnss.max_sigma_z",    50.0);
     declare_parameter("gnss.min_satellites", 4);
     // Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED

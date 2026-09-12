@@ -304,3 +304,28 @@ TEST(GnssReacquireTest, SustainedSpikeAtOneHertz) {
   }
   SUCCEED();
 }
+
+// The two 0.3.10 defaults together, which is how they will actually ship.
+//
+// Measured on NCLT 2012-06-15: recovery alone brings the filter back to 13.4 m
+// after a 461 s blackout, and recovery WITH the learned continuity gate leaves it
+// at 259.5 m, which is barely better than having no recovery at all (277.2 m).
+// The gate is cancelling the fix.
+TEST(GnssReacquireTest, RecoveryStillWorksWithTheContinuityGateArmed) {
+  FusionCoreConfig cfg = blackout_config();
+  cfg.gnss.continuity_auto = true;          // the new default
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+
+  const Recovery r = run_blackout(fc);
+  report("recovery + continuity_auto", r);
+
+  // Clean synthetic GNSS does not reproduce the NCLT failure, because nothing
+  // makes the continuity gate reject in the first place, so recovery is reached
+  // normally. Kept as the guard for the day the recovery path fires from any
+  // gate: this must keep passing then too.
+  EXPECT_LT(r.err_300s, 10.0)
+      << "the continuity gate is blocking re-acquisition: "
+      << r.accepted_after << " accepted, " << r.rejected_after << " rejected";
+}

@@ -365,7 +365,7 @@ fusioncore:
     gnss.continuity_max_m: 0.0
 
 
-    gnss.continuity_auto: true
+    gnss.continuity_auto: false
 
     # When continuity_max_m is 0, measure the threshold from the receiver's own
 

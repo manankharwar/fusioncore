@@ -409,7 +409,7 @@ fusioncore:
     # 29 m before chi2 rejected it. The value chosen is logged and published on
     # the GNSS status topic. Set continuity_max_m to pin your own, or false here
     # to leave the gate off entirely.
-    gnss.continuity_auto: true
+    gnss.continuity_auto: false
 
     # Physical plausibility: reject a fix further from the prediction than the
     # robot could possibly have travelled. max_speed is your robot's real top

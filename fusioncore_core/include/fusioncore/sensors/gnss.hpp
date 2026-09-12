@@ -135,7 +135,28 @@ struct GnssParams {
   // largest prediction residual it sees, and sets the limit to 1.5x that,
   // clamped to [2, 25] m. An explicit continuity_max_m always wins and skips
   // learning entirely. The value chosen is logged and published.
-  bool continuity_auto = true;
+  //
+  // OFF BY DEFAULT, for now, and the reason is a defect in the filter rather
+  // than in this gate. Measured on NCLT 2012-06-15, error 300 s after a 461 s
+  // blackout ends:
+  //
+  //     no recovery, no continuity          277.2 m
+  //     recovery only                        13.4 m
+  //     recovery + this gate armed          259.5 m
+  //
+  // The gate cancels post-blackout re-acquisition. The rejection sequence after
+  // that outage runs 7 IMPLAUSIBLE_JUMP, then 5 CHI2_FAILED, then 18
+  // CONTINUITY_BREAK to the end of the run, and the P inflation that re-admits
+  // GNSS lives inside the chi2 block. Once continuity starts rejecting it
+  // returns before chi2 is reached, so gnss_consecutive_rejects_ climbs past
+  // every recovery trigger while the code that acts on it is unreachable.
+  //
+  // The gate itself is sound: on six 2026-09 rover logs it learned 2.00 to
+  // 5.72 m and rejected 0 of 76 good fixes, and on NCLT it rejects 0.17% of
+  // fixes including the outlier cluster #64 is about. Turn it on deliberately if
+  // your robot does not lose GNSS for minutes at a time. The default flips back
+  // once the recovery path fires from whichever gate rejected.
+  bool continuity_auto = false;
 
   double base_noise_xy = 1.0;
   double base_noise_z  = 2.0;
