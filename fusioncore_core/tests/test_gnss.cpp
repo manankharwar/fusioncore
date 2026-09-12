@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
+#include <algorithm>
 #include <cmath>
 #include <limits>
+#include <vector>
 #include "fusioncore/ukf.hpp"
 #include "fusioncore/state.hpp"
 #include "fusioncore/sensors/gnss.hpp"
@@ -1043,4 +1045,122 @@ TEST(GNSSTest, TurnInsideTheBaselineDiscardsTheWindow) {
   }
   SUCCEED() << "track heading state after the corner: "
             << static_cast<int>(d.track_heading_state);
+}
+
+// ─── #112: the fix that discards a track-heading window reports the discard ──
+
+namespace {
+
+struct TrackHeadingSample {
+  double            t;
+  TrackHeadingState state;
+  double            baseline_m;
+};
+
+// Same 100 Hz IMU / 1 Hz GPS cadence as drive_arc, with two differences that
+// this case needs: the pose and the clock carry across legs, and the debug
+// snapshot is recorded for every fix. drive_arc restarts its clock per call and
+// only the final state is observable, which is enough for "did it fuse across
+// the corner" but cannot show the single fix in the middle that acted.
+class ArcDriver {
+ public:
+  explicit ArcDriver(FusionCore& fc) : fc_(fc) {}
+
+  void leg(double duration_s, double speed, double yaw_rate) {
+    const double dt = 0.01, g = 9.80665;
+    const int steps = static_cast<int>(duration_s / dt + 0.5);
+    for (int i = 0; i < steps; ++i) {
+      t_   += dt;
+      yaw_ += yaw_rate * dt;
+      x_   += speed * std::cos(yaw_) * dt;
+      y_   += speed * std::sin(yaw_) * dt;
+      ++step_;
+
+      fc_.update_imu(t_, 0, 0, yaw_rate, 0, 0, g);
+      if (step_ % 2 == 0) fc_.update_encoder(t_, speed, 0.0, yaw_rate);
+      if (step_ % 100 == 0) {
+        GnssFix f;
+        f.x = x_; f.y = y_; f.z = 0.0;
+        f.hdop = f.sigma_xy = 2.0;
+        f.vdop = f.sigma_z  = 3.0;
+        f.satellites = 10;
+        f.fix_type = GnssFixType::GPS_FIX;
+        fc_.update_gnss(t_, f);
+
+        const auto d = fc_.get_gnss_debug();
+        samples_.push_back({t_, d.track_heading_state, d.track_heading_baseline_m});
+      }
+    }
+  }
+
+  const std::vector<TrackHeadingSample>& samples() const { return samples_; }
+
+ private:
+  FusionCore& fc_;
+  std::vector<TrackHeadingSample> samples_;
+  double t_ = 0.0, x_ = 0.0, y_ = 0.0, yaw_ = 0.0;
+  int step_ = 0;
+};
+
+// Straight, a corner well over the yaw-rate limit, straight again: the first
+// fix after the corner is the one that throws the window away.
+ArcDriver drive_through_a_corner(FusionCore& fc) {
+  ArcDriver drive(fc);
+  drive.leg(12.0, 1.0, 0.0);
+  drive.leg( 4.0, 1.0, 0.8);
+  drive.leg(12.0, 1.0, 0.0);
+  return drive;
+}
+
+FusionCoreConfig track_heading_config() {
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;   // no absolute heading: GPS track is it
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  cfg.gps_track_heading_max_yaw_rate = 0.3;
+  cfg.gps_track_heading_min_dist     = 5.0;
+  return cfg;
+}
+
+}  // namespace
+
+TEST(GNSSTest, DiscardedTrackHeadingWindowReportsItsOwnState) {
+  FusionCore fc(track_heading_config());
+  State s0; fc.init(s0, 0.0);
+
+  const auto drive = drive_through_a_corner(fc);
+
+  const int discards = static_cast<int>(std::count_if(
+    drive.samples().begin(), drive.samples().end(),
+    [](const TrackHeadingSample& s) {
+      return s.state == TrackHeadingState::WINDOW_HAD_TURN;
+    }));
+  EXPECT_EQ(discards, 1)
+    << "exactly one fix discards the window: the first one after the corner "
+       "whose yaw rate is back under the limit";
+}
+
+TEST(GNSSTest, DiscardFixDoesNotInheritThePreviousFixesBaseline) {
+  FusionCore fc(track_heading_config());
+  State s0; fc.init(s0, 0.0);
+
+  const auto drive = drive_through_a_corner(fc);
+  const auto& samples = drive.samples();
+
+  const auto discard = std::find_if(
+    samples.begin(), samples.end(), [](const TrackHeadingSample& s) {
+      return s.state == TrackHeadingState::WINDOW_HAD_TURN;
+    });
+  ASSERT_NE(discard, samples.end()) << "no fix reported the discard";
+  ASSERT_NE(discard, samples.begin());
+
+  const auto& previous = *(discard - 1);
+  // Both fields are written only from inside branches, so the bug is a verbatim
+  // copy of whatever the last writing fix left: same number, different fix.
+  EXPECT_NE(discard->baseline_m, previous.baseline_m)
+    << "baseline " << discard->baseline_m << " m carried over from t="
+    << previous.t;
+  // It is the displacement being thrown away, so it is real and bounded by the
+  // ~28 m the robot drove in total.
+  EXPECT_GT(discard->baseline_m, 0.0);
+  EXPECT_LT(discard->baseline_m, 30.0);
 }
