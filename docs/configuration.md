@@ -122,7 +122,11 @@ fusioncore:
     gnss.max_hdop: 4.0          # dimensionless DOP. Only applies when the fix has no
     gnss.max_vdop: 6.0          # covariance at all, i.e. gps_msgs/GPSFix reporting
                                 # receiver-native DOP.
-    gnss.min_satellites: 4
+    gnss.min_satellites: 4      # NavSatFix carries no satellite count, so it is
+                                # synthesised as 4. Above 4 rejects every fix on
+                                # that input; a real count needs gps_msgs/GPSFix
+                                # via gnss.use_gps_fix below. The second receiver
+                                # (gnss.fix2_topic) is always NavSatFix.
     gnss.min_fix_type: 1        # 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
                                 # NavSatFix: status=2 maps to RTK_FIXED. RTK_FLOAT (3)
                                 # is unreachable via NavSatFix; use gnss.use_gps_fix

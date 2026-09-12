@@ -42,6 +42,7 @@
 #include <proj.h>
 
 #include "fusioncore_ros/gnss_dop_gate_warning.hpp"
+#include "fusioncore_ros/gnss_min_sats_warning.hpp"
 #include "fusioncore_ros/gnss_frame.hpp"
 
 using namespace std::chrono_literals;
@@ -621,6 +622,38 @@ public:
     max_sigma_xy_              = config.gnss.max_sigma_xy;
     max_sigma_z_               = config.gnss.max_sigma_z;
     config.gnss.min_satellites = get_parameter("gnss.min_satellites").as_int();
+    // #115: NavSatFix has no satellite count, so gnss_callback synthesises
+    // kNavSatFixSyntheticSatellites for it. A threshold above that can never be
+    // met: every fix is rejected with MIN_SATS for the whole run, and the reason
+    // points at the receiver rather than at this parameter.
+    switch (fusioncore_ros::min_sats_warning(
+        gnss_enabled_, use_gps_fix_, !gnss2_topic_.empty(),
+        config.gnss.min_satellites))
+    {
+      case fusioncore_ros::MinSatsWarning::kEveryInput:
+        RCLCPP_WARN(get_logger(),
+          "gnss.min_satellites is %d, but sensor_msgs/NavSatFix carries no satellite "
+          "count and it is synthesised as %d. Every GNSS fix will be rejected "
+          "(MIN_SATS) and the filter will dead-reckon. Set gnss.use_gps_fix:=true to "
+          "read a real count from gps_msgs/GPSFix status.satellites_used, or lower "
+          "gnss.min_satellites to %d or less.",
+          config.gnss.min_satellites,
+          fusioncore_ros::kNavSatFixSyntheticSatellites,
+          fusioncore_ros::kNavSatFixSyntheticSatellites);
+        break;
+      case fusioncore_ros::MinSatsWarning::kSecondReceiverOnly:
+        RCLCPP_WARN(get_logger(),
+          "gnss.min_satellites is %d, which the primary gps_msgs/GPSFix input can "
+          "meet, but the second receiver on %s is sensor_msgs/NavSatFix and its "
+          "satellite count is synthesised as %d. Every fix from it will be rejected "
+          "(MIN_SATS). Lower gnss.min_satellites to %d or less to fuse it.",
+          config.gnss.min_satellites, gnss2_topic_.c_str(),
+          fusioncore_ros::kNavSatFixSyntheticSatellites,
+          fusioncore_ros::kNavSatFixSyntheticSatellites);
+        break;
+      case fusioncore_ros::MinSatsWarning::kNone:
+        break;
+    }
     min_fix_type_ = static_cast<fusioncore::sensors::GnssFixType>(
         get_parameter("gnss.min_fix_type").as_int());
     config.gnss.min_fix_type = min_fix_type_;
