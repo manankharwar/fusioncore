@@ -511,6 +511,7 @@ enum class TrackHeadingState {
   BASELINE_SHORT   = 4,  // displacement since the reference fix < track_heading_min_dist
   SIGMA_HIGH       = 5,  // sigma_xy/dist > track_heading_max_sigma, bearing too uncertain
   CHI2_FAILED      = 6,  // bearing computed but rejected as an outlier
+  WINDOW_HAD_TURN  = 7,  // a turn inside the window: the bearing would cross the corner
 };
 
 // Sizes for the tally arrays, which are indexed by static_cast<int>(reason).

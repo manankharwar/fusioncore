@@ -109,6 +109,7 @@ track_heading_state: FUSED    # why GPS track heading did or did not update yaw:
                               #   BASELINE_SHORT    not far enough since the reference fix
                               #   SIGMA_HIGH        bearing too uncertain for the baseline
                               #   CHI2_FAILED       bearing computed but rejected
+                              #   WINDOW_HAD_TURN   a turn inside the window: discarded
                               # On a rover with no magnetometer and no dual antenna
                               # this is the ONLY thing bounding yaw, and when it
                               # silently declines the whole filter degrades behind it
