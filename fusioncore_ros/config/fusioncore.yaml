@@ -166,6 +166,14 @@ fusioncore:
     gnss.track_heading_enabled: true
     gnss.track_heading_min_dist: 5.0     # meters: minimum displacement baseline per fusion
     gnss.track_heading_max_sigma: 0.4    # radians (~23 deg): skip fusion if GPS noise is too high
+    # Warn when the heading actually in use disagrees with the GPS track bearing by
+    # more than this many degrees over several straight segments. When a dual
+    # antenna, magnetometer or 9-axis IMU is present it outranks GPS track heading,
+    # so track heading stands down: this is what checks that it was right to. A
+    # heading source that is confidently wrong is otherwise invisible, see issue
+    # #73 where a 23 deg error drove a whole mission. Warning only, never overrides
+    # the heading source. 0 = off.
+    gnss.track_heading_cross_check_deg: 15.0
 
     # Minimum robot speed (m/s) for GPS displacement steps to count toward heading observability.
     # Below this threshold: could be GPS jitter or vibration, not real forward motion.
@@ -394,6 +402,14 @@ fusioncore:
     # to 0.59 m, largest 3.81 m, so 4.0 rejected nothing clean and caught every
     # injected spike from 4 m up.
     gnss.continuity_max_m: 0.0
+    # Leave continuity_max_m at 0 and the filter measures the threshold from this
+    # receiver's own fix-to-fix scatter over the first 200 admissible fixes, then
+    # holds it. This is the only gate that can see a metre-scale spike: chi2 tests
+    # a fix against the filter, so on a consumer receiver a spike had to exceed
+    # 29 m before chi2 rejected it. The value chosen is logged and published on
+    # the GNSS status topic. Set continuity_max_m to pin your own, or false here
+    # to leave the gate off entirely.
+    gnss.continuity_auto: true
 
     # Physical plausibility: reject a fix further from the prediction than the
     # robot could possibly have travelled. max_speed is your robot's real top

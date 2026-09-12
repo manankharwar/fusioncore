@@ -121,6 +121,22 @@ struct GnssParams {
   // caught, so 4.0 is the right number FOR THAT RECEIVER. Measure yours.
   double continuity_max_m = 0.0;
 
+  // When continuity_max_m is left at 0, measure the threshold from this
+  // receiver instead of leaving the gate off.
+  //
+  // Off was the old behaviour and it meant the out-of-box filter could not see a
+  // metre-scale spike at all, because chi2 is the only other gate and it tests
+  // against the filter's own covariance: measured on the 2026-09-06 rover log, a
+  // spike had to exceed 29 m before chi2 rejected it, while an accepted 15 m
+  // spike moved position 4.5 m. Meanwhile the right threshold was sitting in the
+  // data the whole time, since it is a property of the receiver.
+  //
+  // The filter watches the first CONT_LEARN_N admissible fixes, takes the
+  // largest prediction residual it sees, and sets the limit to 1.5x that,
+  // clamped to [2, 25] m. An explicit continuity_max_m always wins and skips
+  // learning entirely. The value chosen is logged and published.
+  bool continuity_auto = true;
+
   double base_noise_xy = 1.0;
   double base_noise_z  = 2.0;
   double heading_noise = 0.02;

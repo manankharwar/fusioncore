@@ -43,6 +43,26 @@ struct FusionCoreConfig {
   bool   gps_track_heading_enabled  = true;
   double gps_track_heading_min_dist = 5.0;   // meters
   double gps_track_heading_max_sigma = 0.4;  // radians
+  // Warn when the heading actually in use disagrees with the GPS track bearing
+  // by more than this many degrees, sustained over several straight segments.
+  //
+  // When an absolute heading source is present (dual antenna, magnetometer, or
+  // a 9-axis IMU's orientation) track heading correctly stands down: that source
+  // outranks it. Standing down SILENTLY is the problem. The track bearing is an
+  // independent measurement of where the robot actually went, so it is the one
+  // thing that can catch an absolute source which is confidently wrong, and the
+  // filter is already computing it.
+  //
+  // Issue #73, measured from a user's own log: a magnetometer heading 23 deg off
+  // true drove an entire waypoint mission into a dogleg on every leg. FusionCore
+  // reproduced that heading faithfully (within 1.6 deg of the IMU it was handed),
+  // its own position track disagreed with its own published yaw by a median 23.5
+  // deg across 20 straight segments, and nothing anywhere said so. The user found
+  // it by exporting a spreadsheet.
+  //
+  // This only ever warns. It does not override a heading source the config chose.
+  // 0 = disabled.
+  double gps_track_heading_cross_check_deg = 15.0;
 
   // Motion quality thresholds for GPS track heading observability.
   // A GPS displacement step only counts toward heading_observable_distance when:
@@ -579,6 +599,17 @@ struct FusionCoreStatus {
   // Heading observability
   bool          heading_validated   = false;
   HeadingSource heading_source      = HeadingSource::NONE;
+  // Median of (filter yaw - GPS track bearing) in degrees over recent straight
+  // segments, and how many segments went into it. Only populated while an
+  // absolute heading source is in charge, which is when nothing else is checking
+  // it. Positive means the heading in use points counter-clockwise of the
+  // direction the robot is actually travelling. 0 samples means no opinion.
+  // Fix-to-fix continuity limit actually in force, in metres. 0 means the gate
+  // is not active yet, either because it is disabled or still learning.
+  double continuity_limit_m     = 0.0;
+  bool   continuity_learned     = false;
+  double heading_vs_track_deg   = 0.0;
+  int    heading_vs_track_n     = 0;
   double        distance_traveled   = 0.0;
 
   // Outlier rejection counters: cumulative since init()
@@ -1058,6 +1089,25 @@ private:
   // yaw_rate check; consumed and cleared in apply_gnss_update()'s heading
   // fusion block.
   bool   hdg_window_had_turn_ = false;
+
+  // Continuity threshold learned from the receiver (see GnssParams::continuity_auto).
+  static constexpr int CONT_LEARN_N = 200;
+  double cont_learn_max_ = 0.0;
+  int    cont_learn_n_   = 0;
+  double cont_learned_m_ = 0.0;   // 0 = not learned yet
+
+  // GPS-track cross-check against whichever absolute heading source is in use.
+  // Kept separate from the fusion path's reference above, because the two never
+  // run at the same time and mixing their windows would compare a bearing to a
+  // baseline that a different code path had already consumed.
+  static constexpr int XCHK_HISTORY = 16;
+  double xchk_ref_x_ = 0.0;
+  double xchk_ref_y_ = 0.0;
+  bool   xchk_ref_set_ = false;
+  double xchk_diff_deg_[XCHK_HISTORY] = {0.0};
+  int    xchk_n_ = 0;
+  int    xchk_i_ = 0;
+  double xchk_median_deg() const;
 
   // Returns heading 1-sigma in radians computed from P via quaternion-to-yaw Jacobian.
   double compute_heading_sigma_rad() const;

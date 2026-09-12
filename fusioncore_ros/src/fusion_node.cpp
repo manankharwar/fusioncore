@@ -248,6 +248,10 @@ public:
     declare_parameter("gnss.max_sigma_xy",   25.0);
     declare_parameter("gnss.outlier_sigma_xy", 0.0);
     declare_parameter("gnss.continuity_max_m", 0.0);
+    // Leave continuity_max_m at 0 and let the filter measure the threshold from
+    // this receiver's own fix-to-fix scatter, rather than shipping the only gate
+    // that can see a metre-scale spike in the off position. See issue #116.
+    declare_parameter("gnss.continuity_auto", true);
     declare_parameter("gnss.max_sigma_z",    50.0);
     declare_parameter("gnss.min_satellites", 4);
     // Minimum fix type for GNSS fusion: 1=GPS, 2=DGPS, 3=RTK_FLOAT, 4=RTK_FIXED
@@ -374,6 +378,10 @@ public:
     declare_parameter("gnss.track_heading_enabled",   true);
     declare_parameter("gnss.track_heading_min_dist",  5.0);
     declare_parameter("gnss.track_heading_max_sigma", 0.4);
+    // Warn when the heading in use disagrees with the GPS track bearing by more
+    // than this many degrees over several straight segments. Warning only, it
+    // never overrides the heading source. 0 = off. See issue #73.
+    declare_parameter("gnss.track_heading_cross_check_deg", 15.0);
     declare_parameter("gnss.track_heading_min_speed",    0.2);
     declare_parameter("gnss.track_heading_max_yaw_rate", 0.3);
     declare_parameter("gnss.lever_arm_max_heading_sigma_deg", 20.0);
@@ -608,6 +616,7 @@ public:
     config.gnss.max_sigma_xy   = get_parameter("gnss.max_sigma_xy").as_double();
     config.gnss.outlier_sigma_xy = get_parameter("gnss.outlier_sigma_xy").as_double();
     config.gnss.continuity_max_m = get_parameter("gnss.continuity_max_m").as_double();
+    config.gnss.continuity_auto  = get_parameter("gnss.continuity_auto").as_bool();
     config.gnss.max_sigma_z    = get_parameter("gnss.max_sigma_z").as_double();
     max_sigma_xy_              = config.gnss.max_sigma_xy;
     max_sigma_z_               = config.gnss.max_sigma_z;
@@ -706,6 +715,9 @@ public:
     config.gps_track_heading_enabled       = get_parameter("gnss.track_heading_enabled").as_bool();
     config.gps_track_heading_min_dist      = get_parameter("gnss.track_heading_min_dist").as_double();
     config.gps_track_heading_max_sigma     = get_parameter("gnss.track_heading_max_sigma").as_double();
+    config.gps_track_heading_cross_check_deg =
+        get_parameter("gnss.track_heading_cross_check_deg").as_double();
+    heading_xcheck_deg_ = config.gps_track_heading_cross_check_deg;
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
     config.gps_track_heading_max_yaw_rate  = get_parameter("gnss.track_heading_max_yaw_rate").as_double();
     config.gnss_lever_arm_max_heading_sigma_deg =
@@ -2895,6 +2907,72 @@ private:
   // because each fix honestly reports ACCEPTED.
   static constexpr int    kGateInertMinSamples = 100;
   static constexpr double kGateInertRatio      = 0.1;
+  // Say what the auto-calibrated continuity gate settled on. A gate the user did
+  // not configure and cannot see is only half an improvement on no gate at all.
+  void report_learned_continuity(const fusioncore::FusionCoreStatus & st)
+  {
+    if (continuity_reported_) return;
+    if (!st.continuity_learned || st.continuity_limit_m <= 0.0) return;
+    continuity_reported_ = true;
+    RCLCPP_INFO(get_logger(),
+      "GNSS continuity gate calibrated to %.2f m from this receiver's own "
+      "fix-to-fix scatter. A fix that disagrees with a least-squares fit through "
+      "the last few accepted fixes by more than that is now rejected as a spike. "
+      "This is the only gate that can see a metre-scale spike: the chi2 gate "
+      "scales with the filter's covariance and typically needs tens of metres. "
+      "Set gnss.continuity_max_m to pin a value of your own, or "
+      "gnss.continuity_auto:=false to leave it off.",
+      st.continuity_limit_m);
+  }
+
+  static const char * heading_source_str(fusioncore::HeadingSource src)
+  {
+    switch (src) {
+      case fusioncore::HeadingSource::NONE:            return "no absolute heading";
+      case fusioncore::HeadingSource::DUAL_ANTENNA:    return "DUAL_ANTENNA";
+      case fusioncore::HeadingSource::IMU_ORIENTATION: return "IMU_ORIENTATION (9-axis IMU)";
+      case fusioncore::HeadingSource::GPS_TRACK:       return "GPS_TRACK";
+      case fusioncore::HeadingSource::MAGNETOMETER:    return "MAGNETOMETER";
+    }
+    return "unknown";
+  }
+
+  // An absolute heading source outranks GPS track heading, so track heading does
+  // not fuse. It is still computed, and comparing the two is the only check on a
+  // heading source that is confidently wrong.
+  //
+  // Issue #73: a magnetometer 23 deg off true drove a whole waypoint mission into
+  // a dogleg on every leg. The filter reproduced that heading to within 1.6 deg,
+  // which is correct behaviour, while its own position track disagreed with its
+  // own published yaw by a median 23.5 deg. Nothing said so, and the user had to
+  // export a spreadsheet to find it.
+  //
+  // Requires several segments before speaking: one bearing over a slightly
+  // curved stretch disagrees for reasons that are not a fault.
+  static constexpr int kHeadingXCheckMinSamples = 6;
+  void warn_if_heading_disagrees_with_track(const fusioncore::FusionCoreStatus & st)
+  {
+    if (heading_xcheck_warned_) return;
+    if (heading_xcheck_deg_ <= 0.0) return;
+    if (st.heading_vs_track_n < kHeadingXCheckMinSamples) return;
+    if (std::abs(st.heading_vs_track_deg) < heading_xcheck_deg_) return;
+    heading_xcheck_warned_ = true;
+    RCLCPP_WARN(get_logger(),
+      "Heading disagrees with the GPS track by %.1f deg (median over %d straight "
+      "segments of at least %.1f m). The filter is using %s, which outranks GPS "
+      "track heading, so this is NOT being corrected: the pose is published with "
+      "that heading. A robot steering on it will drive at an angle to the path it "
+      "is given and curve back at the end. Either the absolute heading source is "
+      "miscalibrated (hard iron, or declination), or the mounting rotation from "
+      "the IMU frame to %s does not match how the sensor is fitted. To tell those "
+      "apart, drive several distinct headings and see whether the disagreement "
+      "stays constant (mounting or declination) or swings with heading (hard "
+      "iron). Set gnss.track_heading_cross_check_deg to 0 to silence this.",
+      st.heading_vs_track_deg, st.heading_vs_track_n,
+      get_parameter("gnss.track_heading_min_dist").as_double(),
+      heading_source_str(st.heading_source), base_frame_.c_str());
+  }
+
   void warn_if_outlier_gate_inert(const fusioncore::FusionCoreStatus & st)
   {
     if (gate_inert_warned_) return;
@@ -3019,6 +3097,13 @@ private:
     msg.heading_sigma_deg = d.heading_sigma_deg;
     msg.track_heading_state       = track_heading_state_str(d.track_heading_state);
     msg.track_heading_baseline_m  = d.track_heading_baseline_m;
+    {
+      const auto st_now = fc_->get_status();
+      msg.heading_vs_track_deg = st_now.heading_vs_track_deg;
+      msg.heading_vs_track_n   = st_now.heading_vs_track_n;
+      msg.continuity_limit_m   = st_now.continuity_limit_m;
+      msg.continuity_learned   = st_now.continuity_learned;
+    }
     msg.track_heading_sigma_rad   = d.track_heading_sigma_rad;
 
     gnss_status_pub_->publish(msg);
@@ -3386,6 +3471,8 @@ private:
       fh.gnss_chi2_threshold = status.gnss_chi2_threshold;
       fh.gnss_chi2_samples   = status.gnss_chi2_samples;
       warn_if_outlier_gate_inert(status);
+      warn_if_heading_disagrees_with_track(status);
+      report_learned_continuity(status);
 
       fh.gnss_in_coast           = status.gnss_in_coast;
       fh.gnss_consecutive_rejects = status.gnss_consecutive_rejects;
@@ -3587,6 +3674,9 @@ private:
 
   bool   lever_arm_warned_  = false;
   bool   gate_inert_warned_ = false;
+  bool   heading_xcheck_warned_ = false;
+  bool   continuity_reported_   = false;
+  double heading_xcheck_deg_    = 15.0;
   int    imu_la_warns_      = 0;
   int    gnss_la_warns_     = 0;
   rclcpp::Time imu_la_last_warn_{0, 0, RCL_ROS_TIME};

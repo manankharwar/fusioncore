@@ -3,6 +3,7 @@
 #include <stdexcept>
 #include <cmath>
 #include <limits>
+#include <algorithm>
 
 namespace fusioncore {
 
@@ -135,6 +136,12 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
+  xchk_ref_set_         = false;
+  cont_learn_max_       = 0.0;
+  cont_learn_n_         = 0;
+  cont_learned_m_       = 0.0;
+  xchk_n_               = 0;
+  xchk_i_               = 0;
 
   // Reset snapshot buffer
   snapshot_buffer_.clear();
@@ -215,6 +222,12 @@ void FusionCore::reset() {
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
+  xchk_ref_set_         = false;
+  cont_learn_max_       = 0.0;
+  cont_learn_n_         = 0;
+  cont_learned_m_       = 0.0;
+  xchk_n_               = 0;
+  xchk_i_               = 0;
   snapshot_buffer_.clear();
   imu_buffer_.clear();
   gnss_consecutive_rejects_ = 0;
@@ -937,6 +950,18 @@ void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
 }
 
 
+// Median of the recent (filter yaw - GPS track bearing) samples, in degrees.
+// Median rather than mean: one bearing taken over a slightly curved stretch is a
+// large outlier, and the whole point is to report a SUSTAINED disagreement.
+double FusionCore::xchk_median_deg() const {
+  if (xchk_n_ <= 0) return 0.0;
+  double v[XCHK_HISTORY];
+  for (int i = 0; i < xchk_n_; ++i) v[i] = xchk_diff_deg_[i];
+  std::sort(v, v + xchk_n_);
+  return (xchk_n_ % 2) ? v[xchk_n_ / 2]
+                       : 0.5 * (v[xchk_n_ / 2 - 1] + v[xchk_n_ / 2]);
+}
+
 // At the start of a rejection sequence, decide whether GNSS was continuous (a
 // persistent outlier like a multipath spike) or is returning after a gap (the
 // filter may have dead-reckoned away from truth while blind). Only the latter
@@ -1248,7 +1273,12 @@ bool FusionCore::apply_gnss_update(
   // its scale is S = H P H' + R and nothing under about 25 m looks surprising on
   // a consumer receiver. This compares a fix against the two before it, which
   // never involves P at all. See GnssParams::continuity_max_m.
-  if (config_.gnss.continuity_max_m > 0.0 && cont_n_ == CONT_HISTORY) {
+  const bool cont_explicit = (config_.gnss.continuity_max_m > 0.0);
+  const bool cont_learning  = (!cont_explicit && config_.gnss.continuity_auto &&
+                               cont_learned_m_ <= 0.0);
+  const double cont_limit   = cont_explicit ? config_.gnss.continuity_max_m
+                                            : cont_learned_m_;
+  if ((cont_explicit || config_.gnss.continuity_auto) && cont_n_ == CONT_HISTORY) {
     const double span = cont_t_[CONT_HISTORY - 1] - cont_t_[0];
     const double mean_dt = span / (CONT_HISTORY - 1);
     const double dt_new  = timestamp_seconds - cont_t_[CONT_HISTORY - 1];
@@ -1281,7 +1311,36 @@ bool FusionCore::apply_gnss_update(
         const double px = mx + (sx_x / sxx) * d;
         const double py = my + (sx_y / sxx) * d;
         const double resid = std::hypot(fix.x - px, fix.y - py);
-        if (resid > config_.gnss.continuity_max_m) {
+
+        // Learn the receiver's own fix-to-fix scatter before gating on it.
+        //
+        // The alternative was shipping this off, which is what it did, and the
+        // out-of-box filter then had no gate capable of seeing a metre-scale
+        // spike at all: chi2 tests a fix against the FILTER, so its scale is
+        // S = HPH' + R, and on the 2026-09-06 rover log a spike had to exceed
+        // 29 m before it was rejected. The right threshold is a property of the
+        // receiver, the receiver is right here, so measure it instead of asking
+        // the user to read a header and run a tool over a bag.
+        //
+        // Margin: 1.5x the largest residual seen while learning. On the six
+        // 2026-09 rover logs the largest residual across 1287 fixes was 3.81 m,
+        // so this lands near 5.7 m, which would have rejected NOTHING on that
+        // clean data. A hand-picked 4.0 caught injected spikes from 4 m up; this
+        // is deliberately looser than that, because rejecting good fixes is the
+        // failure that has cost this project most and an accepted 3 m spike
+        // moves the trajectory about 0.25 m.
+        //
+        // Learned once and then held. A sliding estimate would be dragged upward
+        // by exactly the spike train it is supposed to catch. The cost is that a
+        // receiver calibrated under open sky carries that threshold into canopy,
+        // where its honest scatter is larger; the 1.5x margin is the headroom for
+        // that, and a run that starts rejecting shows up in the outcome tally.
+        if (cont_learning) {
+          if (resid > cont_learn_max_) cont_learn_max_ = resid;
+          if (++cont_learn_n_ >= CONT_LEARN_N) {
+            cont_learned_m_ = std::min(std::max(1.5 * cont_learn_max_, 2.0), 25.0);
+          }
+        } else if (cont_limit > 0.0 && resid > cont_limit) {
           gnss_debug_.accepted = false;
           gnss_debug_.reason   = GnssRejectionReason::CONTINUITY_BREAK;
           note_gnss_outcome(timestamp_seconds);
@@ -1527,6 +1586,49 @@ bool FusionCore::apply_gnss_update(
     gnss_debug_.track_heading_state = TrackHeadingState::MOTION_UNSUITABLE;
   }
 
+  // An absolute heading source is in charge, so track heading does not fuse.
+  // Check it anyway. The bearing between two accepted fixes is an independent
+  // measurement of where the robot actually went, and it is the only thing here
+  // capable of catching an absolute source that is confidently wrong. See
+  // gps_track_heading_cross_check_deg for the case that prompted this.
+  if (config_.gps_track_heading_enabled &&
+      have_stronger_heading &&
+      config_.gps_track_heading_cross_check_deg > 0.0) {
+    if (!xchk_ref_set_) {
+      xchk_ref_x_ = fix.x;
+      xchk_ref_y_ = fix.y;
+      xchk_ref_set_ = true;
+      hdg_window_had_turn_ = false;
+    } else if (!motion_suits_track_heading || hdg_window_had_turn_) {
+      // Same admissibility rules the fusion path uses. A bearing measured across
+      // a turn, or at a crawl, describes the path and not the heading, so it
+      // would manufacture a disagreement that is not there. Restart the window.
+      xchk_ref_x_ = fix.x;
+      xchk_ref_y_ = fix.y;
+      hdg_window_had_turn_ = false;
+    } else {
+      const double dx = fix.x - xchk_ref_x_;
+      const double dy = fix.y - xchk_ref_y_;
+      const double dist = std::hypot(dx, dy);
+      if (dist >= config_.gps_track_heading_min_dist) {
+        const double sigma_xy = std::sqrt((R_meas(0,0) + R_meas(1,1)) * 0.5);
+        if (sigma_xy / dist <= config_.gps_track_heading_max_sigma) {
+          double roll_s, pitch_s, yaw_s;
+          const auto& st = ukf_.state();
+          quat_to_euler(st.x[QW], st.x[QX], st.x[QY], st.x[QZ], roll_s, pitch_s, yaw_s);
+          double d = yaw_s - std::atan2(dy, dx);
+          while (d >  M_PI) d -= 2.0 * M_PI;
+          while (d < -M_PI) d += 2.0 * M_PI;
+          xchk_diff_deg_[xchk_i_] = d * 180.0 / M_PI;
+          xchk_i_ = (xchk_i_ + 1) % XCHK_HISTORY;
+          if (xchk_n_ < XCHK_HISTORY) ++xchk_n_;
+        }
+        xchk_ref_x_ = fix.x;
+        xchk_ref_y_ = fix.y;
+      }
+    }
+  }
+
   if (config_.gps_track_heading_enabled &&
       !have_stronger_heading &&
       motion_suits_track_heading) {
@@ -1755,6 +1857,11 @@ FusionCoreStatus FusionCore::get_status() const {
     status.yaw_rate_encoder_mean = yaw_sign_enc_sum_ / yaw_sign_disagree_;
   }
   status.heading_source    = heading_source_;
+  status.continuity_limit_m   = (config_.gnss.continuity_max_m > 0.0)
+                                  ? config_.gnss.continuity_max_m : cont_learned_m_;
+  status.continuity_learned   = (config_.gnss.continuity_max_m <= 0.0 && cont_learned_m_ > 0.0);
+  status.heading_vs_track_deg = xchk_median_deg();
+  status.heading_vs_track_n   = xchk_n_;
   status.distance_traveled = distance_traveled_;
 
   status.vslam_health =

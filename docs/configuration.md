@@ -363,6 +363,19 @@ fusioncore:
     # precisely to catch what a coast-inflated chi2 lets through.
 
     gnss.continuity_max_m: 0.0
+
+
+    gnss.continuity_auto: true
+
+    # When continuity_max_m is 0, measure the threshold from the receiver's own
+
+    # fix-to-fix scatter instead of leaving the gate off. The filter watches the
+
+    # first 200 admissible fixes, takes the largest prediction residual, and uses
+
+    # 1.5x that, clamped to [2, 25] m. It logs and publishes what it chose. An
+
+    # explicit continuity_max_m always wins and skips learning.
     # Rejects a fix that disagrees with the two accepted fixes before it, by more
     # than this many metres. 0.0 = disabled. This is the gate that can actually
     # see a small GPS spike.

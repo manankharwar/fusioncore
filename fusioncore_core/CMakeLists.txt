@@ -74,6 +74,12 @@ if(BUILD_TESTING)
   ament_add_gtest(test_gnss_reacquire tests/test_gnss_reacquire.cpp TIMEOUT 600)
   target_link_libraries(test_gnss_reacquire fusioncore_core Eigen3::Eigen)
 
+  ament_add_gtest(test_heading_cross_check tests/test_heading_cross_check.cpp TIMEOUT 300)
+  target_link_libraries(test_heading_cross_check fusioncore_core Eigen3::Eigen)
+
+  ament_add_gtest(test_continuity_auto tests/test_continuity_auto.cpp TIMEOUT 300)
+  target_link_libraries(test_continuity_auto fusioncore_core Eigen3::Eigen)
+
   ament_add_gtest(test_clock_skew tests/test_clock_skew.cpp TIMEOUT 300)
   target_link_libraries(test_clock_skew fusioncore_core Eigen3::Eigen)
 
