@@ -1091,7 +1091,24 @@ private:
   bool   hdg_window_had_turn_ = false;
 
   // Continuity threshold learned from the receiver (see GnssParams::continuity_auto).
-  static constexpr int CONT_LEARN_N = 200;
+  //
+  // 100, chosen by measurement rather than feel. At 1 Hz, which is what every
+  // consumer receiver in this project's field logs actually runs at, this is 100
+  // seconds before the gate can protect anything, so the number is a direct
+  // trade between arming early and learning enough. Swept over six 2026-09 rover
+  // logs, counting how many runs the gate ever armed on and how many good fixes
+  // it then rejected:
+  //
+  //     N=40   5 of 6 logs armed, 2 good fixes rejected
+  //     N=60   5 of 6 logs armed, 2 good fixes rejected
+  //     N=100  5 of 6 logs armed, 0 rejected
+  //     N=200  3 of 6 logs armed, 0 rejected
+  //
+  // 200 was the first guess and it left half the runs with no gate at all. Below
+  // 100 the learning window can fall entirely inside a quiet stretch and set a
+  // threshold the same receiver later exceeds honestly. The one log that never
+  // arms at 100 is 41 fixes long, and nothing sensible would arm on that.
+  static constexpr int CONT_LEARN_N = 100;
   double cont_learn_max_ = 0.0;
   int    cont_learn_n_   = 0;
   double cont_learned_m_ = 0.0;   // 0 = not learned yet
