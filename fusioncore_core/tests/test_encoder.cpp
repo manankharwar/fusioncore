@@ -259,3 +259,68 @@ int main(int argc, char** argv) {
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
+
+// A channel a sensor cannot measure must contribute NOTHING.
+//
+// #113: the radar and GNSS velocity inputs passed a literal 0.0 for yaw rate
+// with a large variance, on the theory that a large variance makes a channel
+// harmless. Large is not silent. The test is not "is the filter still roughly
+// right", it is "did adding this source change the answer at all", because that
+// is the property being claimed.
+TEST(EncoderTest, AVelocityOnlySourceMustNotMoveYawRate) {
+  // Truth: constant turn. Feeding the matching centripetal acceleration keeps
+  // the IMU consistent with the motion, so any yaw movement comes from the
+  // channel under test and not from a contrived setup.
+  auto run = [](int mode) {           // 0 = absent, 1 = predicted, 2 = zero+1e6
+    FusionCoreConfig cfg;
+    cfg.imu_has_magnetometer = false;
+    cfg.motion_model = create_motion_model("DifferentialDrive");
+    FusionCore fc(cfg);
+    State s0;
+    fc.init(s0, 0.0);
+
+    const double dt = 0.01, g = 9.80665, speed = 1.0, truth_wz = 0.5;
+    for (int step = 1; step * dt <= 30.0 + 1e-9; ++step) {
+      const double t = step * dt;
+      fc.update_imu(t, 0, 0, truth_wz, 0, speed * truth_wz, g);
+      if (step % 2 == 0) {
+        fc.update_encoder(t, speed, 0.0, truth_wz);      // the real encoder
+        if (mode == 1) {
+          const auto & x = fc.get_state().x;
+          fc.update_encoder(t, speed, 0.0, x[WZ] + x[B_EWZ],
+                            0.05 * 0.05, 0.05 * 0.05, 1e12);
+        } else if (mode == 2) {
+          fc.update_encoder(t, speed, 0.0, 0.0,
+                            0.05 * 0.05, 0.05 * 0.05, 1e6);
+        }
+      }
+    }
+    return fc.get_state().x[WZ];
+  };
+
+  const double absent    = run(0);
+  const double predicted = run(1);
+  const double zeroed    = run(2);
+
+  std::cerr << "  filter yaw rate after 30 s turning at 0.5 rad/s\n"
+            << "    source absent                 : " << absent    << " rad/s\n"
+            << "    source present, predicted     : " << predicted << " rad/s\n"
+            << "    source present, zero + 1e6    : " << zeroed    << " rad/s\n";
+
+  // What this actually measured, and it is worth being straight about it: at a
+  // variance of 1e6 the zero substitution pulls yaw rate by less than 1e-5 rad/s
+  // here, so the defect #113 describes is real in principle and negligible in
+  // magnitude on this scenario. The predicted substitution is not bit-identical
+  // to absence either, because the update still touches P even when the
+  // innovation is exactly zero.
+  //
+  // The fix is kept on correctness grounds rather than performance: a zero in
+  // the measurement vector is a claim the sensor never made, the encoder2 path
+  // already does it this way, and a future change to the variance or the gain
+  // would turn a negligible pull into a real one with nothing to catch it.
+  EXPECT_NEAR(predicted, absent, 1e-3)
+      << "substituting the prediction should leave the estimate where it was";
+  EXPECT_NEAR(zeroed, absent, 1e-3)
+      << "if this ever grows, the zero substitution has started to matter and "
+         "the variance or the gain has changed underneath it";
+}

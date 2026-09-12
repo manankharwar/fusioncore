@@ -2183,7 +2183,22 @@ private:
     const double var_vx = (cov[0] > 0.0) ? cov[0] : (radar_vel_noise_ * radar_vel_noise_);
     const double var_vy = (cov[7] > 0.0) ? cov[7] : (radar_vel_noise_ * radar_vel_noise_);
 
-    fc_->update_encoder(t, vx, vy, 0.0, var_vx, var_vy, 1e6);
+    // Neither a Doppler radar nor a GNSS velocity solution can measure yaw
+    // rate, so that channel must contribute NOTHING rather than a literal zero
+    // with a big variance. Same reasoning as #108 on the encoder2 path:
+    // inflating the variance alone still leaves a small pull toward whatever the
+    // field happens to contain, and 0.0 is a real claim about a robot that may
+    // well be rotating.
+    //
+    // Substituting what the measurement function would PREDICT makes the
+    // innovation exactly zero, so the channel cannot pull at all. Note the bias
+    // term: encoder_measurement_function is
+    //   z[0] = VX,  z[1] = VY,  z[2] = WZ + B_EWZ
+    // so predicting the yaw channel means adding the encoder yaw bias the filter
+    // is currently estimating. Bare WZ would leave an innovation of -B_EWZ.
+    const auto & st_pred = fc_->get_state().x;
+    const double wz_predicted = st_pred[fusioncore::WZ] + st_pred[fusioncore::B_EWZ];
+    fc_->update_encoder(t, vx, vy, wz_predicted, var_vx, var_vy, 1e12);
   }
 
   // ─── GPS velocity callback ────────────────────────────────────────────────
@@ -2215,7 +2230,22 @@ private:
     const double var_vx = (cov[0] > 0.0) ? cov[0] : -1.0;
     const double var_vy = (cov[7] > 0.0) ? cov[7] : -1.0;
 
-    fc_->update_encoder(t, vx, vy, 0.0, var_vx, var_vy, 1e6);
+    // Neither a Doppler radar nor a GNSS velocity solution can measure yaw
+    // rate, so that channel must contribute NOTHING rather than a literal zero
+    // with a big variance. Same reasoning as #108 on the encoder2 path:
+    // inflating the variance alone still leaves a small pull toward whatever the
+    // field happens to contain, and 0.0 is a real claim about a robot that may
+    // well be rotating.
+    //
+    // Substituting what the measurement function would PREDICT makes the
+    // innovation exactly zero, so the channel cannot pull at all. Note the bias
+    // term: encoder_measurement_function is
+    //   z[0] = VX,  z[1] = VY,  z[2] = WZ + B_EWZ
+    // so predicting the yaw channel means adding the encoder yaw bias the filter
+    // is currently estimating. Bare WZ would leave an innovation of -B_EWZ.
+    const auto & st_pred = fc_->get_state().x;
+    const double wz_predicted = st_pred[fusioncore::WZ] + st_pred[fusioncore::B_EWZ];
+    fc_->update_encoder(t, vx, vy, wz_predicted, var_vx, var_vy, 1e12);
   }
 
   // ─── GNSS position callback ────────────────────────────────────────────────
