@@ -41,6 +41,8 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   **The cost is real:** a robot parked for a long time cannot re-acquire if it was genuinely lost before it stopped. For a stop of tens of seconds that does not matter; for one parked overnight it does. The evidence is dropped the moment the encoders report motion. Prompted, like `zupt.position_noise_scale`, by Martin Pecka's phase-lock explanation on ROS Discourse.
 
 ### Fixed
+
+- **`gnss.min_satellites` above 4 no longer rejects every fix in silence.** `sensor_msgs/NavSatFix` carries no satellite count, so `gnss_callback` synthesises 4 for it. The default of 4 passes because the gate is `<`, and any higher value can never be met: the filter dead-reckons for the whole run while `MIN_SATS` blames the receiver. The node now warns at configure time and names the fix — `gnss.use_gps_fix` for a real `status.satellites_used`, or a threshold of 4 or less. The second receiver (`gnss.fix2_topic`) is `NavSatFix` whatever the primary is, so it gets its own warning behind a `GPSFix` primary. Closes #115.
 - **A turn inside the GPS track-heading baseline no longer collapses the yaw covariance.** Contributed by Ignacio Villanua (#109), found on a real UGV running low-rate GPS with noisy IMU and encoders.
 
   Two yaw-rate gates already existed and neither closed this hole. One stops distance ACCUMULATING while turning; the other stops heading FUSING when the yaw rate is high at the instant of the fix. Between them a robot can drive straight, turn, then drive straight again, and fuse on the third leg while the reference position is still from before the turn. `atan2(dy, dx)` then returns the chord across an L-shaped path rather than the heading of either leg.
