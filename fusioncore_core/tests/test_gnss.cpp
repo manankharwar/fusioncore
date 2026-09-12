@@ -1044,3 +1044,61 @@ TEST(GNSSTest, TurnInsideTheBaselineDiscardsTheWindow) {
   SUCCEED() << "track heading state after the corner: "
             << static_cast<int>(d.track_heading_state);
 }
+
+// A turn that begins and ends between two GNSS fixes.
+//
+// #109 added a guard that discards the track-heading window when the robot turns
+// inside it, but the yaw rate was only inspected from update_distance_traveled(),
+// which on a GNSS-only robot runs once per fix. At 1 Hz a corner taken inside the
+// gap was never seen, and the bearing was measured across it: the reference did
+// not reset, so the baseline kept growing straight through the turn.
+TEST(GNSSTest, TurnBetweenTwoFixesIsStillCaught) {
+  FusionCoreConfig cfg;
+  cfg.imu_has_magnetometer = false;
+  cfg.motion_model = create_motion_model("DifferentialDrive");
+  cfg.gps_track_heading_max_yaw_rate = 0.3;
+  cfg.gps_track_heading_min_dist     = 5.0;
+  FusionCore fc(cfg);
+  State s0; fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  double t = 0.0, x = 0.0, y = 0.0, yaw = 0.0;
+  double baseline_before = 0.0, baseline_after = 0.0, max_state_wz = 0.0;
+  TrackHeadingState state_after = TrackHeadingState::NOT_ATTEMPTED;
+
+  // Fixes land on the second. The corner runs from t=12.0 to t=12.6, entirely
+  // inside the gap between the fixes at t=12 and t=13.
+  for (int i = 0; i < 1800; ++i) {
+    t += dt;
+    const double wz = (t > 12.0 && t <= 12.6) ? 0.8 : 0.0;
+    yaw += wz * dt;
+    x += std::cos(yaw) * dt;
+    y += std::sin(yaw) * dt;
+    fc.update_imu(t, 0, 0, wz, 0, 0, g);
+    if (i % 2 == 0) fc.update_encoder(t, 1.0, 0.0, wz);
+    if (wz != 0.0) max_state_wz = std::max(max_state_wz, std::abs(fc.get_state().x[WZ]));
+    if (static_cast<int>(std::round(t * 100)) % 100 == 0) {
+      GnssFix f;
+      f.x = x; f.y = y; f.z = 0.0;
+      f.hdop = f.sigma_xy = 2.0;
+      f.vdop = f.sigma_z  = 3.0;
+      f.satellites = 10;
+      f.fix_type = GnssFixType::GPS_FIX;
+      fc.update_gnss(t, f);
+      const double b = fc.get_gnss_debug().track_heading_baseline_m;
+      if (std::abs(t - 12.0) < 1e-6) baseline_before = b;
+      if (std::abs(t - 13.0) < 1e-6) {
+        baseline_after = b;
+        state_after    = fc.get_gnss_debug().track_heading_state;
+      }
+    }
+  }
+
+  // Truth turned 27.5 degrees inside that gap, so the window must be discarded
+  // rather than used to measure a bearing straight across the corner.
+  EXPECT_EQ(state_after, TrackHeadingState::WINDOW_HAD_TURN)
+      << "the corner was not detected (peak filtered |WZ| during it was "
+      << max_state_wz << " rad/s against a threshold of "
+      << cfg.gps_track_heading_max_yaw_rate << "), baseline went "
+      << baseline_before << " m to " << baseline_after << " m";
+}

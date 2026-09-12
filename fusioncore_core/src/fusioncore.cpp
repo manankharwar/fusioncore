@@ -666,6 +666,23 @@ void FusionCore::update_imu(
   while ((int)imu_buffer_.size() > config_.imu_buffer_size)
     imu_buffer_.pop_front();
 
+  // Turn detection for the GPS-track heading window, sampled HERE because this
+  // is where the yaw rate actually arrives.
+  //
+  // It used to be checked only inside update_distance_traveled(), which on a
+  // GNSS-only robot runs once per fix. That is 1 Hz on most receivers, so a turn
+  // that started and finished between two fixes was invisible and the bearing
+  // was then measured straight across the corner. Reproduced in
+  // TurnBetweenTwoFixesIsStillCaught: 0.8 rad/s for 0.6 s inside a 1 s gap turns
+  // the robot 27.5 degrees, and the window was not discarded.
+  //
+  // Read from the filtered state rather than the raw gyro argument, so the
+  // threshold still compares against an estimated, bias-corrected rate exactly
+  // as the fix-rate check does. That check stays where it is: it also covers the
+  // VSLAM pose path, which never reaches this function.
+  if (std::abs(ukf_.state().x[WZ]) > config_.gps_track_heading_max_yaw_rate)
+    hdg_window_had_turn_ = true;
+
   last_imu_time_ = timestamp_seconds;
   ++update_count_;
 }
@@ -1656,6 +1673,14 @@ bool FusionCore::apply_gnss_update(
       // hdg_window_had_turn_'s declaration). Discard this window instead of
       // fusing: reset the reference to the current fix and start accumulating
       // a fresh, hopefully-straight baseline from here.
+      // Publish it. Without this the branch assigns nothing, and because
+      // gnss_debug_ is only cleared in init() and reset(), both fields carry the
+      // previous fix's values into the bag: a discard reads as whatever gate
+      // spoke last, with a baseline measured somewhere else entirely. The one
+      // question this field exists to answer is then exactly the one it cannot.
+      gnss_debug_.track_heading_state = TrackHeadingState::WINDOW_HAD_TURN;
+      gnss_debug_.track_heading_baseline_m =
+          std::hypot(fix.x - last_hdg_fix_x_, fix.y - last_hdg_fix_y_);
       last_hdg_fix_x_      = fix.x;
       last_hdg_fix_y_      = fix.y;
       hdg_window_had_turn_ = false;
