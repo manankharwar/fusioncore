@@ -3056,6 +3056,7 @@ private:
       case fusioncore::TrackHeadingState::BASELINE_SHORT:    return "BASELINE_SHORT";
       case fusioncore::TrackHeadingState::SIGMA_HIGH:        return "SIGMA_HIGH";
       case fusioncore::TrackHeadingState::CHI2_FAILED:       return "CHI2_FAILED";
+      case fusioncore::TrackHeadingState::WINDOW_HAD_TURN:   return "WINDOW_HAD_TURN";
     }
     return "NOT_ATTEMPTED";
   }

@@ -1647,6 +1647,19 @@ bool FusionCore::apply_gnss_update(
       // hdg_window_had_turn_'s declaration). Discard this window instead of
       // fusing: reset the reference to the current fix and start accumulating
       // a fresh, hopefully-straight baseline from here.
+      // Report the discard rather than leaving the previous fix's verdict in
+      // place. Both fields are only written from inside branches, so without
+      // this the bag shows whatever the last fix that did write them left
+      // behind, and the one question this field exists to answer -- which gate
+      // was responsible -- is unanswerable on exactly the fix that acted (#112).
+      // The baseline is the displacement being thrown away: a long discarded
+      // window is a different story from a short one.
+      const double turn_dx = fix.x - last_hdg_fix_x_;
+      const double turn_dy = fix.y - last_hdg_fix_y_;
+      gnss_debug_.track_heading_baseline_m =
+        std::sqrt(turn_dx*turn_dx + turn_dy*turn_dy);
+      gnss_debug_.track_heading_state = TrackHeadingState::WINDOW_HAD_TURN;
+
       last_hdg_fix_x_      = fix.x;
       last_hdg_fix_y_      = fix.y;
       hdg_window_had_turn_ = false;
