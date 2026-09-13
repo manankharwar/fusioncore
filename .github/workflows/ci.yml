@@ -41,6 +41,12 @@ jobs:
       - name: Test config checker rules
         run: python3 -m unittest tools/test_check_config_params.py
 
+      - name: Check ROS parameter mappings reach FusionCore
+        run: python3 tools/check_config_wiring.py
+
+      - name: Test config wiring checker
+        run: python3 -m unittest tools/test_check_config_wiring.py
+
       - name: Install rosdep dependencies
         run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.sh
