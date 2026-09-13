@@ -420,6 +420,9 @@ struct FusionCoreConfig {
   // the trade is real and #64 is where it would show up, so re-run that sequence
   // after touching anything here.
   int    gnss_recovery_rejection_n = 15;
+  // Number of consecutive accepted fixes required to confirm GNSS recovery.
+  // Set to 0 to disable confirmation and clear the outage latch immediately.
+  int    gnss_reacquire_confirm_fixes = 3;
   // Floor for the P inflation, in metres of XY sigma. The inflation itself is
   // sized from the rejected innovation, because the error to be covered is
   // however far the dead reckoning went and no constant brackets that: 50 m is
@@ -1136,7 +1139,6 @@ private:
   // Accepted fixes in a row before a GNSS outage is considered genuinely over.
   // One is not enough (see post_outage_unconfirmed_); a handful at any realistic
   // fix rate is under a couple of seconds.
-  static constexpr int kAcceptsToConfirmReacquisition = 3;
   double cont_learn_max_ = 0.0;
   int    cont_learn_n_   = 0;
   double cont_learned_m_ = 0.0;   // 0 = not learned yet
