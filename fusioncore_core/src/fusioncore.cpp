@@ -239,7 +239,8 @@ void FusionCore::reset() {
   snapshot_buffer_.clear();
   imu_buffer_.clear();
   // Several in a row, not one: see post_outage_unconfirmed_.
-  if (++gnss_consecutive_accepts_ >= kAcceptsToConfirmReacquisition)
+  if (config_.gnss_reacquire_confirm_fixes <= 0 ||
+      ++gnss_consecutive_accepts_ >= config_.gnss_reacquire_confirm_fixes)
     post_outage_unconfirmed_ = false;
   gnss_consecutive_rejects_ = 0;
   gnss_in_coast_            = false;
