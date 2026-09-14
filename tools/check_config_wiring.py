@@ -7,6 +7,8 @@ import sys
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 NODE = ROOT / "fusioncore_ros" / "src" / "fusion_node.cpp"
 CORE_DIRS = (ROOT / "fusioncore_core" / "include", ROOT / "fusioncore_core" / "src")
+COMMENT = re.compile(r"//[^\n]*|/\*.*?\*/", re.S)
+DECLARE_PARAMETER = re.compile(r'declare_parameter\s*\(\s*"([\w.]+)"')
 
 
 def config_mappings(node_source):
@@ -17,12 +19,18 @@ def config_mappings(node_source):
     )
 
 
+def declared_parameters(node_source):
+    """Return the parameter names declared by fusion_node.cpp."""
+    return DECLARE_PARAMETER.findall(node_source)
+
+
 def dead_mappings(mappings, core_source):
     """Return mappings whose config field is only declared, never read by core."""
+    code = COMMENT.sub("", core_source)
     dead = []
     for field, parameter in mappings:
         member = field.rsplit(".", 1)[-1]
-        if len(re.findall(rf"\b{re.escape(member)}\b", core_source)) <= 1:
+        if len(re.findall(rf"\b{re.escape(member)}\b", code)) <= 1:
             dead.append((field, parameter))
     return dead
 
@@ -51,7 +59,13 @@ def main():
             "is never read by fusioncore_core"
         )
 
-    print(f"{len(mappings)} config mappings checked, {len(dead)} dead fields")
+    declared = declared_parameters(NODE.read_text())
+    node_direct = len(declared) - len(mappings)
+    print(
+        f"{len(mappings)} of {len(declared)} declared parameters map into "
+        f"FusionCoreConfig, {len(dead)} dead"
+    )
+    print(f"({node_direct} reach the node directly and are out of scope here)")
     return 1 if dead else 0
 
 

@@ -27,12 +27,30 @@ class ConfigWiringTest(unittest.TestCase):
         core = "double vel_noise_y = 0.05;\nreturn p.vel_noise_y * p.vel_noise_y;\n"
         self.assertEqual([], check_config_wiring.dead_mappings(mappings, core))
 
+    def test_comment_naming_dead_field_does_not_count_as_a_use(self):
+        mappings = [("encoder.dead_sigma", "encoder.some_parameter")]
+        core = "// dead_sigma tunes nothing\ndouble dead_sigma = 0.05;\n"
+        self.assertEqual(
+            [("encoder.dead_sigma", "encoder.some_parameter")],
+            check_config_wiring.dead_mappings(mappings, core),
+        )
+
     def test_declaration_only_field_is_reported(self):
         mappings = [("encoder.dead_sigma", "encoder.some_parameter")]
         core = "double dead_sigma = 0.05;\n"
         self.assertEqual(
             [("encoder.dead_sigma", "encoder.some_parameter")],
             check_config_wiring.dead_mappings(mappings, core),
+        )
+
+    def test_extracts_declared_parameters(self):
+        node = '''
+        declare_parameter("base_frame", "base_link");
+        declare_parameter("publish.tf", true);
+        '''
+        self.assertEqual(
+            ["base_frame", "publish.tf"],
+            check_config_wiring.declared_parameters(node),
         )
 
     def test_current_tree_has_no_dead_mappings(self):
