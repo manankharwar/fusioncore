@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <limits>
 #include "fusioncore/fusioncore.hpp"
 #include "fusioncore/sensors/gnss.hpp"
 
@@ -125,6 +126,49 @@ TEST(GNSSManagerTest, InvalidHeadingRejected) {
 
   bool accepted = fc.update_gnss_heading(0.1, hdg);
   EXPECT_FALSE(accepted);
+}
+
+// ─── Test 5b: A heading carrying NaN never reaches the filter ────────────────
+//
+// See GNSSTest.NonFiniteFixIsRejectedAndNamed and #103. A heading marked valid
+// can still carry NaN, and the chi2 gate cannot catch one because it compares
+// false against the threshold. It would also claim DUAL_ANTENNA, the strongest
+// heading source there is, for a number that means nothing.
+TEST(GNSSManagerTest, NonFiniteHeadingIsRejectedAndNamed) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  for (int field = 0; field < 2; ++field) {
+    for (const double bad : {nan, inf}) {
+      FusionCore fc;
+      State initial;
+      fc.init(initial, 0.0);
+
+      // Facing the filter's own yaw, from a confident receiver: acceptable.
+      GnssHeading hdg;
+      hdg.heading_rad  = 0.0;
+      hdg.accuracy_rad = 0.02;
+      hdg.valid        = true;
+      if (field == 0) hdg.heading_rad  = bad;
+      else            hdg.accuracy_rad = bad;
+
+      EXPECT_FALSE(fc.update_gnss_heading(0.1, hdg))
+          << "field " << field << " = " << bad << " was accepted";
+      EXPECT_EQ(fc.get_status().heading_reason, HeadingRejectionReason::NOT_FINITE)
+          << "field " << field << " = " << bad << " was not rejected as NOT_FINITE";
+      EXPECT_EQ(fc.get_status().heading_source, HeadingSource::NONE)
+          << "a rejected heading must not become the heading source";
+      EXPECT_TRUE(fc.get_state().x.allFinite())
+          << "field " << field << " = " << bad << " reached the state";
+      EXPECT_TRUE(fc.get_state().P.allFinite())
+          << "field " << field << " = " << bad << " reached the covariance";
+
+      hdg.heading_rad  = 0.0;
+      hdg.accuracy_rad = 0.02;
+      EXPECT_TRUE(fc.update_gnss_heading(0.2, hdg))
+          << "an ordinary heading after field " << field << " was not accepted";
+    }
+  }
 }
 
 // ─── Test 6: Stefan's full configuration ─────────────────────────────────────

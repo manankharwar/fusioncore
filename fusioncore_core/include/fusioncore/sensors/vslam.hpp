@@ -36,6 +36,17 @@ struct VslamPose {
   // Extracted from nav_msgs/Odometry pose.covariance bottom-right 3x3.
   bool            has_orientation_cov = false;
   Eigen::Matrix3d orientation_cov     = Eigen::Matrix3d::Identity();
+
+  // Same guard as GnssFix::is_finite(), for the same reason: a NaN pose passes
+  // the chi2 gate instead of failing it, and a NaN reaching the state is
+  // unrecoverable. The covariance is checked only where it is used: the
+  // diagonal, and only when the message supplied one.
+  bool is_finite() const {
+    return std::isfinite(x) && std::isfinite(y) && std::isfinite(z) &&
+           std::isfinite(roll) && std::isfinite(pitch) && std::isfinite(yaw) &&
+           (!has_position_cov || position_cov.diagonal().allFinite()) &&
+           (!has_orientation_cov || orientation_cov.diagonal().allFinite());
+  }
 };
 
 // ─── Measurement function: h(x) = [X, Y, Z, roll, pitch, yaw] ───────────────

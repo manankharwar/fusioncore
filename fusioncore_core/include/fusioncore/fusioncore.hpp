@@ -548,7 +548,7 @@ enum class TrackHeadingState {
 // The static_asserts below hold these to the enums, so adding a reason without
 // bumping the count fails the build instead of silently going uncounted.
 constexpr int GNSS_REJECTION_REASON_COUNT = 14;
-constexpr int MAG_REJECTION_REASON_COUNT  = 4;
+constexpr int MAG_REJECTION_REASON_COUNT  = 5;
 
 // Why an encoder measurement was rejected (or ACCEPTED if it passed).
 //
@@ -561,6 +561,7 @@ enum class EncoderRejectionReason {
   NOT_PROCESSED = 0,
   ACCEPTED      = 1,
   CHI2_FAILED   = 2,  // Mahalanobis distance > outlier_threshold_enc
+  NOT_FINITE    = 3,  // a velocity or a variance was NaN or infinity
 };
 
 // Why an IMU update was rejected (or ACCEPTED if it passed).
@@ -577,6 +578,7 @@ enum class ImuRejectionReason {
   CHI2_RATE        = 2,  // gyro + accel, outlier_threshold_imu
   CHI2_ROLL_PITCH  = 3,  // tilt from gravity, outlier_threshold_imu
   CHI2_ORIENTATION = 4,  // full quaternion, outlier_threshold_imu
+  NOT_FINITE       = 5,  // a rate, acceleration, angle or variance was NaN or infinity
 };
 
 // Why a VSLAM pose update was rejected (or ACCEPTED if it passed).
@@ -584,6 +586,7 @@ enum class VslamRejectionReason {
   NOT_PROCESSED = 0,
   ACCEPTED      = 1,
   CHI2_FAILED   = 2,  // Mahalanobis distance > outlier_threshold_vslam
+  NOT_FINITE    = 3,  // pose or its covariance contained NaN or infinity
 };
 
 // Why a GNSS heading update was rejected (or ACCEPTED if it passed).
@@ -591,6 +594,7 @@ enum class HeadingRejectionReason {
   NOT_PROCESSED = 0,
   ACCEPTED      = 1,
   CHI2_FAILED   = 2,  // Mahalanobis distance > outlier_threshold_hdg
+  NOT_FINITE    = 3,  // heading or its accuracy was NaN or infinity
 };
 
 // Why a magnetometer reading was rejected (or ACCEPTED if it passed).
@@ -599,12 +603,13 @@ enum class MagRejectionReason {
   ACCEPTED         = 1,
   CHI2_FAILED      = 2,  // Mahalanobis distance > threshold
   FIELD_MAGNITUDE  = 3,  // corrected field magnitude outside configured range
+  NOT_FINITE       = 4,  // a field component was NaN or infinity
 };
 
 static_assert(static_cast<int>(GnssRejectionReason::QUALITY_OTHER) + 1 ==
               GNSS_REJECTION_REASON_COUNT,
               "GNSS_REJECTION_REASON_COUNT must match GnssRejectionReason");
-static_assert(static_cast<int>(MagRejectionReason::FIELD_MAGNITUDE) + 1 ==
+static_assert(static_cast<int>(MagRejectionReason::NOT_FINITE) + 1 ==
               MAG_REJECTION_REASON_COUNT,
               "MAG_REJECTION_REASON_COUNT must match MagRejectionReason");
 

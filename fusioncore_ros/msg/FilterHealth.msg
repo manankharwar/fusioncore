@@ -35,7 +35,7 @@ int32 gnss_consecutive_rejects
 string gnss_last_reject_reason
 
 # Reason the most recent magnetometer reading was rejected (empty until the first reading):
-# CHI2_FAILED | FIELD_MAGNITUDE
+# CHI2_FAILED | FIELD_MAGNITUDE | NOT_FINITE
 string mag_last_reject_reason
 
 # Distance traveled since init (meters): heading observable above 5m
@@ -114,7 +114,7 @@ float64 gnss_parked_inflation
 
 # Outcome of the most recent encoder update, and how surprising it was against
 # the gate that judged it:
-#   NOT_PROCESSED | ACCEPTED | CHI2_FAILED
+#   NOT_PROCESSED | ACCEPTED | CHI2_FAILED | NOT_FINITE
 # A rejected encoder update is a direct cause of the drift users report, and it
 # used to be discarded with nothing recorded but a counter that never left the
 # core. chi2 is -1 until an update has been gated. Compare against the threshold:

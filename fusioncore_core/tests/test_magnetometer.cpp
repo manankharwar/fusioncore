@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <limits>
 #include "fusioncore/fusioncore.hpp"
 #include "fusioncore/sensors/magnetometer.hpp"
 #include "fusioncore/motion_model.hpp"
@@ -502,4 +503,61 @@ TEST(MagnetometerTest, MicroteslaParameterLooksWrong) {
     Eigen::Vector3d(1.2e-5, -3.0e-6, 8.0e-6).norm()));
   EXPECT_TRUE (mag_value_looks_like_microtesla(
     Eigen::Vector3d(12.0, -3.0, 8.0).norm()));
+}
+
+// ─── Test 17: A reading carrying NaN never reaches the filter ─────────────────
+//
+// See GNSSTest.NonFiniteFixIsRejectedAndNamed and #103. The magnetometer is the
+// worst place for one. While no heading source exists, the first reading is
+// written straight into the orientation without meeting the chi2 gate (see
+// LockedOutByAHeadingTheFilterInvented), so a NaN reading went directly into
+// the quaternion and became the heading source. Both paths are covered, before
+// and after a heading has been established.
+TEST(MagnetometerTest, NonFiniteReadingIsRejectedAndNamed) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  const double bh = 25.6e-6;   // the rover's measured horizontal field
+
+  for (const bool heading_established : {false, true}) {
+    for (int field = 0; field < 3; ++field) {
+      for (const double bad : {nan, inf}) {
+        FusionCoreConfig cfg;
+        cfg.outlier_rejection   = true;
+        cfg.mag.noise_rad       = 0.05;
+        cfg.mag.chi2_threshold  = 9.21;
+        cfg.mag.declination_rad = 0.0;
+        FusionCore fc(cfg);
+        State initial;
+        fc.init(initial, 0.0);
+
+        // A flat robot at yaw 0 reads [0, Bh, 0] (see FlatPointingNorth).
+        const HeadingSource source_before = heading_established
+          ? HeadingSource::MAGNETOMETER : HeadingSource::NONE;
+        if (heading_established) {
+          ASSERT_TRUE(fc.update_magnetometer(0.05, 0.0, bh, 0.0));
+        }
+        ASSERT_EQ(fc.get_status().heading_source, source_before);
+
+        double reading[3] = {0.0, bh, 0.0};
+        reading[field] = bad;
+        EXPECT_FALSE(fc.update_magnetometer(0.1, reading[0], reading[1], reading[2]))
+            << "field " << field << " = " << bad << " was accepted, heading "
+            << (heading_established ? "established" : "not yet established");
+        EXPECT_EQ(fc.get_magnetometer_debug().reason, MagRejectionReason::NOT_FINITE)
+            << "field " << field << " = " << bad << " was not rejected as NOT_FINITE";
+        EXPECT_EQ(fc.get_status().mag_last_rejection_reason, MagRejectionReason::NOT_FINITE);
+        EXPECT_EQ(fc.mag_outcome_tally()[static_cast<int>(MagRejectionReason::NOT_FINITE)].count, 1)
+            << "the rejection must be counted in the outcome tally";
+        EXPECT_EQ(fc.get_status().heading_source, source_before)
+            << "a rejected reading must not change the heading source";
+        EXPECT_TRUE(fc.get_state().x.allFinite())
+            << "field " << field << " = " << bad << " reached the state";
+        EXPECT_TRUE(fc.get_state().P.allFinite())
+            << "field " << field << " = " << bad << " reached the covariance";
+
+        EXPECT_TRUE(fc.update_magnetometer(0.15, 0.0, bh, 0.0))
+            << "an ordinary reading after field " << field << " was not accepted";
+      }
+    }
+  }
 }

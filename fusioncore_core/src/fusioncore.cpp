@@ -603,6 +603,18 @@ void FusionCore::update_imu(
   }
   imu_rate_prev_stamp_ = timestamp_seconds;
 
+  // A sample carrying NaN or infinity, rejected before anything reads it. The
+  // chi2 gate below cannot do this job: a NaN innovation compares false against
+  // the threshold, so it passes the gate instead of failing it, and a NaN that
+  // reaches the state is never recovered from. See GnssFix::is_finite(). Only
+  // the arrival-rate sample above runs first, because it reads the stamp alone
+  // and is meant to count every message that arrives.
+  if (!(std::isfinite(wx) && std::isfinite(wy) && std::isfinite(wz) &&
+        std::isfinite(ax) && std::isfinite(ay) && std::isfinite(az))) {
+    imu_reason_ = ImuRejectionReason::NOT_FINITE;
+    return;
+  }
+
   if (reject_stale_from_skew(timestamp_seconds, last_imu_raw_stamp_, imu_stale_rejects_))
     return;
 
@@ -732,6 +744,17 @@ void FusionCore::update_imu_orientation(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_imu_orientation() called before init()");
 
+  // Same guard as update_imu(), on the angles and on the three variances R can
+  // be built from. A NaN variance falls back to the defaults, but an infinite
+  // one passes the > 0 test and becomes R.
+  if (!(std::isfinite(roll) && std::isfinite(pitch) && std::isfinite(yaw)) ||
+      (orientation_cov != nullptr &&
+       !(std::isfinite(orientation_cov[0]) && std::isfinite(orientation_cov[4]) &&
+         std::isfinite(orientation_cov[8])))) {
+    imu_reason_ = ImuRejectionReason::NOT_FINITE;
+    return;
+  }
+
   // Counts into the IMU stale counter: the node feeds this from the same
   // message (and therefore the same clock) as update_imu().
   if (reject_stale_from_skew(timestamp_seconds, last_orient_raw_stamp_, imu_stale_rejects_))
@@ -839,6 +862,15 @@ void FusionCore::update_encoder(
 ) {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_encoder() called before init()");
+
+  // Same guard as update_imu(), and it has to come first here: the ZUPT
+  // hand-back just below already reads vx and vy. A variance counts as well,
+  // since an infinite one passes the > 0 test and becomes R.
+  if (!(std::isfinite(vx) && std::isfinite(vy) && std::isfinite(wz) &&
+        std::isfinite(var_vx) && std::isfinite(var_vy) && std::isfinite(var_wz))) {
+    encoder_reason_ = EncoderRejectionReason::NOT_FINITE;
+    return;
+  }
 
   // Moving again: hand the position noise scale back. Only ever undoes what
   // update_zupt set, so a coast-inflated scale is left alone.
@@ -1912,6 +1944,11 @@ bool FusionCore::update_gnss_heading(
 
   if (!heading.valid) return false;
 
+  if (!heading.is_finite()) {
+    heading_reason_ = HeadingRejectionReason::NOT_FINITE;
+    return false;
+  }
+
   if (reject_stale_from_skew(timestamp_seconds, last_hdg_raw_stamp_, hdg_stale_rejects_))
     return false;
 
@@ -2124,6 +2161,11 @@ bool FusionCore::update_pose(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_pose() called before init()");
 
+  if (!pose.is_finite()) {
+    vslam_reason_ = VslamRejectionReason::NOT_FINITE;
+    return false;
+  }
+
   bool is_delayed = (last_timestamp_ - timestamp_seconds) > config_.min_dt;
 
   if (is_delayed) {
@@ -2223,6 +2265,17 @@ bool FusionCore::update_magnetometer(
   const Eigen::Vector3d corrected_field =
     config_.mag.soft_iron * (Eigen::Vector3d(mx, my, mz) - config_.mag.hard_iron);
   mag_debug_.measured_field = corrected_field.norm();
+
+  // Same guard as update_imu(), and the magnetometer needs it most. While no
+  // heading source exists, the first reading below is written straight into
+  // the orientation without meeting the chi2 gate, and the field-magnitude
+  // check before it, when enabled, compares false against a NaN as well. So
+  // nothing else stands between a NaN reading and the quaternion.
+  if (!(std::isfinite(mx) && std::isfinite(my) && std::isfinite(mz))) {
+    mag_debug_.reason = MagRejectionReason::NOT_FINITE;
+    note_mag_outcome(timestamp_seconds);
+    return false;
+  }
 
   if (reject_stale_from_skew(timestamp_seconds, last_mag_raw_stamp_, mag_stale_rejects_))
     return false;

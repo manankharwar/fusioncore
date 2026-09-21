@@ -302,6 +302,13 @@ struct GnssHeading {
   // Source identifier: matches the source_id of the GnssFix
   // from the same receiver
   int source_id = 0;
+
+  // Same guard as GnssFix::is_finite(), for the same reason: a NaN heading
+  // passes the chi2 gate instead of failing it, and an infinite accuracy_rad
+  // becomes an infinite R. Either one leaves the state or P non-finite.
+  bool is_finite() const {
+    return std::isfinite(heading_rad) && std::isfinite(accuracy_rad);
+  }
 };
 
 // ─── Measurement functions ───────────────────────────────────────────────────

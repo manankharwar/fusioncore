@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <limits>
 #include "fusioncore/ukf.hpp"
 #include "fusioncore/state.hpp"
 #include "fusioncore/sensors/imu.hpp"
@@ -182,4 +183,84 @@ TEST(IMUTest, YawRateSignIgnoresSlowDriftThatIsNotATurn) {
   EXPECT_FALSE(fc.get_status().yaw_rate_sign_conflict);
   EXPECT_EQ(fc.get_status().yaw_rate_turn_samples, 0)
       << "samples below the turning gate must not be counted at all";
+}
+
+// ─── A sample carrying NaN must never reach the filter ──────────────────────
+//
+// The same hole GNSSTest.NonFiniteFixIsRejectedAndNamed closed for GNSS, on the
+// sensor that feeds the filter most often (#103). The chi2 gate cannot catch it:
+// a NaN innovation compares false against the threshold, so it passes the gate
+// rather than failing it, and one NaN in the state or the covariance makes every
+// later estimate NaN with no way back short of a reset.
+TEST(IMUTest, NonFiniteSampleIsRejectedAndNamed) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+  const double g = 9.80665;
+
+  for (int field = 0; field < 6; ++field) {
+    for (const double bad : {nan, inf}) {
+      FusionCoreConfig cfg;
+      FusionCore fc(cfg);
+      State s0;
+      fc.init(s0, 0.0);
+
+      // A still, level IMU: otherwise entirely acceptable.
+      double sample[6] = {0.0, 0.0, 0.0, 0.0, 0.0, g};
+      sample[field] = bad;
+      fc.update_imu(0.01, sample[0], sample[1], sample[2],
+                    sample[3], sample[4], sample[5]);
+
+      EXPECT_EQ(fc.get_status().imu_reason, ImuRejectionReason::NOT_FINITE)
+          << "field " << field << " = " << bad << " was not rejected as NOT_FINITE";
+      EXPECT_TRUE(fc.get_state().x.allFinite())
+          << "field " << field << " = " << bad << " reached the state";
+      EXPECT_TRUE(fc.get_state().P.allFinite())
+          << "field " << field << " = " << bad << " reached the covariance";
+
+      // And the filter must still take an ordinary sample afterwards.
+      fc.update_imu(0.02, 0.0, 0.0, 0.0, 0.0, 0.0, g);
+      EXPECT_EQ(fc.get_status().imu_reason, ImuRejectionReason::ACCEPTED)
+          << "an ordinary sample after field " << field << " was not accepted";
+    }
+  }
+}
+
+// The orientation path is the other IMU entry point, with the same exposure.
+// 9-axis, so roll, pitch and yaw all reach the filter.
+TEST(IMUTest, NonFiniteOrientationIsRejectedAndNamed) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  for (int field = 0; field < 6; ++field) {
+    for (const double bad : {nan, inf}) {
+      FusionCoreConfig cfg;
+      cfg.imu_has_magnetometer = true;
+      FusionCore fc(cfg);
+      State s0;
+      fc.init(s0, 0.0);
+
+      // Level, facing the filter's own yaw, with an AHRS-like covariance.
+      double angles[3] = {0.0, 0.0, 0.0};
+      double cov[9] = {1e-4, 0.0, 0.0,
+                       0.0, 1e-4, 0.0,
+                       0.0, 0.0, 1e-3};
+      if (field < 3) angles[field] = bad;
+      else           cov[(field - 3) * 4] = bad;   // the variances: 0, 4 and 8
+      fc.update_imu_orientation(0.01, angles[0], angles[1], angles[2], cov);
+
+      EXPECT_EQ(fc.get_status().imu_reason, ImuRejectionReason::NOT_FINITE)
+          << "field " << field << " = " << bad << " was not rejected as NOT_FINITE";
+      EXPECT_TRUE(fc.get_state().x.allFinite())
+          << "field " << field << " = " << bad << " reached the state";
+      EXPECT_TRUE(fc.get_state().P.allFinite())
+          << "field " << field << " = " << bad << " reached the covariance";
+
+      const double ordinary_cov[9] = {1e-4, 0.0, 0.0,
+                                      0.0, 1e-4, 0.0,
+                                      0.0, 0.0, 1e-3};
+      fc.update_imu_orientation(0.02, 0.0, 0.0, 0.0, ordinary_cov);
+      EXPECT_EQ(fc.get_status().imu_reason, ImuRejectionReason::ACCEPTED)
+          << "an ordinary orientation after field " << field << " was not accepted";
+    }
+  }
 }

@@ -3030,6 +3030,7 @@ private:
       case fusioncore::EncoderRejectionReason::NOT_PROCESSED: return "NOT_PROCESSED";
       case fusioncore::EncoderRejectionReason::ACCEPTED:      return "ACCEPTED";
       case fusioncore::EncoderRejectionReason::CHI2_FAILED:   return "CHI2_FAILED";
+      case fusioncore::EncoderRejectionReason::NOT_FINITE:    return "NOT_FINITE";
     }
     return "unknown";
   }
@@ -3046,6 +3047,7 @@ private:
       case fusioncore::ImuRejectionReason::CHI2_RATE:        return "CHI2_RATE";
       case fusioncore::ImuRejectionReason::CHI2_ROLL_PITCH:  return "CHI2_ROLL_PITCH";
       case fusioncore::ImuRejectionReason::CHI2_ORIENTATION: return "CHI2_ORIENTATION";
+      case fusioncore::ImuRejectionReason::NOT_FINITE:       return "NOT_FINITE";
     }
     return "unknown";
   }
@@ -3056,6 +3058,7 @@ private:
       case fusioncore::VslamRejectionReason::NOT_PROCESSED: return "NOT_PROCESSED";
       case fusioncore::VslamRejectionReason::ACCEPTED:      return "ACCEPTED";
       case fusioncore::VslamRejectionReason::CHI2_FAILED:   return "CHI2_FAILED";
+      case fusioncore::VslamRejectionReason::NOT_FINITE:    return "NOT_FINITE";
     }
     return "unknown";
   }
@@ -3066,6 +3069,7 @@ private:
       case fusioncore::HeadingRejectionReason::NOT_PROCESSED: return "NOT_PROCESSED";
       case fusioncore::HeadingRejectionReason::ACCEPTED:      return "ACCEPTED";
       case fusioncore::HeadingRejectionReason::CHI2_FAILED:   return "CHI2_FAILED";
+      case fusioncore::HeadingRejectionReason::NOT_FINITE:    return "NOT_FINITE";
     }
     return "unknown";
   }
@@ -3212,6 +3216,7 @@ private:
     switch (r) {
       case fusioncore::MagRejectionReason::CHI2_FAILED:     return "CHI2_FAILED";
       case fusioncore::MagRejectionReason::FIELD_MAGNITUDE: return "FIELD_MAGNITUDE";
+      case fusioncore::MagRejectionReason::NOT_FINITE:      return "NOT_FINITE";
       case fusioncore::MagRejectionReason::NOT_PROCESSED:   return "NOT_PROCESSED";
       case fusioncore::MagRejectionReason::ACCEPTED:        return "ACCEPTED";
     }

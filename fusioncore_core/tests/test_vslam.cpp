@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <limits>
 #include "fusioncore/fusioncore.hpp"
 #include "fusioncore/sensors/vslam.hpp"
 
@@ -150,6 +151,58 @@ TEST(VSLAMTest, OrientationCorrectedFromVSLAM) {
   EXPECT_TRUE(accepted);
   EXPECT_GT(fc.get_state().yaw(), 0.0);
   EXPECT_NEAR(fc.get_state().yaw(), M_PI / 4.0, 0.3);
+}
+
+// ─── Test 6: A pose carrying NaN never reaches the filter ────────────────────
+//
+// See GNSSTest.NonFiniteFixIsRejectedAndNamed and #103: the chi2 gate cannot
+// catch a NaN, because it compares false against the threshold. One case per
+// field, the covariance included when the message supplies one.
+TEST(VSLAMTest, NonFinitePoseIsRejectedAndNamed) {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double inf = std::numeric_limits<double>::infinity();
+
+  // A pose where the filter already is, with its covariance: acceptable.
+  auto ordinary_pose = [] {
+    VslamPose pose;
+    pose.has_position_cov    = true;
+    pose.position_cov        = Eigen::Matrix3d::Identity() * (0.05 * 0.05);
+    pose.has_orientation_cov = true;
+    pose.orientation_cov     = Eigen::Matrix3d::Identity() * (0.02 * 0.02);
+    return pose;
+  };
+
+  for (int field = 0; field < 8; ++field) {
+    for (const double bad : {nan, inf}) {
+      FusionCore fc;
+      State initial;
+      fc.init(initial, 0.0);
+
+      VslamPose pose = ordinary_pose();
+      switch (field) {
+        case 0: pose.x = bad; break;
+        case 1: pose.y = bad; break;
+        case 2: pose.z = bad; break;
+        case 3: pose.roll = bad; break;
+        case 4: pose.pitch = bad; break;
+        case 5: pose.yaw = bad; break;
+        case 6: pose.position_cov(1, 1) = bad; break;
+        case 7: pose.orientation_cov(2, 2) = bad; break;
+      }
+
+      EXPECT_FALSE(fc.update_pose(0.1, pose))
+          << "field " << field << " = " << bad << " was accepted";
+      EXPECT_EQ(fc.get_status().vslam_reason, VslamRejectionReason::NOT_FINITE)
+          << "field " << field << " = " << bad << " was not rejected as NOT_FINITE";
+      EXPECT_TRUE(fc.get_state().x.allFinite())
+          << "field " << field << " = " << bad << " reached the state";
+      EXPECT_TRUE(fc.get_state().P.allFinite())
+          << "field " << field << " = " << bad << " reached the covariance";
+
+      EXPECT_TRUE(fc.update_pose(0.2, ordinary_pose()))
+          << "an ordinary pose after field " << field << " was not accepted";
+    }
+  }
 }
 
 int main(int argc, char** argv) {
