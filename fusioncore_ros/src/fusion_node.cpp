@@ -359,7 +359,6 @@ public:
     declare_parameter("vslam.topic",              std::string(""));
     declare_parameter("vslam.position_noise",     0.1);
     declare_parameter("vslam.orientation_noise",  0.02);
-    declare_parameter("vslam.frame_id",           std::string(""));
     declare_parameter("vslam.reinit_n",           10);
 
     declare_parameter("gnss.coast_n",               5);
@@ -719,7 +718,6 @@ public:
     config.outlier_threshold_vslam = get_parameter("outlier_threshold_vslam").as_double();
 
     vslam_topic_          = get_parameter("vslam.topic").as_string();
-    vslam_frame_override_ = get_parameter("vslam.frame_id").as_string();
     config.vslam.position_noise    = get_parameter("vslam.position_noise").as_double();
     config.vslam.orientation_noise = get_parameter("vslam.orientation_noise").as_double();
     vslam_reinit_n_       = get_parameter("vslam.reinit_n").as_int();
@@ -3965,7 +3963,6 @@ private:
   double      max_sigma_z_  = 50.0;
   fusioncore_ros::GnssDopGateWarning dop_gate_warning_;
   std::string vslam_topic_;
-  std::string vslam_frame_override_;
   // VSLAM map-to-odom frame offset: applied to every VSLAM measurement.
   // Set on first measurement; re-computed on reinitialization detection.
   bool   vslam_origin_set_         = false;

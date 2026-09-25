@@ -63,13 +63,22 @@ class NodeMemberWiringTest(unittest.TestCase):
                 check_node_member_wiring.member_mappings(node), node)
         )
 
-    def test_current_tree_reports_the_known_dead_member(self):
+    def test_current_tree_has_no_dead_members(self):
+        """The real tree, not a fixture. This is the assertion that earns its keep.
+
+        When this checker was written the tree had exactly one dead member,
+        vslam_frame_override_ from vslam.frame_id, and the test asserted that. The
+        parameter was removed rather than allowlisted, so the assertion is now that
+        the tree is clean: any future parameter read into a member and then never
+        used fails here.
+        """
         node_source = check_node_member_wiring.NODE.read_text()
         mappings = check_node_member_wiring.member_mappings(node_source)
-        self.assertTrue(mappings)
+        self.assertTrue(mappings, "the regex found nothing, so it is broken")
         self.assertEqual(
-            [("vslam_frame_override_", ["vslam.frame_id"])],
+            [],
             check_node_member_wiring.dead_members(mappings, node_source),
+            "a parameter is read into a node member and then never used",
         )
 
 

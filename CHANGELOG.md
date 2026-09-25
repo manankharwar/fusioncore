@@ -8,6 +8,28 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- **`vslam.frame_id`**, which was declared, shipped in `fusioncore.yaml`, read into
+  `vslam_frame_override_`, and then never read again. It did nothing.
+
+  The config described it as "Override the VSLAM TF frame", but the VSLAM path does
+  no TF lookup at all: `vslam_callback` anchors the VSLAM map origin to the filter's
+  current position by offset. Its siblings `imu.frame_id` and `gnss.frame_id` are
+  live because they feed TF lookups for antenna and IMU lever arms, and VSLAM has no
+  lever-arm support for this to attach to. So there was nothing to override.
+
+  It is removed rather than allowlisted. Allowlisting would make the checker below
+  report a clean tree while the parameter went on doing nothing, which is the exact
+  failure mode of #138: a gate that stands down on purpose is indistinguishable from
+  one that is broken. Redefining it to mean something else would have been worse,
+  because the documented meaning would then be a lie.
+
+  **Nothing breaks.** A parameter override for a parameter the node never declares
+  is ignored by ROS 2, so a config that still sets it starts fine, and since the
+  value was never read no behaviour changes. If VSLAM lever-arm support is added
+  later, the parameter comes back with the feature that needs it.
+
 ### Fixed
 
 - **The GNSS Doppler bridge never compiled.** `gnss_doppler_bridge.cpp` set the

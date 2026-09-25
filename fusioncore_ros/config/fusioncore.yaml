@@ -281,8 +281,6 @@ fusioncore:
     vslam.topic: ""
     vslam.position_noise: 0.1       # meters: fallback when message covariance is zero
     vslam.orientation_noise: 0.02   # radians: fallback when message covariance is zero
-    # Override the VSLAM TF frame. Leave empty to use message frame_id.
-    vslam.frame_id: ""
     # Re-anchor VSLAM map origin after this many consecutive gate rejections.
     # Handles ORB-SLAM3 reinitialization (discontinuous pose jump after tracking loss).
     vslam.reinit_n: 10
