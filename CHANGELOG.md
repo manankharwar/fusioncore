@@ -8,6 +8,33 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **The GNSS Doppler bridge never compiled.** `gnss_doppler_bridge.cpp` set the
+  outgoing odometry stamp from `msg->header.stamp` on a `ublox_msgs/NavPVT`, and
+  NavPVT has no `std_msgs/Header` at all. Against real `ublox_msgs` the file fails
+  with `'NavPVT_' has no member named 'header'`, so anyone who actually had the
+  dependency installed could not build the package.
+
+  It went unnoticed because the target is guarded by
+  `find_package(ublox_msgs QUIET)`, so on every machine without `ublox_msgs` the
+  bridge was silently skipped and no error ever appeared, and because CI did not
+  build `fusioncore_ublox` at all. Found in a fork by **@idesign0**, who hit it and
+  fixed it locally rather than reporting it.
+
+  The stamp is now node time. NavPVT does carry UTC fields and `i_tow`, but
+  FusionCore times its IMU replay buffer against ROS time, so a receiver clock that
+  disagrees with the system clock would shift every Doppler measurement against the
+  IMU it is being fused with. Stamping on arrival costs the USB and driver latency,
+  which is small and roughly constant; the alternative costs a systematic and
+  variable offset.
+
+  CI now installs `ublox_msgs` and builds `fusioncore_ublox`, so the optional path
+  is exercised rather than skipped. **The general lesson: a target behind an
+  optional `find_package` is invisible to CI unless the dependency is installed
+  there. Same shape as the magnetometer branch that carried a NameError and had
+  never once run.**
+
 ### Added
 
 - **GNSS antenna lever arms now auto-resolve from TF per receiver, not just for

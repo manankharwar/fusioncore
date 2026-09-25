@@ -2,6 +2,8 @@
 // and publishes on gnss.velocity_topic so FusionCore can fuse GPS Doppler speed.
 // Only published when fix_type >= 3 (3D fix or better) AND gnssFixOK flag is set.
 
+#include <cmath>
+
 #include <rclcpp/rclcpp.hpp>
 #include <nav_msgs/msg/odometry.hpp>
 #include <ublox_msgs/msg/nav_pvt.hpp>
@@ -47,7 +49,18 @@ private:
     const double var    = sigma * sigma;
 
     nav_msgs::msg::Odometry odom;
-    odom.header.stamp    = msg->header.stamp;
+    // NavPVT carries no std_msgs/Header, so there is nothing to copy. This used to
+    // read msg->header.stamp, which does not compile at all: the whole bridge is
+    // built only under find_package(ublox_msgs QUIET), so on every machine without
+    // ublox_msgs installed it was silently skipped and the error never surfaced.
+    //
+    // Node time rather than the receiver's own clock. NavPVT does carry UTC fields
+    // and i_tow, but FusionCore times its IMU replay buffer against ROS time, so a
+    // receiver clock that disagrees with the system clock would shift every Doppler
+    // measurement against the IMU it is being fused with. The cost of stamping on
+    // arrival is the USB and driver latency, which is small and constant; the cost
+    // of the other choice is a systematic and variable offset.
+    odom.header.stamp    = this->now();
     odom.header.frame_id = "odom";
     odom.child_frame_id  = "base_link";
 

@@ -54,11 +54,24 @@ jobs:
           rosdep update
           rosdep install -r --from-paths . --ignore-src --rosdistro ${{ matrix.ros_distro }} -y
 
+      # fusioncore_ublox builds its Doppler bridge only under
+      # find_package(ublox_msgs QUIET), so without ublox_msgs present the whole
+      # target is skipped and any error in it is invisible. That is not
+      # hypothetical: gnss_doppler_bridge.cpp read msg->header.stamp on a NavPVT,
+      # which has no header at all, so the file could never compile for anyone who
+      # actually had the dependency. It sat that way because CI did not build the
+      # package and nobody else had ublox_msgs installed.
+      #
+      # Non-fatal on purpose: if the distro has no ublox-msgs the build below just
+      # skips the bridge again, exactly as a user without it would.
+      - name: Install optional ublox_msgs so the Doppler bridge is actually compiled
+        run: sudo apt-get install -y ros-${{ matrix.ros_distro }}-ublox-msgs || true
+
       - name: Build
         run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.sh
           colcon build \
-            --packages-up-to compass_msgs fusioncore_core fusioncore_ros \
+            --packages-up-to compass_msgs fusioncore_core fusioncore_ros fusioncore_ublox \
             --cmake-args -DBUILD_TESTING=ON \
             --event-handlers console_cohesion+
 
