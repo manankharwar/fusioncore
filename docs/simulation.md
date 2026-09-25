@@ -142,7 +142,7 @@ Expected output on a clean session:
 ══════════════════════════════════════════════════
 ```
 
-The spike rejection test (0.3 m movement on a 500 m corrupted fix) directly verifies the chi-squared gate described in [How It Works](../how-it-works.md#mahalanobis-outlier-rejection).
+The spike rejection test (0.3 m movement on a 500 m corrupted fix) directly verifies the chi-squared gate described in [How It Works](how-it-works.md#mahalanobis-outlier-rejection).
 
 ---
 

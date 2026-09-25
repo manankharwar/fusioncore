@@ -124,7 +124,7 @@ For lateral velocity: `adaptive.encoder: true` (enabled by default) adapts the V
 
 The delay compensation mechanism buffers up to 1 second of IMU measurements (at `imu.topic` rate) and replays them when a delayed GPS fix arrives. This assumes IMU arrives at the filter's nominal rate and GPS arrives late. If GPS arrives before IMU (e.g., low-frequency IMU with high-frequency GPS), the buffer does not help.
 
-**Limitation:** The buffer covers GPS latency up to 500 ms by default (`gnss.max_delay_s`). Fixes arriving more than 500 ms late are processed at arrival time with no retrodiction.
+**Limitation:** Fixes older than `max_measurement_delay` (0.5 s by default, and declared without a `gnss.` prefix) are rejected rather than replayed. The IMU ring buffer itself holds `imu_buffer_size` samples, 100 by default, which is one second at 100 Hz, so the gate is the binding constraint rather than the buffer.
 
 ---
 

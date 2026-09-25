@@ -114,9 +114,9 @@ than treating it as an ancient measurement.
 | Aspect | robot_localization | FusionCore |
 |---|---|---|
 | Mechanism | State rewind + re-processing | IMU ring buffer exact replay |
-| Max delay handled | Configurable via `history_length` | 1 second (default), configurable |
+| Max delay handled | Configurable via `history_length` | 0.5 s default, `max_measurement_delay` |
 | Accuracy | Approximate (re-linearization at old state) | Exact (sigma point replay) |
-| Zero-stamped GPS | Not handled | Fallback to wall clock via `gnss.use_wall_clock_stamp` |
+| Zero-stamped GPS | Not handled | Not handled either: a zero stamp is treated as a real time |
 | CPU cost | Proportional to delay and sensor rate | Constant (O(N) buffer lookup) |
 | Configuration | `smooth_lagged_data: true` + `history_length` | Always on |
 
@@ -133,10 +133,23 @@ than treating it as an ancient measurement.
 
 **For FusionCore users:**
 
-Delay compensation is automatic. If you see delay-correlated errors, the likely causes are:
-- Zero-stamped GPS messages: enable `gnss.use_wall_clock_stamp: true`
-- GPS delay exceeding 1 second: increase `imu.buffer_duration`
-- Driver adding its own timestamp offset: check the driver documentation
+Delay compensation is automatic, and there is no parameter to turn it on. If you
+see delay-correlated errors, the causes worth checking are:
+
+- **A GPS driver that stamps on arrival rather than at observation.** This is the
+  common one and FusionCore cannot detect it: the stamp looks perfectly valid, it is
+  just late by a constant amount. Fix it in the driver.
+- **Delay beyond the gate.** A fix older than `max_measurement_delay` (0.5 s by
+  default, declared without a `gnss.` prefix) is rejected outright rather than
+  replayed. Raise it if your link is genuinely slower than that, but understand you
+  are then fusing half-second-old position.
+- **A zero or unset stamp.** FusionCore treats it as a real time, which places the
+  measurement at the epoch and it is then rejected as impossibly old. There is no
+  wall-clock fallback. Fix the driver.
+
+The IMU ring buffer holds `imu_buffer_size` samples, 100 by default, which is one
+second at 100 Hz. That is a `FusionCoreConfig` field rather than a ROS parameter, so
+it cannot be changed from a YAML.
 
 ---
 

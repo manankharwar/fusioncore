@@ -28,7 +28,9 @@ colcon test --packages-select compass_msgs fusioncore_core fusioncore_ros
 colcon test-result --verbose
 ```
 
-All 102 tests must pass. CI will catch it if they don't.
+Every test must pass. CI will catch it if they don't. The count is not quoted
+here on purpose: it moves with nearly every change, and a stale number in a
+contributing guide tells you nothing useful. `0 failures` is the bar.
 
 ## Hardware configs
 
@@ -43,7 +45,7 @@ Add a comment at the top with: platform name, IMU model, GPS receiver model, and
 
 ## Pull request checklist
 
-- [ ] All 102 tests pass (`colcon test-result --verbose` shows 0 failures)
+- [ ] `colcon test-result --verbose` shows **0 errors and 0 failures**
 - [ ] For new features: tests added in `fusioncore_core/tests/`
 - [ ] For hardware configs: YAML includes a comment with platform + sensor details
 - [ ] Commit message describes *why*, not just *what*

@@ -8,6 +8,46 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Documentation
+
+- **Three parameters named in the docs do not exist**, found in an audit of all 50
+  user-facing markdown files. ROS 2 ignores an override for an undeclared parameter
+  in silence, so a reader following these set something, see no warning, and get
+  none of the described behaviour.
+
+  - `docs/guides/delayed-gps-measurements.md` advised enabling
+    `gnss.use_wall_clock_stamp` and increasing `imu.buffer_duration`. **Neither has
+    ever existed.** There is no wall-clock fallback for a zero-stamped fix, and the
+    ring buffer is sized by `imu_buffer_size`, a `FusionCoreConfig` field and not a
+    ROS parameter at all. The recommendations now describe what can actually be done.
+  - `docs/known-limitations.md` called the delay bound `gnss.max_delay_s`. The real
+    parameter is `max_measurement_delay`, declared with no `gnss.` prefix.
+  - The 0.4.0 release notes listed a new parameter as
+    `gnss.gps_track_heading_cross_check_deg` in the upgrade table. The `gps_` prefix
+    belongs to the C++ config field; the parameter is
+    `gnss.track_heading_cross_check_deg`. Anyone who copied that line out of the
+    release notes was setting nothing.
+
+- **`tools/check_docs_params.py` makes this class of rot fail CI**, joining
+  `check_config_wiring.py` and `check_node_member_wiring.py`. It asserts that every
+  backticked parameter name in every tracked doc is a parameter the node actually
+  declares. CHANGELOG.md is skipped on purpose, since a changelog legitimately names
+  parameters that were removed.
+
+  **This has happened before.** The 0.3.x notes record `gnss.degraded_noise_multiplier`
+  being "documented but never implemented" in `configuration.md`. It recurred because
+  nothing checked.
+
+- **Test counts removed from CONTRIBUTING.md and getting-started.md.** They claimed
+  102 and 272 against a real 256, and a hardcoded count is stale the moment anyone
+  adds a test. Both now state the bar that does not rot: zero failures.
+
+- README no longer says the IMU ring buffer "replays 1 second". The buffer holds one
+  second at 100 Hz, but a fix older than `max_measurement_delay` (0.5 s) is dropped
+  rather than replayed, so the usable window is half what was claimed.
+
+- Fixed a dead link to `how-it-works.md` in `docs/simulation.md`.
+
 ### Removed
 
 - **`vslam.frame_id`**, which was declared, shipped in `fusioncore.yaml`, read into
@@ -177,7 +217,7 @@ section before upgrading; nothing else in the release needs action.
   | `gnss.recovery_rejection_n` | 0, off | 15 | post-blackout P inflation fires |
   | `gnss.continuity_auto` | new | `true` | fix-to-fix gate arms itself after 100 fixes |
   | `zupt.accel_std_threshold` | new | 0.5 | the IMU can veto a ZUPT |
-  | `gnss.gps_track_heading_cross_check_deg` | new | 15.0 | a disagreeing GPS track heading is refused |
+  | `gnss.track_heading_cross_check_deg` | new | 15.0 | a disagreeing GPS track heading is refused |
 
   All four were shipped on deliberately. The two GNSS ones close failure modes
   that make a filter look healthy while being unrecoverable, which is not a
@@ -243,7 +283,7 @@ section before upgrading; nothing else in the release needs action.
   up in the outcome tally. `gnss.continuity_max_m` above zero still overrides it
   with a fixed number. Closes #116.
 
-- **`gnss.gps_track_heading_cross_check_deg`: refuse a GPS track heading that
+- **`gnss.track_heading_cross_check_deg`: refuse a GPS track heading that
   disagrees with the heading you already have.** Course over ground is not body
   heading. On any curved path the two differ by a real bias, and a biased
   measurement pulls the estimate wrong no matter how honest its covariance is. The
