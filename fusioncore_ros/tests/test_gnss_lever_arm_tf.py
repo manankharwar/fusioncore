@@ -114,9 +114,15 @@ class TestGnssLeverArmAutoResolve(unittest.TestCase):
             imu.header.frame_id = 'imu_link'
             imu.orientation.w = 1.0
             imu.linear_acceleration.z = 9.81
-            imu.orientation_covariance = [-1.0, 0, 0, 0, 0, 0, 0, 0, 0]
-            imu.angular_velocity_covariance = [1e-4, 0, 0, 0, 1e-4, 0, 0, 0, 1e-4]
-            imu.linear_acceleration_covariance = [1e-2, 0, 0, 0, 1e-2, 0, 0, 0, 1e-2]
+            # Every element must be a float, not a bare int. Humble's message
+            # assertion checks the type of each value and rejects 0; Jazzy lets
+            # it through, so this passes locally and fails CI on humble only.
+            imu.orientation_covariance = [
+                -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            imu.angular_velocity_covariance = [
+                1e-4, 0.0, 0.0, 0.0, 1e-4, 0.0, 0.0, 0.0, 1e-4]
+            imu.linear_acceleration_covariance = [
+                1e-2, 0.0, 0.0, 0.0, 1e-2, 0.0, 0.0, 0.0, 1e-2]
             imu_pub.publish(imu)
             if i % 10 == 0:
                 for pub, frame in pubs:
@@ -125,7 +131,8 @@ class TestGnssLeverArmAutoResolve(unittest.TestCase):
                     msg.header.frame_id = frame
                     msg.status.status = NavSatStatus.STATUS_FIX
                     msg.latitude, msg.longitude, msg.altitude = REF_LAT, REF_LON, REF_ALT
-                    msg.position_covariance = [1.0, 0, 0, 0, 1.0, 0, 0, 0, 4.0]
+                    msg.position_covariance = [
+                        1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 4.0]
                     msg.position_covariance_type = \
                         NavSatFix.COVARIANCE_TYPE_DIAGONAL_KNOWN
                     pub.publish(msg)
