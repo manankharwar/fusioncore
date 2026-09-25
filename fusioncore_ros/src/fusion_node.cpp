@@ -282,6 +282,12 @@ public:
     // Optional second GNSS receiver topic: set to empty string to disable
     declare_parameter("gnss.fix2_topic", "");
 
+    // Same idea as gnss.frame_id but for the second receiver. Only needed when
+    // that driver publishes an empty header.frame_id, or publishes a frame that
+    // is not the one in your URDF. Left empty, the message's own frame_id is
+    // used, which is what lets the second antenna's lever arm resolve itself.
+    declare_parameter("gnss.frame_id2", std::string(""));
+
     // compass_msgs/Azimuth heading topic: peci1 standard
     // Set to empty string to disable (use sensor_msgs/Imu heading instead)
     declare_parameter("gnss.azimuth_topic", "");
@@ -309,8 +315,10 @@ public:
     declare_parameter("gnss.apply_lever_arm_pre_heading", false);
 
     // Antenna lever arm params: secondary receiver (gnss.fix2_topic)
-    // Leave at 0.0 if second antenna is at the same position as the first,
-    // or if fix2_topic is not used.
+    // Same rule as the primary above: leave at 0 to auto-resolve from TF
+    // (base_frame -> the second receiver's frame), set non-zero to override.
+    // On a dual-antenna robot the URDF already knows where both antennas are,
+    // so there is usually nothing to fill in here.
     declare_parameter("gnss.lever_arm2_x", 0.0);
     declare_parameter("gnss.lever_arm2_y", 0.0);
     declare_parameter("gnss.lever_arm2_z", 0.0);
@@ -541,6 +549,7 @@ public:
     heading_topic_ = get_parameter("gnss.heading_topic").as_string();
     gnss_fix_topic_ = get_parameter("gnss.fix_topic").as_string();
     gnss_frame_override_ = get_parameter("gnss.frame_id").as_string();
+    gnss2_frame_override_ = get_parameter("gnss.frame_id2").as_string();
     gnss_frame_validated_ = false;
     gnss2_topic_    = get_parameter("gnss.fix2_topic").as_string();
     azimuth_topic_  = get_parameter("gnss.azimuth_topic").as_string();
@@ -660,6 +669,7 @@ public:
     gnss_lever_arm2_.x = get_parameter("gnss.lever_arm2_x").as_double();
     gnss_lever_arm2_.y = get_parameter("gnss.lever_arm2_y").as_double();
     gnss_lever_arm2_.z = get_parameter("gnss.lever_arm2_z").as_double();
+    gnss_lever_arm2_explicit_ = !gnss_lever_arm2_.is_zero();
 
     if (!gnss_lever_arm_.is_zero()) {
       RCLCPP_INFO(get_logger(),
@@ -2306,6 +2316,77 @@ private:
       max_sigma_xy_, max_sigma_z_, max_hdop_, max_vdop_);
   }
 
+  // ─── GNSS antenna lever arm, auto-resolved from TF ────────────────────────
+  // Runs once per RECEIVER, for whichever antenna this fix arrived on.
+  //
+  // This used to sit inline in the NavSatFix callback hardcoded to
+  // source_id == 0, which left two holes. A dual-antenna robot had to type the
+  // second antenna's offset into the YAML even though the URDF already knew
+  // exactly where it was, and anyone reading gps_msgs/GPSFix got no
+  // auto-resolve at all. Issue #4 asked for this per topic, which is what the
+  // source_id argument is for.
+  //
+  // The explicit-value guard matters more than it looks: a lever arm written in
+  // the YAML is never overwritten from TF. TF says where the antenna is bolted,
+  // the YAML says what the operator wants used, and those are allowed to
+  // disagree.
+  void resolve_gnss_lever_arm_from_tf(int source_id, const std::string & msg_frame)
+  {
+    const bool secondary = (source_id != 0);
+    if (secondary ? gnss_lever_arm2_explicit_ : gnss_lever_arm_explicit_) return;
+    if (secondary ? gnss_lever_arm2_tf_resolved_ : gnss_lever_arm_tf_resolved_) return;
+
+    auto & lever_arm = secondary ? gnss_lever_arm2_ : gnss_lever_arm_;
+    bool & resolved  = secondary ? gnss_lever_arm2_tf_resolved_
+                                 : gnss_lever_arm_tf_resolved_;
+    int  & warns     = secondary ? gnss2_la_warns_ : gnss_la_warns_;
+    auto & last_warn = secondary ? gnss2_la_last_warn_ : gnss_la_last_warn_;
+    const std::string & override_frame =
+      secondary ? gnss2_frame_override_ : gnss_frame_override_;
+    const char * label = secondary ? "secondary" : "primary";
+
+    // Empty override AND empty message frame means the frame is unknown.
+    // Complete the one-shot as a no-op rather than probing a synthetic frame on
+    // every fix and blocking this callback for the TF timeout each time.
+    if (fusioncore_ros::gnss_lever_arm_tf_action(override_frame, msg_frame, base_frame_) ==
+        fusioncore_ros::GnssLeverArmTfAction::MarkResolved) {
+      resolved = true;
+      return;
+    }
+
+    const std::string frame =
+      fusioncore_ros::resolve_gnss_frame(override_frame, msg_frame);
+    try {
+      auto tf = tf_buffer_->lookupTransform(
+        base_frame_, frame, tf2::TimePointZero, tf2::durationFromSec(0.2));
+      lever_arm.x = tf.transform.translation.x;
+      lever_arm.y = tf.transform.translation.y;
+      lever_arm.z = tf.transform.translation.z;
+      if (!lever_arm.is_zero()) {
+        RCLCPP_INFO(get_logger(),
+          "GNSS lever arm (%s) auto-resolved from TF %s -> %s: x=%.3f y=%.3f z=%.3f m",
+          label, base_frame_.c_str(), frame.c_str(),
+          lever_arm.x, lever_arm.y, lever_arm.z);
+      } else {
+        RCLCPP_INFO(get_logger(),
+          "GNSS lever arm (%s) auto-resolved to zero (antenna at base_frame origin)",
+          label);
+      }
+      resolved = true;
+    } catch (const tf2::TransformException & ex) {
+      // Each receiver carries its own warn budget. Sharing one meant a silent
+      // second antenna could spend the primary's and hide a real fault.
+      if (report_lever_arm_tf_failure(warns, last_warn)) {
+        RCLCPP_WARN(get_logger(),
+          "GNSS lever arm (%s) auto-resolve failed (%s -> %s): %s. "
+          "Leaving it at zero; set gnss.lever_arm%s_x/y/z explicitly to override.%s",
+          label, base_frame_.c_str(), frame.c_str(), ex.what(),
+          secondary ? "2" : "",
+          warns >= kLeverArmTfMaxWarns ? "  Not reporting this again." : "");
+      }
+    }
+  }
+
   void gnss_callback(const sensor_msgs::msg::NavSatFix::SharedPtr msg, int source_id = 0)
   {
     if (source_id == 0) mark_sensor_received("GNSS");
@@ -2329,48 +2410,8 @@ private:
       (void)validate_primary_gnss_frame(gnss_frame);
     }
 
-    // One-shot auto-resolve of the GNSS lever arm from TF, primary receiver
-    // only. Empty override + empty message frame means the frame is unknown:
-    // complete the one-shot as a no-op instead of probing a synthetic frame on
-    // every fix and blocking this callback for the TF timeout each time.
-    if (source_id == 0 && !gnss_lever_arm_explicit_ && !gnss_lever_arm_tf_resolved_) {
-      const auto tf_action = fusioncore_ros::gnss_lever_arm_tf_action(
-        gnss_frame_override_, msg->header.frame_id, base_frame_);
-      if (tf_action == fusioncore_ros::GnssLeverArmTfAction::MarkResolved) {
-        gnss_lever_arm_tf_resolved_ = true;
-      } else {
-        try {
-          auto tf = tf_buffer_->lookupTransform(
-            base_frame_, gnss_frame, tf2::TimePointZero,
-            tf2::durationFromSec(0.2));
-          gnss_lever_arm_.x = tf.transform.translation.x;
-          gnss_lever_arm_.y = tf.transform.translation.y;
-          gnss_lever_arm_.z = tf.transform.translation.z;
-          if (!gnss_lever_arm_.is_zero()) {
-            RCLCPP_INFO(get_logger(),
-              "GNSS lever arm auto-resolved from TF %s -> %s: x=%.3f y=%.3f z=%.3f m",
-              base_frame_.c_str(), gnss_frame.c_str(),
-              gnss_lever_arm_.x, gnss_lever_arm_.y, gnss_lever_arm_.z);
-          } else {
-            RCLCPP_INFO(get_logger(),
-              "GNSS lever arm auto-resolved to zero (antenna at base_frame origin)");
-          }
-          gnss_lever_arm_tf_resolved_ = true;
-        } catch (const tf2::TransformException &ex) {
-          // Both sides of this: the rate limit from 45a1ef5, and gnss_frame
-          // from #96 so the message names the frame actually looked up rather
-          // than the raw message frame_id, which may have been overridden.
-          if (report_lever_arm_tf_failure(gnss_la_warns_, gnss_la_last_warn_)) {
-            RCLCPP_WARN(get_logger(),
-              "GNSS lever arm auto-resolve failed (%s -> %s): %s. "
-              "Leaving lever arm at zero; set gnss.lever_arm_x/y/z explicitly to "
-              "override.%s",
-              base_frame_.c_str(), gnss_frame.c_str(), ex.what(),
-              gnss_la_warns_ >= kLeverArmTfMaxWarns ? "  Not reporting this again." : "");
-          }
-        }
-      }
-    }
+    // Auto-resolve this receiver's antenna lever arm from TF, once per receiver.
+    resolve_gnss_lever_arm_from_tf(source_id, msg->header.frame_id);
 
     fusioncore::sensors::LLAPoint lla;
     lla.lat_rad = msg->latitude  * M_PI / 180.0;
@@ -2659,6 +2700,9 @@ private:
         !gnss_frame_validated_ && !gnss_lever_arm_.is_zero()) {
       (void)validate_primary_gnss_frame(gnss_frame);
     }
+
+    // GPSFix users never got this at all before #4.
+    resolve_gnss_lever_arm_from_tf(source_id, msg->header.frame_id);
 
     fusioncore::sensors::LLAPoint lla;
     lla.lat_rad = msg->latitude  * M_PI / 180.0;
@@ -3847,8 +3891,10 @@ private:
   double heading_xcheck_deg_    = 15.0;
   int    imu_la_warns_      = 0;
   int    gnss_la_warns_     = 0;
+  int    gnss2_la_warns_    = 0;
   rclcpp::Time imu_la_last_warn_{0, 0, RCL_ROS_TIME};
   rclcpp::Time gnss_la_last_warn_{0, 0, RCL_ROS_TIME};
+  rclcpp::Time gnss2_la_last_warn_{0, 0, RCL_ROS_TIME};
   bool   apply_lever_arm_pre_heading_ = false;
   double gnss_min_sigma_xy_ = 0.02;   // metres: floor on the receiver's reported sigma
   double gnss_min_sigma_z_  = 0.05;
@@ -3902,6 +3948,7 @@ private:
   std::string heading_topic_;
   std::string gnss_fix_topic_;
   std::string gnss_frame_override_;
+  std::string gnss2_frame_override_;
   std::string gnss2_topic_;
   std::string azimuth_topic_;
   std::string mag_topic_;
@@ -3965,8 +4012,10 @@ private:
   // one-shot TF resolution on the first matching message.
   bool imu_lever_arm_explicit_    = false;
   bool gnss_lever_arm_explicit_   = false;
+  bool gnss_lever_arm2_explicit_  = false;
   bool imu_lever_arm_tf_resolved_  = false;
   bool gnss_lever_arm_tf_resolved_ = false;
+  bool gnss_lever_arm2_tf_resolved_ = false;
   bool gnss_frame_validated_        = false;
 
   // ZUPT parameters

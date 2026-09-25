@@ -8,6 +8,36 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **GNSS antenna lever arms now auto-resolve from TF per receiver, not just for
+  the primary.** (#4) The one-shot TF lookup that fills in `gnss.lever_arm_x/y/z`
+  from `base_frame -> the receiver's frame` was hardcoded to `source_id == 0` and
+  lived inline in the NavSatFix callback. Two consequences, both reported by a
+  dual-antenna user: a robot with two receivers had to type the second antenna's
+  offset into YAML even though the URDF already described exactly where it was,
+  and anyone reading `gps_msgs/GPSFix` got no auto-resolve at all, on either
+  receiver.
+
+  The lookup moved into `resolve_gnss_lever_arm_from_tf(source_id, frame)` and is
+  called from both the NavSatFix and GPSFix paths for whichever receiver the fix
+  arrived on. Each receiver keeps its own one-shot flag and its own warn budget,
+  so a silent second antenna cannot spend the primary's warnings and hide a real
+  fault on the first.
+
+  New `gnss.frame_id2`, the same override `gnss.frame_id` provides, for a second
+  receiver whose driver publishes an empty or wrong `header.frame_id`.
+
+  Unchanged on purpose: a lever arm written in the YAML is still never
+  overwritten from TF. TF says where the antenna is bolted, the YAML says what
+  the operator wants used, and those are allowed to disagree. Behaviour for a
+  single-receiver setup is identical.
+
+  Covered by `test_gnss_lever_arm_tf.py`, which stands up two static transforms
+  and two receivers and asserts each resolves its own distinct offset. Verified
+  against a negative control: reinstating the `source_id != 0` early return makes
+  the test fail, so it tests the feature rather than the harness.
+
 ### Fixed
 
 - **The parked-motion check ran on every prefix of the window, not on the window.**

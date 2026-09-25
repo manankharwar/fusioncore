@@ -143,6 +143,16 @@ fusioncore:
 
     # Optional second GNSS receiver. Leave empty to disable.
     gnss.fix2_topic: ""
+
+    # Frame override for the second receiver, same meaning as gnss.frame_id
+    # above. Only needed when that driver publishes an empty header.frame_id,
+    # or a frame that is not the one in your URDF.
+    gnss.frame_id2: ""
+
+    # Second antenna's lever arm. Same rule as the primary: leave at 0 and it is
+    # auto-resolved from TF (base_frame -> the second receiver's frame), set it
+    # non-zero to override. On a dual-antenna robot the URDF already places both
+    # antennas, so there is usually nothing to fill in here.
     gnss.lever_arm2_x: 0.0
     gnss.lever_arm2_y: 0.0
     gnss.lever_arm2_z: 0.0
