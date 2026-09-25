@@ -58,7 +58,7 @@ colcon test --packages-select fusioncore_core
 colcon test-result --verbose
 ```
 
-Expected: `272 tests, 0 errors, 0 failures, 0 skipped`
+Expected: `266 tests, 0 errors, 0 failures, 0 skipped`
 
 That is the figure `colcon test-result --all` prints. It counts each package's CTest
 wrapper entry alongside the individual cases, so it is 27 higher than the number of
