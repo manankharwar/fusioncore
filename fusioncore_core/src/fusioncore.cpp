@@ -136,6 +136,8 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
+  hdg_window_turn_rad_  = 0.0;
+  hdg_turn_prev_t_      = -1.0;
   xchk_ref_set_         = false;
   acc_n_                = 0;
   acc_i_                = 0;
@@ -236,6 +238,8 @@ void FusionCore::reset() {
   last_hdg_fix_y_       = 0.0;
   gps_track_hdg_fused_  = false;
   hdg_window_had_turn_  = false;
+  hdg_window_turn_rad_  = 0.0;
+  hdg_turn_prev_t_      = -1.0;
   xchk_ref_set_         = false;
   acc_n_                = 0;
   acc_i_                = 0;
@@ -534,7 +538,10 @@ void FusionCore::update_distance_traveled(double x, double y, double pre_update_
   // the MIN_STEP early-return below: an in-place spin barely moves the GNSS
   // antenna (dist stays near zero), so gating this on dist would miss
   // exactly the case it exists to catch.
-  if (std::abs(ukf_.state().x[WZ]) > config_.gps_track_heading_max_yaw_rate) {
+  // Skipped when the angle gate is running, for the same reason as in
+  // update_imu(): the two gates are alternatives, not layers.
+  if (config_.gps_track_heading_max_window_turn_deg <= 0.0 &&
+      std::abs(ukf_.state().x[WZ]) > config_.gps_track_heading_max_yaw_rate) {
     hdg_window_had_turn_ = true;
   }
 
@@ -722,8 +729,37 @@ void FusionCore::update_imu(
   // threshold still compares against an estimated, bias-corrected rate exactly
   // as the fix-rate check does. That check stays where it is: it also covers the
   // VSLAM pose path, which never reaches this function.
-  if (std::abs(ukf_.state().x[WZ]) > config_.gps_track_heading_max_yaw_rate)
+  //
+  // Unless the ANGLE gate is enabled, in which case it replaces this entirely.
+  // Both cannot run: the rate check is what discards 300 windows a run, so
+  // leaving it armed alongside the angle gate would change nothing at all. See
+  // gps_track_heading_max_window_turn_deg for the measurements.
+  if (config_.gps_track_heading_max_window_turn_deg > 0.0) {
+    // Integrate the RAW gyro, not x[WZ] and not the yaw estimate. The header
+    // records why each of those was tried and rejected.
+    if (hdg_turn_prev_t_ >= 0.0) {
+      const double dt_turn = timestamp_seconds - hdg_turn_prev_t_;
+      // Same window a plain dt sanity check would use. A gap longer than a second
+      // means samples were dropped, and integrating across it would attribute a
+      // second of unobserved rotation to one step.
+      if (dt_turn > 0.0 && dt_turn < 1.0) {
+        hdg_window_turn_rad_ += wz * dt_turn;
+      }
+    }
+    hdg_turn_prev_t_ = timestamp_seconds;
+
+    const double turned_deg = std::abs(hdg_window_turn_rad_) * 180.0 / M_PI;
+    gnss_debug_.track_heading_window_turn_deg = turned_deg;
+    if (turned_deg > config_.gps_track_heading_max_window_turn_deg) {
+      hdg_window_had_turn_ = true;
+      // Reset here as well as on window restart. Without this the accumulator
+      // stays over threshold and latches every subsequent sample, so the window
+      // could never accumulate again even after a legitimate restart.
+      hdg_window_turn_rad_ = 0.0;
+    }
+  } else if (std::abs(ukf_.state().x[WZ]) > config_.gps_track_heading_max_yaw_rate) {
     hdg_window_had_turn_ = true;
+  }
 
   // Accelerometer magnitude for the ZUPT stationarity check. Magnitude rather
   // than per-axis so it works whether or not gravity has been removed, and the
@@ -1807,6 +1843,7 @@ bool FusionCore::apply_gnss_update(
       xchk_ref_y_ = fix.y;
       xchk_ref_set_ = true;
       hdg_window_had_turn_ = false;
+      hdg_window_turn_rad_ = 0.0;
     } else if (!motion_suits_track_heading || hdg_window_had_turn_) {
       // Same admissibility rules the fusion path uses. A bearing measured across
       // a turn, or at a crawl, describes the path and not the heading, so it
@@ -1814,6 +1851,7 @@ bool FusionCore::apply_gnss_update(
       xchk_ref_x_ = fix.x;
       xchk_ref_y_ = fix.y;
       hdg_window_had_turn_ = false;
+      hdg_window_turn_rad_ = 0.0;
     } else {
       const double dx = fix.x - xchk_ref_x_;
       const double dy = fix.y - xchk_ref_y_;
@@ -1866,6 +1904,7 @@ bool FusionCore::apply_gnss_update(
       last_hdg_fix_x_      = fix.x;
       last_hdg_fix_y_      = fix.y;
       hdg_window_had_turn_ = false;
+      hdg_window_turn_rad_ = 0.0;
     } else {
       double dx   = fix.x - last_hdg_fix_x_;
       double dy   = fix.y - last_hdg_fix_y_;

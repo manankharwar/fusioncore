@@ -77,6 +77,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_heading_cross_check tests/test_heading_cross_check.cpp TIMEOUT 300)
   target_link_libraries(test_heading_cross_check fusioncore_core Eigen3::Eigen)
 
+  ament_add_gtest(test_track_heading_turn_gate tests/test_track_heading_turn_gate.cpp TIMEOUT 300)
+  target_link_libraries(test_track_heading_turn_gate fusioncore_core Eigen3::Eigen)
+
   ament_add_gtest(test_continuity_auto tests/test_continuity_auto.cpp TIMEOUT 300)
   target_link_libraries(test_continuity_auto fusioncore_core Eigen3::Eigen)
 

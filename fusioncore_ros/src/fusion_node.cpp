@@ -397,6 +397,11 @@ public:
     declare_parameter("gnss.track_heading_cross_check_deg", 15.0);
     declare_parameter("gnss.track_heading_min_speed",    0.2);
     declare_parameter("gnss.track_heading_max_yaw_rate", 0.3);
+    // #144: discard the bearing window on the ANGLE turned across it rather than
+    // on one instantaneous yaw-rate sample. 0.0 keeps the rate check, so this is
+    // off by default and changes nothing until set. 5.0 is the value validated
+    // over five rover bags; see the core header for the numbers.
+    declare_parameter("gnss.track_heading_max_window_turn_deg", 0.0);
     declare_parameter("gnss.lever_arm_max_heading_sigma_deg", 20.0);
 
     declare_parameter("adaptive.imu",               true);
@@ -753,6 +758,8 @@ public:
     heading_xcheck_deg_ = config.gps_track_heading_cross_check_deg;
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
     config.gps_track_heading_max_yaw_rate  = get_parameter("gnss.track_heading_max_yaw_rate").as_double();
+    config.gps_track_heading_max_window_turn_deg =
+      get_parameter("gnss.track_heading_max_window_turn_deg").as_double();
     config.gnss_lever_arm_max_heading_sigma_deg =
       get_parameter("gnss.lever_arm_max_heading_sigma_deg").as_double();
 
@@ -3298,6 +3305,7 @@ private:
     msg.heading_sigma_deg = d.heading_sigma_deg;
     msg.track_heading_state       = track_heading_state_str(d.track_heading_state);
     msg.track_heading_baseline_m  = d.track_heading_baseline_m;
+    msg.track_heading_window_turn_deg = d.track_heading_window_turn_deg;
     {
       const auto st_now = fc_->get_status();
       msg.heading_vs_track_deg = st_now.heading_vs_track_deg;

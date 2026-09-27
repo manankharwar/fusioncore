@@ -38,6 +38,11 @@ float64 heading_sigma_deg   # heading 1-sigma (degrees) used to decide lever arm
 string  track_heading_state
 float64 track_heading_baseline_m   # displacement since the reference fix (m)
 float64 track_heading_sigma_rad    # sigma_xy/baseline, -1.0 if not computed
+# Angle the bearing window thinks the robot has turned, degrees. -1.0 when
+# gnss.track_heading_max_window_turn_deg is 0, i.e. the angle gate is off and the
+# instantaneous rate check is in force instead. Added for #144: the gate was
+# discarding ~300 windows a run and no field could say why.
+float64 track_heading_window_turn_deg
 
 # Cross-check on whichever ABSOLUTE heading source is in charge, in degrees:
 # the filter's yaw minus the GPS track bearing, median over recent straight

@@ -74,6 +74,35 @@ struct FusionCoreConfig {
   double gps_track_heading_min_speed    = 0.2;   // m/s
   double gps_track_heading_max_yaw_rate = 0.3;   // rad/s (~17 deg/s)
 
+  // Discard the bearing window on the ANGLE TURNED across it, in degrees,
+  // instead of on an instantaneous yaw-rate sample. 0.0 keeps the rate check
+  // above and is the default, so nothing changes until this is set.
+  //
+  // Why it exists (#144). max_yaw_rate is tested against one sample, so a single
+  // 20 ms jolt off a stone discards the whole accumulated baseline. Measured over
+  // five rover bags on ordinary grass: the rate gate latched 791-887 times per run
+  // and the baseline never got past 8.8-11.9 m against the 25 m that fusion needs,
+  // so ZERO bearings were ever fused. The excursions were not noise and not
+  // corners: median duration one sample, median NET angle 0.43-0.52 degrees,
+  // 93-100% under 2 degrees, and zero excursions while parked. Meanwhile the four
+  // scripted 90 degree corners were driven at 0.09 rad/s achieved, under the 0.3
+  // threshold, so the gate caught none of the turns it exists for.
+  //
+  // At 5.0 degrees the same five bags reach 26.7-29.9 m and clear 25 m on every
+  // one, latching 103-110 times instead of 791-887. Raising max_yaw_rate instead
+  // was tried across four bags and rejected: it lets a bearing span a real turn,
+  // which injects a wrong heading.
+  //
+  // The angle is integrated from the RAW GYRO. The other three sources were each
+  // tried and each fails: the yaw ESTIMATE swings 122 degrees on a 1.03 degree
+  // truth and sometimes reverses sign because the quaternion covariance is
+  // unbounded; the filter's WZ state accumulates its own noise and bias, so six
+  // seconds of driving straight trips the gate; and wheel encoders over-report
+  // rotation under slip, 129 degrees out on one of the five bags. Integrating the
+  // raw gyro therefore needs IMU samples: on a platform with no gyro, leave this
+  // at 0.0 and keep the rate check.
+  double gps_track_heading_max_window_turn_deg = 0.0;  // degrees, 0 = use max_yaw_rate
+
   // Lever arm correction is only applied when heading uncertainty is below this threshold.
   // When heading_sigma exceeds this value (e.g. during prolonged turns with no GPS track
   // heading fusions firing), rotating the lever arm by an uncertain heading adds more
@@ -631,6 +660,11 @@ struct GnssFixDebug {
   // The same question answered completely, including the two cases the booleans
   // above never covered: baseline too short, and bearing sigma too high.
   TrackHeadingState  track_heading_state = TrackHeadingState::NOT_ATTEMPTED;
+  // How far the bearing window thinks the robot has turned, degrees. #144 could
+  // not be diagnosed from a bag because this number did not exist: the gate was
+  // discarding 300 windows a run and nothing reported why. -1 when the angle gate
+  // is disabled, so "off" is distinguishable from "zero turn measured".
+  double             track_heading_window_turn_deg = -1.0;
   double             track_heading_baseline_m = 0.0;  // displacement since the reference fix
   double             track_heading_sigma_rad  = 0.0;  // sigma_xy/dist, -1 if not computed
   double             hdop               = 0.0;
@@ -1209,6 +1243,17 @@ private:
   // yaw_rate check; consumed and cleared in apply_gnss_update()'s heading
   // fusion block.
   bool   hdg_window_had_turn_ = false;
+
+  // Signed raw-gyro angle accumulated across the current bearing window, radians.
+  // Signed deliberately: a wheel crossing a stone rocks the robot one way and
+  // back, so those cancel, while a real corner accumulates monotonically. That is
+  // the whole reason this discriminates where an instantaneous rate cannot.
+  // Reset wherever hdg_window_had_turn_ is cleared, because both mean "the window
+  // starts again from here". Only maintained when
+  // gps_track_heading_max_window_turn_deg > 0.
+  double hdg_window_turn_rad_ = 0.0;
+  // Stamp of the last IMU sample folded into hdg_window_turn_rad_, for dt.
+  double hdg_turn_prev_t_ = -1.0;
 
   // Rolling accelerometer magnitude window for the ZUPT stationarity check.
   // 100 samples is one second at the 100 Hz these IMUs run at.
