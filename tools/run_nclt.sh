@@ -62,7 +62,23 @@ cleanup                               # belt and braces: the bag needs SIGINT to
 python3 "$WS/src/fusioncore/tools/odom_to_tum.py" --bag "$OUT/bag" --topic /fusion/odom  --out "$OUT/fc.tum"
 python3 "$WS/src/fusioncore/tools/odom_to_tum.py" --bag "$OUT/bag" --topic /rl/odometry --out "$OUT/rl.tum"
 
-python3 "$WS/src/fusioncore/tools/evaluate.py" \
+# evo lives in a venv on machines where the system python is PEP 668
+# externally-managed (no pip install, and python3-venv absent until apt installs it).
+# Prefer that interpreter when it exists, so the harness does not die at the last step
+# after a 90 minute playback. EVO_PYTHON overrides it.
+EVAL_PY="${EVO_PYTHON:-}"
+if [ -z "$EVAL_PY" ]; then
+  if [ -x "$HOME/.venv-evo/bin/python" ]; then EVAL_PY="$HOME/.venv-evo/bin/python"
+  else EVAL_PY="python3"; fi
+fi
+if ! "$EVAL_PY" -c "import evo" 2>/dev/null; then
+  echo "WARNING: $EVAL_PY has no evo, so the metrics step will fail."
+  echo "  sudo apt install -y python3.12-venv"
+  echo "  python3 -m venv --system-site-packages ~/.venv-evo && ~/.venv-evo/bin/pip install evo"
+  echo "  the bag and the .tum trajectories are already written, so rerun only this step."
+fi
+
+"$EVAL_PY" "$WS/src/fusioncore/tools/evaluate.py" \
   --gt "$DATA/ground_truth.tum" --fusioncore "$OUT/fc.tum" --rl "$OUT/rl.tum" \
   --sequence "$SEQ" --out_dir "$OUT/res" 2>&1 | tail -20
 
