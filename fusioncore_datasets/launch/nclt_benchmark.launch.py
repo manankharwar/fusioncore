@@ -186,6 +186,14 @@ def generate_launch_description():
             '/rl/odometry',
             '/gnss/fix',
             '/clock',
+            # The INPUTS, added 2026-09-27. Without them a benchmark bag records only
+            # what the filter concluded and nothing it was told, so a result can never
+            # be re-derived: bisecting a regression costs one 90 minute playback per
+            # commit. With them the whole sequence replays through fusioncore_core in
+            # milliseconds via hardware/replay.cpp, which is how the rover side already
+            # works. Cost is roughly 60 MB per sequence against 490 MB for the outputs.
+            '/imu/data',
+            '/odom/wheels',
         ],
         output='screen',
     )

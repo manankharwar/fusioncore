@@ -35,6 +35,16 @@ fusioncore:
 
     # Lever arm: zero: disables heading-validation gate so GNSS is fused immediately.
     # The 30cm vertical offset has negligible horizontal effect on a flat-terrain vehicle.
+    # #144: discard the bearing window on the ANGLE turned across it rather than on
+    # one instantaneous yaw-rate sample. Left at the 0.0 default here, deliberately,
+    # until all three staged sequences have been measured. What one sequence says so
+    # far, 2012-08-20 at 1x with the RL control reading 10.51 both times:
+    #     gate off (rate check)   ATE 193.86 m   drift 25.79 m/km
+    #     gate on at 5 deg        ATE 136.74 m   drift 18.19 m/km   29.5% better
+    # That is far outside this sequence's documented 4.57% spread, but it is n=1 on
+    # one sequence and it does not close the gap to RL, so it is not a default yet.
+    # gnss.track_heading_max_window_turn_deg: 5.0
+
     gnss.lever_arm_x: 0.0
     gnss.lever_arm_y: 0.0
     gnss.lever_arm_z: 0.0
