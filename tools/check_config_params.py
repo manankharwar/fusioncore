@@ -8,11 +8,14 @@ tuned. Three certified configs carried gnss.max_hdop as though it were the activ
 gate for months (issue #79) for exactly this reason.
 
 Usage:
-    python3 tools/check_config_params.py [--quiet]
+    python3 tools/check_config_params.py [--quiet] [config.yaml ...]
+
+With no paths, the configs shipped in this repo are checked.
 
 Warnings describe hardware-dependent settings and do not fail CI. Errors describe
 settings the documented filter model says are unsafe and exit 1.
 """
+import argparse
 import glob
 import os
 import re
@@ -215,31 +218,43 @@ def print_finding(severity, name, line, raw, message):
 
 
 def main():
-    quiet = "--quiet" in sys.argv
+    ap = argparse.ArgumentParser(description=__doc__,
+                                 formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("paths", nargs="*",
+                    help="config files to check (default: the shipped configs)")
+    ap.add_argument("--quiet", action="store_true", help="only print files with findings")
+    args = ap.parse_args()
+    missing = [p for p in args.paths if not os.path.isfile(p)]
+    if missing:
+        print("no such config file: " + ", ".join(missing), file=sys.stderr)
+        return 2
+    if args.paths:
+        targets = [(p, p) for p in args.paths]
+    else:
+        targets = [(path, os.path.relpath(path, ROOT)) for pattern in CONFIG_GLOBS
+                   for path in sorted(glob.glob(os.path.join(ROOT, pattern), recursive=True))]
     declared = declared_parameters(NODE)
     files, errors, warnings = 0, 0, 0
-    for pattern in CONFIG_GLOBS:
-        for path in sorted(glob.glob(os.path.join(ROOT, pattern), recursive=True)):
-            rel = os.path.relpath(path, ROOT)
-            parameters = config_parameters(path)
-            unknown = [(k, n) for k, n, _ in parameters if k not in declared]
-            findings = value_findings(parameters)
-            files += 1
-            if unknown or findings:
-                print(f"\n{rel}")
-                for k, n in unknown:
+    for path, rel in targets:
+        parameters = config_parameters(path)
+        unknown = [(k, n) for k, n, _ in parameters if k not in declared]
+        findings = value_findings(parameters)
+        files += 1
+        if unknown or findings:
+            print(f"\n{rel}")
+            for k, n in unknown:
+                errors += 1
+                near = sorted(d for d in declared if d.split(".")[-1] == k.split(".")[-1])
+                hint = f"   did you mean {near[0]}?" if near else ""
+                print(f"  line {n:4d}  {k}  NOT DECLARED BY THE NODE{hint}")
+            for finding in findings:
+                if finding[0] == "ERROR":
                     errors += 1
-                    near = sorted(d for d in declared if d.split(".")[-1] == k.split(".")[-1])
-                    hint = f"   did you mean {near[0]}?" if near else ""
-                    print(f"  line {n:4d}  {k}  NOT DECLARED BY THE NODE{hint}")
-                for finding in findings:
-                    if finding[0] == "ERROR":
-                        errors += 1
-                    else:
-                        warnings += 1
-                    print_finding(*finding)
-            elif not quiet:
-                print(f"ok  {rel}")
+                else:
+                    warnings += 1
+                print_finding(*finding)
+        elif not args.quiet:
+            print(f"ok  {rel}")
     print(f"\n{files} config files checked, {errors} errors, {warnings} warnings")
     return 1 if errors else 0
 
