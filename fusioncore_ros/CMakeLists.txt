@@ -71,6 +71,8 @@ if(BUILD_TESTING)
   target_include_directories(test_min_satellites_gate PRIVATE include)
 
   ament_add_gtest(test_gnss_frame tests/test_gnss_frame.cpp)
+  ament_add_gtest(test_lever_arm_config tests/test_lever_arm_config.cpp)
+  target_include_directories(test_lever_arm_config PRIVATE include)
   target_include_directories(test_gnss_frame PRIVATE include)
 
   # Launches the real node and asserts /fromLL is advertised with the type

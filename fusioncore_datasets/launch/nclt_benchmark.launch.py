@@ -194,6 +194,11 @@ def generate_launch_description():
             # works. Cost is roughly 60 MB per sequence against 490 MB for the outputs.
             '/imu/data',
             '/odom/wheels',
+            # And the filter's own account of every fix. Without it a benchmark bag
+            # cannot answer "did the lever arm ever activate" or "what was heading
+            # sigma doing", which is exactly what #148 needed and could not get.
+            '/fusion/debug/gnss_status',
+            '/fusion/debug/filter_health',
         ],
         output='screen',
     )
