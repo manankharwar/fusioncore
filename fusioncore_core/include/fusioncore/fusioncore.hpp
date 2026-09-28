@@ -286,6 +286,41 @@ struct FusionCoreConfig {
   // receiver's noise rather than as noise itself. Floored at 3 internally, since
   // the autocorrelation term needs at least two consecutive pairs.
   int zupt_gnss_min_samples = 5;
+  // Stand the parked inflation down when the fix is further away than the receiver's own
+  // measured parked scatter can explain (#145). 0 disables the check.
+  //
+  // The inflation exists for a receiver repeating a correlated error, and it cannot tell
+  // that from a filter that is simply biased. On fc_field_20260926_1755 the filter sat
+  // 8.20 m from a receiver whose parked scatter was 2.8 m, accepted all 150 fixes, and
+  // moved 0.279 m in total: an effective gain of 0.0002. Loop closure read 7.22 m where
+  // the raw receiver closed 0.90 m, and the workaround was to switch the whole feature
+  // off, which costs 0.37 m of idle excursion becoming 2.36 m.
+  //
+  // An offset many times the observed scatter is not correlated receiver noise, it is the
+  // filter being wrong, and refusing the correction is the wrong response.
+  //
+  // 5.0 is measured, not chosen. Swept on the rover bags with the inflation left at 100,
+  // reading closure on fc_field_20260926_1755 against idle excursion on the 17.5 minute
+  // parked fc_field_20260926_1810:
+  //
+  //     ratio   1755 closure   1810 idle excursion
+  //       0        3.80 m           0.37 m          (before this check existed)
+  //       3        1.18 m           1.59 m
+  //       4        1.48 m           0.75 m
+  //       5        1.83 m           0.36 m          <- full idle benefit kept
+  //       8        2.96 m           0.37 m
+  //
+  // So it halves the closure cost while keeping ALL of the idle-drift benefit the
+  // inflation exists for. It does NOT eliminate the tradeoff: disabling the inflation
+  // entirely still closes better (0.79 m) at the cost of idle drift going to 2.36 m.
+  //
+  // The reason a simple innovation test cannot fully separate the two: a receiver
+  // genuinely wandering while parked reaches several times its own scatter (4.60 m peak
+  // against ~1 m on 1810), which is indistinguishable from bias on any single fix. The
+  // better discriminator is PERSISTENCE, because filter bias holds one direction while
+  // receiver wander changes direction. That needs the mean innovation over the parked
+  // window rather than the instantaneous one, and is not done here.
+  double zupt_gnss_bias_ratio = 5.0;
 
   // Catch wheel odometry that has died while the robot is still driving.
   //
@@ -802,6 +837,8 @@ struct FusionCoreStatus {
   // which means the wheel odometry is lying. Published so it is visible in a bag
   // rather than only in a log line nobody was watching.
   bool   zupt_parked_but_moving     = false;
+  // True when the #145 bias check stood the parked inflation down for this fix.
+  bool   gnss_parked_bias_standdown = false;
   double zupt_parked_straightness   = 0.0;
   double gnss_chi2_max = -1.0;
   double gnss_chi2_threshold = 0.0;
@@ -1069,6 +1106,8 @@ private:
   double gnss_parked_sigma_observed_ = -1.0;
   double gnss_parked_sigma_declared_ = -1.0;
   double gnss_parked_correlation_    = 0.0;
+  // #145: true when the bias check stood the parked inflation down for the last fix.
+  bool   gnss_parked_bias_standdown_ = false;
   double gnss_parked_inflation_      = 1.0;
   // Straightness check on the parked fixes, see zupt_parked_motion_m.
   double parked_ref_x_ = 0.0, parked_ref_y_ = 0.0;

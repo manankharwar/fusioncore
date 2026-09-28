@@ -1451,6 +1451,30 @@ bool FusionCore::apply_gnss_update(
         if (k < 2) { obs_xy += 0.5 * observed; decl_xy += 0.5 * declared; }
       }
 
+      // #145: stand down when the fix is further away than the scatter can explain.
+      //
+      // Everything above measures how much the RECEIVER repeats itself. None of it can
+      // tell a receiver repeating a correlated error from a filter that is simply
+      // biased, and it responds to both by refusing the correction. On
+      // fc_field_20260926_1755 that froze an 8.20 m error across 150 accepted fixes,
+      // moving the estimate 0.279 m in total.
+      //
+      // The position innovation is the discriminator and it is free here: the GNSS
+      // position measurement function IS the state position, so the offset is the plain
+      // difference. It is compared against the scatter the receiver has actually shown
+      // while parked, never against what it claims.
+      if (config_.zupt_gnss_bias_ratio > 0.0 && obs_xy > 1e-6) {
+        const double innov_xy = std::hypot(fix.x - ukf_.state().x[X],
+                                           fix.y - ukf_.state().x[Y]);
+        gnss_parked_bias_standdown_ =
+          innov_xy > config_.zupt_gnss_bias_ratio * obs_xy;
+        if (gnss_parked_bias_standdown_) {
+          scale[0] = scale[1] = scale[2] = 1.0;
+        }
+      } else {
+        gnss_parked_bias_standdown_ = false;
+      }
+
       // R' = D R D with D = diag(sqrt(scale)) inflates each axis by its own
       // evidence while preserving the receiver's reported X/Y correlation, which
       // a single scalar multiply would also do but a per-axis one would not.
@@ -2181,6 +2205,7 @@ FusionCoreStatus FusionCore::get_status() const {
   status.gnss_parked_sigma_declared = gnss_parked_sigma_declared_;
   status.gnss_parked_correlation    = gnss_parked_correlation_;
   status.zupt_parked_but_moving     = parked_moving_detected_;
+  status.gnss_parked_bias_standdown  = gnss_parked_bias_standdown_;
   status.zupt_parked_straightness   = gnss_parked_straightness_;
   status.gnss_parked_inflation      = gnss_parked_inflation_;
   status.gnss_chi2_max       = gnss_chi2_max_;

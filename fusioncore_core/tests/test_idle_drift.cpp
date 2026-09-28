@@ -504,3 +504,87 @@ TEST(IdleDriftTest, WithoutTheImuCheckTheDeadEncoderIsBelieved) {
       << "with the check disabled ZUPT should still fire on the lying wheels, "
          "otherwise the two tests above prove nothing";
 }
+
+// ─── #145: the parked inflation must stand down for a BIASED filter ──────────
+//
+// The inflation cannot tell a receiver repeating a correlated error from a filter that
+// is simply wrong, and it refuses the correction for both. Measured on
+// fc_field_20260926_1755: the filter sat 8.20 m from a receiver scattering 2.8 m,
+// accepted all 150 parked fixes, and moved 0.279 m in total. Effective gain 0.0002.
+
+namespace {
+
+// Park the filter, feed it fixes offset by `offset_m` from where it thinks it is, and
+// report how far it actually moved toward them.
+double parked_pull(double offset_m, double bias_ratio)
+{
+  FusionCoreConfig cfg = idle_config(0.001, 100.0);
+  cfg.zupt_gnss_bias_ratio = bias_ratio;
+  // Match the FIELD geometry, or the scenario tests a different mechanism. On
+  // fc_field_20260926_1755 the offset was 8.20 m against a receiver reporting 2.8 m, so
+  // the chi2 distance was about 2 sigma and every fix was ACCEPTED. With the harness
+  // default of 1.0 m noise the same offset is a gross outlier: it fails the gate, arms
+  // coast, inflates P and then jumps, which is not the defect under test.
+  cfg.gnss.base_noise_xy = 2.8;
+  cfg.gnss.base_noise_z  = 2.8;
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  double t = 0.0;
+  // Settle a parked window first so the scatter statistics exist.
+  for (int i = 0; i < 6000; ++i) {
+    t += dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (i % 2 == 0) fc.update_encoder(t, 0.0, 0.0, 0.0);
+    if (i % 100 == 0) fc.update_gnss(t, fix_at(wander(t), wander(t + 7.0)));
+  }
+  const double x_before = fc.get_state().x[X];
+  // Now every fix sits offset_m away, which is what a biased filter sees.
+  for (int i = 0; i < 20000; ++i) {
+    t += dt;
+    fc.update_imu(t, 0, 0, 0, 0, 0, g);
+    if (i % 2 == 0) fc.update_encoder(t, 0.0, 0.0, 0.0);
+    if (i % 100 == 0) fc.update_gnss(t, fix_at(offset_m + wander(t), wander(t + 7.0)));
+  }
+  return std::abs(fc.get_state().x[X] - x_before);
+}
+
+}  // namespace
+
+TEST(IdleDrift, BiasRatioDefaultIsTheMeasuredValue) {
+  // Swept on the rover bags: 5.0 keeps ALL the idle-drift benefit (1810 excursion 0.36 m
+  // against 0.37 m with the check off) while halving the closure cost (1755 3.80 -> 1.83).
+  // At 3.0 closure is better still at 1.18 m but idle drift degrades to 1.59 m, which
+  // gives away the thing the inflation exists for.
+  EXPECT_DOUBLE_EQ(FusionCoreConfig{}.zupt_gnss_bias_ratio, 5.0);
+}
+
+// NOT TESTED HERE, deliberately: the full freeze.
+//
+// On fc_field_20260926_1755 the effective per-fix gain was 0.0002 and the filter moved
+// 0.279 m across 150 fixes showing it 8.20 m of error. This synthetic reaches a gain
+// around 0.01 and converges 7.88 m over 200 fixes even with the inflation at 100, so it
+// does NOT reproduce the freeze and an assertion here would be testing something else.
+//
+// What makes the field case 50x stiffer is not captured by a smooth synthetic wander:
+// the real receiver's lag-1 correlation saturates the cap for far longer while the held
+// covariance stays small. The freeze is covered against the REAL bag instead, by
+// hardware/replay.cpp on fc_field_20260926_1755, where closure goes 3.80 m to 1.83 m
+// with only zupt.gnss_bias_ratio changed. Do not add a synthetic assertion for it
+// without first reproducing the 0.0002 gain, or it will pass for the wrong reason.
+
+TEST(IdleDrift, BiasCheckLetsAGrossOffsetCorrect) {
+  const double moved = parked_pull(8.2, 5.0);
+  EXPECT_GT(moved, 5.0)
+      << "the bias check should let an 8.2 m offset pull the estimate in, it moved " << moved;
+}
+
+TEST(IdleDrift, BiasCheckDoesNotFireOnOrdinaryParkedWander) {
+  // The other half. A receiver wandering within its own scatter must STILL be
+  // suppressed, or the check has simply disabled the feature by another route.
+  const double moved = parked_pull(0.0, 5.0);
+  EXPECT_LT(moved, 2.0)
+      << "ordinary parked wander must stay suppressed, it moved " << moved;
+}
