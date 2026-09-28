@@ -76,6 +76,50 @@ int main(int argc, char ** argv)
 
   const auto & P = fc.get_state().P;
   const auto & x = fc.get_state().x;
+  // THE PREDICT HYPOTHESIS. Position advances as R(q)*v*dt averaged over the sigma
+  // points. If the yaw sigma points spread by delta, that average shrinks by E[cos
+  // delta] = exp(-sigma_yaw^2 / 2) for a small spread. So a measured yaw sigma predicts
+  // the advance ratio with no free parameters, and either it matches or the hypothesis
+  // is wrong.
+  {
+    const auto & P2 = fc.get_state().P;
+    const auto & x2 = fc.get_state().x;
+    // Small-angle: yaw ~ 2*qz when qw ~ 1, so sigma_yaw ~ 2*sigma_qz.
+    const double sig_qz  = std::sqrt(std::max(P2(QZ, QZ), 0.0));
+    const double sig_yaw = 2.0 * sig_qz / std::max(std::abs(x2[QW]), 1e-9);
+    const double predicted_ratio = std::exp(-0.5 * sig_yaw * sig_yaw);
+    const double actual_ratio = x2[X] / (SPEED * T_END);
+    std::printf("\n  PREDICT HYPOTHESIS: does the yaw spread explain the short advance?\n");
+    std::printf("    sigma(qz)                 %10.6f\n", sig_qz);
+    std::printf("    implied sigma(yaw)        %10.4f rad  = %.1f deg\n",
+                sig_yaw, sig_yaw * 180.0 / M_PI);
+    std::printf("    predicted advance E[cos]  %10.4f\n", predicted_ratio);
+    std::printf("    ACTUAL advance x/(v*t)    %10.4f\n", actual_ratio);
+    std::printf("    -> %s\n", (std::abs(predicted_ratio - actual_ratio) < 0.05)
+                ? "MATCHES. The sigma-point spread in YAW is the mechanism."
+                : "DOES NOT MATCH. Something else is shortening the advance.");
+  }
+
+  // A quaternion component lives in [-1,1], so its variance cannot exceed 1 and its
+  // standard deviation cannot exceed 1 either. Anything above that is not a large
+  // uncertainty, it is a covariance inconsistent with the manifold the state lives on.
+  {
+    const auto & P3 = fc.get_state().P;
+    const auto & x3 = fc.get_state().x;
+    std::printf("\n  QUATERNION COVARIANCE vs the unit-norm constraint\n");
+    const char * nm[4] = {"QW", "QX", "QY", "QZ"};
+    const int idx[4] = {QW, QX, QY, QZ};
+    for (int i = 0; i < 4; ++i) {
+      const double v = P3(idx[i], idx[i]);
+      std::printf("    P(%s,%s) %12.4f   sigma %10.4f   %s\n", nm[i], nm[i], v,
+                  std::sqrt(std::max(v, 0.0)),
+                  std::sqrt(std::max(v, 0.0)) > 1.0 ? "IMPOSSIBLE (>1)" : "ok");
+    }
+    const double nrm = std::sqrt(x3[QW]*x3[QW] + x3[QX]*x3[QX] +
+                                 x3[QY]*x3[QY] + x3[QZ]*x3[QZ]);
+    std::printf("    |q| = %.9f  (the ESTIMATE is fine; the COVARIANCE is not)\n", nrm);
+  }
+
   std::printf("\n  VARIANCES at t=%.0f  (an unobservable direction grows without bound)\n", T_END);
   std::printf("    P(AX,AX)      %12.6f      P(B_AX,B_AX)   %12.6f\n", P(AX, AX), P(B_AX, B_AX));
   std::printf("    P(VX,VX)      %12.6f      P(X,X)         %12.6f\n", P(VX, VX), P(X, X));
