@@ -67,6 +67,13 @@ jobs:
       # This exists because on 2026-09-27 NCLT 2012-08-20 was found to have gone
       # 121.669 m to 192.923 m XY ATE across ten commits. The gate was present, worked,
       # and exited 1. Nobody had run it.
+      # hardware/ is gitignored so replay.cpp is absent from a fresh clone and this
+      # skips cleanly. It runs for anyone with the working tree, which is where config
+      # sweeps and bisects actually happen. It found 12 unwired core parameters the day
+      # it was written, including gnss.outlier_sigma_xy, which sets the chi2 gate's own R.
+      - name: Check every core parameter also reaches the offline replay
+        run: python3 tools/check_replay_wiring.py
+
       - name: Test benchmark regression checker
         run: python3 -m unittest tools/test_check_benchmark_regression.py
 
