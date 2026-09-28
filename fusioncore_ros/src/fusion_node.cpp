@@ -545,6 +545,7 @@ public:
     declare_parameter("ukf.q_gyro_bias",         1e-5);
     declare_parameter("ukf.q_accel_bias",        1e-5);
     declare_parameter("ukf.q_encoder_wz_bias",   1e-7);
+    declare_parameter("ukf.max_sigma_rotation_deg", 0.0);
 
     base_frame_   = get_parameter("base_frame").as_string();
     odom_frame_   = get_parameter("odom_frame").as_string();
@@ -814,6 +815,8 @@ public:
     config.ukf.q_gyro_bias          = get_parameter("ukf.q_gyro_bias").as_double();
     config.ukf.q_accel_bias         = get_parameter("ukf.q_accel_bias").as_double();
     config.ukf.q_encoder_wz_bias    = get_parameter("ukf.q_encoder_wz_bias").as_double();
+    config.ukf.max_sigma_rotation_deg =
+      get_parameter("ukf.max_sigma_rotation_deg").as_double();
 
     zupt_enabled_            = get_parameter("zupt.enabled").as_bool();
     zupt_velocity_threshold_ = get_parameter("zupt.velocity_threshold").as_double();
