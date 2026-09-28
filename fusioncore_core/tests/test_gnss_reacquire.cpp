@@ -596,3 +596,52 @@ TEST(GnssReacquireTest, SweepTheReacquireConfirmCount) {
          "the spike should have been accepted where it was not at 0. The knob "
          "reached the filter and changed nothing: that is the #129 bug again.";
 }
+
+// ─── #151: a blackout that begins DURING a rejection cascade ─────────────────
+//
+// note_rejection_cascade_start decided "was there a gap" once, on a cascade's first
+// rejection, and never revisited it. That is right for a sustained spike, which must not
+// reclassify itself as an outage. It is wrong when a cascade is already running and a
+// real outage then begins: the decision was made before the outage, it is false, and
+// because recovery cannot fire the cascade never ends, the counter never resets, and the
+// decision is never re-made. Self-perpetuating.
+//
+// The discriminator is the gap in the RECEIVED stream, not the gap to the last ACCEPTED
+// fix. During a spike fixes keep arriving on cadence; during an outage they do not. A
+// first attempt at this keyed off the accepted-fix gap, which never advances during a
+// lockout and therefore looks like a permanent outage, and it broke
+// BlackoutDoesNotUnlockRecoveryForALaterSpike and SustainedSpikeStaysRejected.
+
+TEST(GnssReacquireTest, OutageStartingMidCascadeStillArmsRecovery)
+{
+  FusionCoreConfig cfg = blackout_config();
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+
+  const double dt = 0.01, g = 9.80665;
+  double t = 0.0;
+  auto drive = [&](double secs, bool feed_fix, double fix_offset) {
+    const int n = static_cast<int>(secs / dt);
+    for (int i = 0; i < n; ++i) {
+      t += dt;
+      fc.update_imu(t, 0, 0, 0, 0, 0, g);
+      if (i % 2 == 0) fc.update_encoder(t, 1.0, 0.0, 0.0);
+      if (feed_fix && i % 100 == 0) {
+        fc.update_gnss(t, fix_at(t * 1.0 + fix_offset, 0.0));
+      }
+    }
+  };
+
+  drive(30.0, true, 0.0);                    // healthy, fixes accepted
+  drive(40.0, true, 400.0);                  // a spike: fixes keep arriving, all rejected
+  const long fired_before_outage = fc.get_status().gnss_recovery_inflations;
+  drive(180.0, false, 0.0);                  // OUTAGE begins mid-cascade, no fixes at all
+  drive(30.0, true, 0.0);                    // receiver returns, honest fixes again
+
+  const auto st = fc.get_status();
+  EXPECT_GT(st.gnss_recovery_inflations, fired_before_outage)
+      << "an outage that began while a cascade was already running must still arm the "
+         "post-blackout recovery; it fired " << st.gnss_recovery_inflations
+         << " times, unchanged from " << fired_before_outage << " before the outage";
+}

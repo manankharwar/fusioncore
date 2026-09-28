@@ -839,6 +839,16 @@ struct FusionCoreStatus {
   bool   zupt_parked_but_moving     = false;
   // True when the #145 bias check stood the parked inflation down for this fix.
   bool   gnss_parked_bias_standdown = false;
+  // #151: how many times the post-blackout recovery inflation has actually FIRED, and
+  // the largest sigma it asked for. On NCLT 2012-08-20 raising gnss.p_inflate_sigma 40x
+  // moved ATE by 0.001 m, which said the mechanism was inert and there was no field to
+  // confirm it from a bag. A recovery that silently never runs looks exactly like one
+  // that runs and does not help.
+  long   gnss_recovery_inflations = 0;
+  // #151: the two flags that decide whether recovery can run at all.
+  bool   gnss_reject_after_gap = false;
+  int    gnss_consecutive_rejects_now = 0;
+  double gnss_recovery_last_sigma = 0.0;
   double zupt_parked_straightness   = 0.0;
   double gnss_chi2_max = -1.0;
   double gnss_chi2_threshold = 0.0;
@@ -1107,7 +1117,18 @@ private:
   double gnss_parked_sigma_declared_ = -1.0;
   double gnss_parked_correlation_    = 0.0;
   // #145: true when the bias check stood the parked inflation down for the last fix.
+  // Stamp of the last fix RECEIVED, accepted or not (#151). Distinct from
+  // last_gnss_time_, which is the last ACCEPTED fix. The difference is the whole
+  // discriminator between an outage and a spike: during a spike fixes keep arriving on
+  // cadence while none is accepted, so the gap to the last ACCEPTED fix grows without
+  // limit and wrongly looks like an outage. The gap to the last RECEIVED fix stays at
+  // the cadence, which is the physical truth.
+  double last_gnss_rx_time_ = -1.0;
+  // Gap to the previous RECEIVED fix, computed once per fix at entry.
+  double gnss_rx_gap_ = 0.0;
   bool   gnss_parked_bias_standdown_ = false;
+  long   gnss_recovery_inflations_ = 0;
+  double gnss_recovery_last_sigma_ = 0.0;
   double gnss_parked_inflation_      = 1.0;
   // Straightness check on the parked fixes, see zupt_parked_motion_m.
   double parked_ref_x_ = 0.0, parked_ref_y_ = 0.0;

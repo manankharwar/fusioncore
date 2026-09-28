@@ -167,6 +167,10 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   gnss_in_coast_            = false;
   gnss_in_recovery_         = false;
   reject_after_gap_         = false;
+  last_gnss_rx_time_        = -1.0;
+  gnss_rx_gap_              = 0.0;
+  gnss_recovery_inflations_ = 0;
+  gnss_recovery_last_sigma_ = 0.0;
   ukf_.set_position_noise_scale(1.0);
   ukf_.set_gyro_bias_noise_scale(1.0);
 
@@ -265,6 +269,10 @@ void FusionCore::reset() {
   gnss_in_coast_            = false;
   gnss_in_recovery_         = false;
   reject_after_gap_         = false;
+  last_gnss_rx_time_        = -1.0;
+  gnss_rx_gap_              = 0.0;
+  gnss_recovery_inflations_ = 0;
+  gnss_recovery_last_sigma_ = 0.0;
   ukf_.set_position_noise_scale(1.0);
   ukf_.set_gyro_bias_noise_scale(1.0);
 
@@ -1158,6 +1166,8 @@ void FusionCore::maybe_inflate_for_recovery(
       innov_xy * innov_xy);
   const double innov_z = std::abs(innovation_pre[2]);
   ukf_.inflate_position_covariance(s2, innov_z * innov_z);
+  ++gnss_recovery_inflations_;
+  gnss_recovery_last_sigma_ = std::sqrt(s2);
 }
 
 // At the start of a rejection sequence, decide whether GNSS was continuous (a
@@ -1168,7 +1178,6 @@ void FusionCore::maybe_inflate_for_recovery(
 // large after an outage. No-op once a cascade is already running, so the
 // decision is made on its first fix and not revised by later ones.
 void FusionCore::note_rejection_cascade_start(double timestamp_seconds) {
-  if (gnss_consecutive_rejects_ != 0) return;
   const double gap = (last_gnss_time_ < 0.0)
                        ? std::numeric_limits<double>::infinity()
                        : (timestamp_seconds - last_gnss_time_);
@@ -1193,6 +1202,38 @@ void FusionCore::note_rejection_cascade_start(double timestamp_seconds) {
     if (mean_dt > 1e-6) min_gap = std::max(min_gap, 2.0 * mean_dt);
   }
   const bool after_gap = (gap >= min_gap);
+
+  // Re-decide on a GENUINE GAP even when a cascade is already running (#151).
+  //
+  // This used to return immediately whenever gnss_consecutive_rejects_ was non-zero, so
+  // the decision was made on a cascade's first fix and never revised. The intent was
+  // right: a sustained multipath spike must not be reclassified as an outage by its own
+  // later fixes, which is what gnss_coast_min_gap_s exists to prevent.
+  //
+  // But it also meant a cascade that was ALREADY RUNNING when a blackout began kept the
+  // decision it made before the blackout, and that decision is false. Measured on NCLT
+  // 2012-08-20: at the end of the 246 s blackout the reject counter stood at 327, so the
+  // "was there a gap" question had been answered 327 rejections earlier, when there was
+  // no gap. reject_after_gap_ was latched false, so maybe_inflate_for_recovery could
+  // never fire, so the filter could not re-acquire, so the cascade never ended, so the
+  // counter never reset and the decision was never re-made. Self-perpetuating.
+  //
+  // The cost: the recovery inflation fired ONCE in a run with seven GNSS gaps, raising
+  // gnss.p_inflate_sigma 40x changed ATE by 0.001 m, and the filter sat locked out for
+  // 32 s discarding 161 fixes while its position covariance crawled from 38 to 48 m
+  // against a 140 m innovation.
+  //
+  // A 246 s gap is not "a later fix in the same spike". It is a new physical event and
+  // the cascade counter is bookkeeping, so the bookkeeping must not veto the physics.
+  // Without a gap the original rule stands untouched.
+  // Re-arm ONLY on a genuine hole in the received stream, not on a long run of
+  // rejections. During a sustained spike fixes keep arriving at cadence, so rx_gap stays
+  // small and the original rule is untouched: that is what
+  // BlackoutDoesNotUnlockRecoveryForALaterSpike and SustainedSpikeStaysRejected check,
+  // and a first attempt at this fix broke both by keying off the accepted-fix gap, which
+  // never advances during a lockout and therefore looks like a permanent outage.
+  if (gnss_consecutive_rejects_ != 0 && !(gnss_rx_gap_ >= min_gap)) return;
+
   if (after_gap) post_outage_unconfirmed_ = true;
   // Latched: an outage counts as ongoing until GNSS is demonstrably back, not
   // merely until one fix slipped through. See post_outage_unconfirmed_.
@@ -1236,6 +1277,14 @@ bool FusionCore::update_gnss(
 ) {
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_gnss() called before init()");
+
+  // Gap to the previous RECEIVED fix, computed before the stamp is advanced, so it is
+  // available to every gate below. See last_gnss_rx_time_ for why this and the gap to
+  // the last ACCEPTED fix are different questions (#151).
+  gnss_rx_gap_ = (last_gnss_rx_time_ < 0.0)
+                   ? std::numeric_limits<double>::infinity()
+                   : (timestamp_seconds - last_gnss_rx_time_);
+  last_gnss_rx_time_ = timestamp_seconds;
 
   // Always populate what we know from the fix before any gate check
   gnss_debug_.hdop               = fix.hdop;
@@ -2206,6 +2255,10 @@ FusionCoreStatus FusionCore::get_status() const {
   status.gnss_parked_correlation    = gnss_parked_correlation_;
   status.zupt_parked_but_moving     = parked_moving_detected_;
   status.gnss_parked_bias_standdown  = gnss_parked_bias_standdown_;
+  status.gnss_recovery_inflations    = gnss_recovery_inflations_;
+  status.gnss_reject_after_gap       = reject_after_gap_;
+  status.gnss_consecutive_rejects_now = gnss_consecutive_rejects_;
+  status.gnss_recovery_last_sigma    = gnss_recovery_last_sigma_;
   status.zupt_parked_straightness   = gnss_parked_straightness_;
   status.gnss_parked_inflation      = gnss_parked_inflation_;
   status.gnss_chi2_max       = gnss_chi2_max_;
