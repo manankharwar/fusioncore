@@ -142,6 +142,40 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
     sigma.col(i + 1)          = state_.x + L.col(i);
     sigma.col(i + 1 + n_aug_) = state_.x - L.col(i);
   }
+
+  // Keep each sigma point's attitude a physically meaningful sample. See
+  // UKFParams::max_sigma_rotation_deg for why, and for why this bounds the POINTS and
+  // deliberately leaves P alone.
+  if (params_.max_sigma_rotation_deg > 0.0) {
+    const double max_rad = params_.max_sigma_rotation_deg * M_PI / 180.0;
+    Eigen::Vector4d q0 = state_.x.segment<4>(QW);
+    const double n0 = q0.norm();
+    if (n0 > 1e-9) {
+      q0 /= n0;
+      for (int c = 1; c < n_sigma; ++c) {
+        Eigen::Vector4d qs = sigma.col(c).segment<4>(QW);
+        const double ns = qs.norm();
+        if (ns < 1e-9) { sigma.col(c).segment<4>(QW) = q0; continue; }
+        qs /= ns;
+        // Same hemisphere, so the angle measured is the short way round.
+        double dot = q0.dot(qs);
+        if (dot < 0.0) { qs = -qs; dot = -dot; }
+        dot = std::min(1.0, std::max(-1.0, dot));
+        const double angle = 2.0 * std::acos(dot);        // rotation, radians
+        if (angle > max_rad) {
+          // Slerp back toward the mean until the rotation is exactly max_rad.
+          const double t = max_rad / angle;
+          const double theta = std::acos(dot);            // half-angle
+          const double sin_theta = std::sin(theta);
+          if (sin_theta > 1e-9) {
+            qs = (std::sin((1.0 - t) * theta) * q0 + std::sin(t * theta) * qs) / sin_theta;
+            qs.normalize();
+          }
+        }
+        sigma.col(c).segment<4>(QW) = qs;
+      }
+    }
+  }
   return sigma;
 }
 

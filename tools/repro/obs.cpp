@@ -36,6 +36,7 @@ int main(int argc, char ** argv)
 {
   const double SPEED = 1.0, DT = 0.01, G = 9.80665;
   const double T_END = argc > 1 ? atof(argv[1]) : 60.0;
+  const double MAXROT = argc > 2 ? atof(argv[2]) : 0.0;   // #150 sigma-point limit
 
   FusionCoreConfig cfg;
   cfg.imu.gyro_noise_x = cfg.imu.gyro_noise_y = cfg.imu.gyro_noise_z = 0.005;
@@ -46,6 +47,7 @@ int main(int argc, char ** argv)
   cfg.outlier_rejection = true;
   cfg.adaptive_imu = cfg.adaptive_encoder = cfg.adaptive_gnss = true;
   cfg.motion_model = create_motion_model("DifferentialDrive");
+  cfg.ukf.max_sigma_rotation_deg = MAXROT;
 
   FusionCore fc(cfg);
   State s0;
