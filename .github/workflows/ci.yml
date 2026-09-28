@@ -59,6 +59,29 @@ jobs:
       - name: Test docs parameter checker
         run: python3 -m unittest tools/test_check_docs_params.py
 
+      # The benchmark gate itself. It cannot run a sequence here (8.4 GB of NCLT data
+      # and 55 to 115 minutes per playback), so CI verifies the CHECKER and gates any
+      # results that happen to be committed. The real run stays a pre-tag step, and
+      # tools/benchmark_regression.md says so.
+      #
+      # This exists because on 2026-09-27 NCLT 2012-08-20 was found to have gone
+      # 121.669 m to 192.923 m XY ATE across ten commits. The gate was present, worked,
+      # and exited 1. Nobody had run it.
+      - name: Test benchmark regression checker
+        run: python3 -m unittest tools/test_check_benchmark_regression.py
+
+      - name: Gate any committed benchmark results
+        run: |
+          shopt -s nullglob
+          results=(benchmarks/nclt/*/results*/metrics.json)
+          if [ ${#results[@]} -eq 0 ]; then
+            echo "No committed metrics.json to gate. The NCLT run is a pre-tag step:"
+            echo "  tools/run_nclt.sh <sequence> <out_dir> 1.0"
+            echo "  python3 tools/check_benchmark_regression.py <out_dir>/res/metrics.json"
+          else
+            python3 tools/check_benchmark_regression.py "${results[@]}"
+          fi
+
       - name: Install rosdep dependencies
         run: |
           source /opt/ros/${{ matrix.ros_distro }}/setup.sh
