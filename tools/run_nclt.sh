@@ -44,6 +44,27 @@ rm -rf "$OUT/bag" "$OUT/res"
 source /opt/ros/jazzy/setup.bash
 source "$WS/install/setup.bash"
 
+# PROVENANCE. A result that cannot name its own code and config is not a result.
+#
+# On 2026-09-27 benchmark_baseline.json recorded numbers without recording what produced
+# them, so establishing that 2012-08-20 had regressed from 121.669 m to 192.923 m cost a
+# 90 minute re-run, and attributing it cost two more. This writes the answer up front.
+{
+  echo "sequence     $SEQ"
+  echo "rate         ${RATE}x"
+  echo "date         $(date -Is)"
+  echo "commit       $(git -C "$WS/src/fusioncore" rev-parse HEAD 2>/dev/null || echo unknown)"
+  echo "branch       $(git -C "$WS/src/fusioncore" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+  echo "dirty        $(git -C "$WS/src/fusioncore" status --short 2>/dev/null | wc -l) tracked file(s) modified"
+  echo "alpha        $(grep -oP 'double alpha = \K[0-9.]+' "$WS/src/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp")"
+  echo "config       $WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml"
+  echo "config md5   $(md5sum "$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml" 2>/dev/null | cut -d" " -f1)"
+  echo "data         $DATA"
+  echo "host         $(hostname)"
+} > "$OUT/manifest.txt"
+cp "$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml" "$OUT/config.yaml" 2>/dev/null
+echo "  provenance written to $OUT/manifest.txt"
+
 echo "sequence $SEQ   rate ${RATE}x   out $OUT"
 echo "alpha compiled in: $(grep -oP 'double alpha = \K[0-9.]+' "$WS/src/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp")"
 START=$(date +%s)
@@ -89,7 +110,7 @@ GT_SPAN=$(python3 -c "
 ls=[l for l in open('$DATA/ground_truth.tum') if l.strip()]
 print('%.1f' % (float(ls[-1].split()[0]) - float(ls[0].split()[0])))")
 
-python3 - "$OUT/res/metrics.json" "$GT_SPAN" <<'PY'
+python3 - "$OUT/res/metrics.json" "$GT_SPAN" "$OUT/manifest.txt" <<'PY'
 import json, sys
 m = json.load(open(sys.argv[1]))
 dur = float(sys.argv[2])
@@ -99,4 +120,6 @@ for k, lbl in (("ate_rmse_3d", "ATE 3D m"), ("rpe10_rmse", "RPE@10m"), ("path_le
     print("  %-12s %10.3f %10.3f" % (lbl, fc[k], m["filters"]["RL-EKF"][k]))
 hz = m["poses"]["FusionCore"] / dur
 print("\n  filter rate %.1f Hz over %.0f s  %s" % (hz, dur, "OK" if hz > 80 else "STARVED, ATE IS MEANINGLESS"))
+open(sys.argv[3], "a").write("achieved Hz  %.1f over %.0f s (%s)\n"
+                            % (hz, dur, "OK" if hz > 80 else "STARVED"))
 PY
