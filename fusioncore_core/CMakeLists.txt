@@ -109,6 +109,9 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_attitude tests/test_attitude.cpp TIMEOUT 300)
   target_link_libraries(test_attitude fusioncore_core Eigen3::Eigen)
+
+  ament_add_gtest(test_error_state tests/test_error_state.cpp TIMEOUT 300)
+  target_link_libraries(test_error_state fusioncore_core Eigen3::Eigen)
 endif()
 
 ament_export_targets(fusioncore_core_targets HAS_LIBRARY_TARGET)
