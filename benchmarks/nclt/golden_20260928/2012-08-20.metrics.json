@@ -1,0 +1,28 @@
+{
+  "sequence": "2012-08-20",
+  "poses": {
+    "FusionCore": 501953,
+    "RL-EKF": 100555,
+    "GT": 11174
+  },
+  "filters": {
+    "FusionCore": {
+      "ate_rmse_3d": 129.3,
+      "ate_rmse_xy": 128.256,
+      "within_5m": 0.0,
+      "within_10m": 0.0,
+      "path_length_ratio": 1.0154,
+      "drift_m_per_km": 17.2,
+      "rpe10_rmse": 40.172
+    },
+    "RL-EKF": {
+      "ate_rmse_3d": 10.547,
+      "ate_rmse_xy": 9.883,
+      "within_5m": 59.4,
+      "within_10m": 89.4,
+      "path_length_ratio": 0.8684,
+      "drift_m_per_km": 1.4,
+      "rpe10_rmse": 18.872
+    }
+  }
+}

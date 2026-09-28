@@ -1,0 +1,28 @@
+{
+  "sequence": "2013-04-05",
+  "poses": {
+    "FusionCore": 417997,
+    "RL-EKF": 83620,
+    "GT": 8232
+  },
+  "filters": {
+    "FusionCore": {
+      "ate_rmse_3d": 189.776,
+      "ate_rmse_xy": 189.605,
+      "within_5m": 0.0,
+      "within_10m": 0.0,
+      "path_length_ratio": 1.0443,
+      "drift_m_per_km": 35.36,
+      "rpe10_rmse": 42.621
+    },
+    "RL-EKF": {
+      "ate_rmse_3d": 268.639,
+      "ate_rmse_xy": 268.443,
+      "within_5m": 0.0,
+      "within_10m": 0.0,
+      "path_length_ratio": 0.9136,
+      "drift_m_per_km": 50.06,
+      "rpe10_rmse": 27.255
+    }
+  }
+}
