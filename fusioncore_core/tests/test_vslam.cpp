@@ -13,7 +13,7 @@ TEST(VSLAMTest, PoseCorrectionsDriftedPosition) {
   State initial;
   initial.x      = StateVector::Zero();
   initial.x[X]   = 5.0;   // filter thinks it's at x=5m
-  initial.P      = StateMatrix::Identity() * 10.0;
+  initial.P      = ErrorMatrix::Identity() * 10.0;
   fc.init(initial, 0.0);
 
   VslamPose pose;
@@ -45,7 +45,7 @@ TEST(VSLAMTest, OutlierIsRejected) {
   FusionCore fc;
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;  // tight covariance
+  initial.P = ErrorMatrix::Identity() * 0.1;  // tight covariance
   fc.init(initial, 0.0);
 
   VslamPose pose;
@@ -69,7 +69,7 @@ TEST(VSLAMTest, VSLAMAndIMUIndoor) {
   FusionCore fc;
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   VslamPose pose;
@@ -107,7 +107,7 @@ TEST(VSLAMTest, FallbackToConfigNoise) {
   State initial;
   initial.x    = StateVector::Zero();
   initial.x[X] = 3.0;
-  initial.P    = StateMatrix::Identity() * 10.0;
+  initial.P    = ErrorMatrix::Identity() * 10.0;
   fc.init(initial, 0.0);
 
   VslamPose pose;
@@ -127,7 +127,7 @@ TEST(VSLAMTest, OrientationCorrectedFromVSLAM) {
   FusionCore fc;
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 1.0;
+  initial.P = ErrorMatrix::Identity() * 1.0;
   // Identity*1.0 puts 1.0 on the QUATERNION diagonal, which state.hpp specifies at
   // about 1e-8. At that spread the sigma points are thrown far off the unit sphere
   // and their yaws span well past +-pi, where a mean of angles has no single right

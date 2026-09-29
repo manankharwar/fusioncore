@@ -9,7 +9,9 @@ UKF::UKF(const UKFParams& params)
   : params_(params), initialized_(false),
     motion_model_(std::make_shared<ConstantVelocityAcceleration>())
 {
-  n_aug_  = STATE_DIM;
+  // The augmented dimension follows the COVARIANCE, not the state vector: 22, because
+  // that is how many independent error directions there are.
+  n_aug_  = ERROR_DIM;
   lambda_ = params_.alpha * params_.alpha * (n_aug_ + params_.kappa) - n_aug_;
   compute_weights();
   build_process_noise();
@@ -67,11 +69,15 @@ void UKF::compute_weights() {
 }
 
 void UKF::build_process_noise() {
-  Q_ = StateMatrix::Zero();
-  // Quaternion has 4 components; q_orientation is a small regularization term.
-  // Primary orientation noise enters through q_angular_vel via kinematics.
+  Q_ = ErrorMatrix::Zero();
+  // Attitude now takes THREE entries, not four, and they are angle variances rather
+  // than quaternion-component variances. q_orientation stays a small regularisation
+  // term either way: the real orientation noise enters through q_angular_vel via the
+  // kinematics. Scaled by 4 for the same reason the initial covariance is, so an
+  // existing configured value keeps meaning what it meant.
   Q_.diagonal() << params_.q_position, params_.q_position, params_.q_position,
-                   params_.q_orientation, params_.q_orientation, params_.q_orientation, params_.q_orientation,
+                   4.0 * params_.q_orientation, 4.0 * params_.q_orientation,
+                   4.0 * params_.q_orientation,
                    params_.q_velocity, params_.q_velocity, params_.q_velocity,
                    params_.q_angular_vel, params_.q_angular_vel, params_.q_angular_vel,
                    params_.q_acceleration, params_.q_acceleration, params_.q_acceleration,
@@ -91,14 +97,14 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
   // triggering the identity-shift Cholesky repair which introduces asymmetry that
   // Wm[0]≈-99 amplifies into QZ drift. Cap at a physically large but finite bound.
   constexpr double kMaxAngVelVar = 1.0;
-  state_.P(WX,WX) = std::min(state_.P(WX,WX), kMaxAngVelVar);
-  state_.P(WY,WY) = std::min(state_.P(WY,WY), kMaxAngVelVar);
-  state_.P(WZ,WZ) = std::min(state_.P(WZ,WZ), kMaxAngVelVar);
+  state_.P(E_WX,E_WX) = std::min(state_.P(E_WX,E_WX), kMaxAngVelVar);
+  state_.P(E_WY,E_WY) = std::min(state_.P(E_WY,E_WY), kMaxAngVelVar);
+  state_.P(E_WZ,E_WZ) = std::min(state_.P(E_WZ,E_WZ), kMaxAngVelVar);
 
-  StateMatrix P_reg = (n_aug_ + lambda_) * state_.P;
-  P_reg += StateMatrix::Identity() * 1e-6;
+  ErrorMatrix P_reg = (n_aug_ + lambda_) * state_.P;
+  P_reg += ErrorMatrix::Identity() * 1e-6;
 
-  Eigen::LLT<StateMatrix> llt(P_reg);
+  Eigen::LLT<ErrorMatrix> llt(P_reg);
   if (llt.info() != Eigen::Success) {
     // P has developed negative eigenvalues (common under sustained high-rate IMU
     // updates where the K*S*K^T subtraction overshoots in the bias dimensions).
@@ -108,10 +114,10 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
     // because P's eigenvectors mix position and bias components after cross-coupling,
     // so clamping bias eigenvalues to 1e-9 also collapses position uncertainty when
     // P is reconstructed, making the Mahalanobis gate far too tight and rejecting GPS.
-    Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
+    Eigen::SelfAdjointEigenSolver<ErrorMatrix> es(state_.P, Eigen::EigenvaluesOnly);
     double min_eigen = es.eigenvalues().minCoeff();
-    state_.P += StateMatrix::Identity() * (-min_eigen + 1e-9);
-    P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
+    state_.P += ErrorMatrix::Identity() * (-min_eigen + 1e-9);
+    P_reg = (n_aug_ + lambda_) * state_.P + ErrorMatrix::Identity() * 1e-6;
     llt.compute(P_reg);
     if (llt.info() != Eigen::Success) {
       // Last resort: rebuild P from its eigendecomposition with all eigenvalues
@@ -122,25 +128,30 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
       // to avoid that), but a briefly over-confident filter is recoverable; a
       // crash is not. Reaching here means the state was already badly corrupted
       // (e.g. by replay clock chaos), which the predict_to re-sync guards upstream.
-      Eigen::SelfAdjointEigenSolver<StateMatrix> es_full(state_.P);
-      Eigen::Matrix<double, STATE_DIM, 1> ev = es_full.eigenvalues().cwiseMax(1e-9);
+      Eigen::SelfAdjointEigenSolver<ErrorMatrix> es_full(state_.P);
+      Eigen::Matrix<double, ERROR_DIM, 1> ev = es_full.eigenvalues().cwiseMax(1e-9);
       state_.P = es_full.eigenvectors() * ev.asDiagonal() * es_full.eigenvectors().transpose();
       state_.P = (state_.P + state_.P.transpose()) * 0.5;
-      P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
+      P_reg = (n_aug_ + lambda_) * state_.P + ErrorMatrix::Identity() * 1e-6;
       llt.compute(P_reg);
       if (llt.info() != Eigen::Success) {
         // Absolute last resort: reset to a safe diagonal covariance. Never throw.
-        state_.P = StateMatrix::Identity();
-        P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
+        state_.P = ErrorMatrix::Identity();
+        P_reg = (n_aug_ + lambda_) * state_.P + ErrorMatrix::Identity() * 1e-6;
         llt.compute(P_reg);
       }
     }
   }
-  StateMatrix L = llt.matrixL();
+  ErrorMatrix L = llt.matrixL();
+  // Each column of L is an ERROR vector, so it is INJECTED rather than added: the
+  // attitude part composes on the manifold via boxplus and everything else adds. This is
+  // the change that makes every sigma point a valid rotation by construction, however
+  // large the attitude uncertainty becomes.
   sigma.col(0) = state_.x;
   for (int i = 0; i < n_aug_; ++i) {
-    sigma.col(i + 1)          = state_.x + L.col(i);
-    sigma.col(i + 1 + n_aug_) = state_.x - L.col(i);
+    const ErrorVector e = L.col(i);
+    sigma.col(i + 1)          = inject_error(state_.x,  e);
+    sigma.col(i + 1 + n_aug_) = inject_error(state_.x, -e);
   }
 
   // Keep each sigma point's attitude a physically meaningful sample. See
@@ -195,19 +206,41 @@ void UKF::predict(double dt) {
     if (dot < 0.0) sigma_pred.col(i).segment<4>(QW) *= -1.0;
   }
 
-  // Weighted mean. The non-attitude states are a plain weighted sum either way; only
-  // the quaternion is at issue.
+  // Weighted mean. Non-attitude states are a plain weighted sum; attitude is averaged on
+  // the manifold about the current estimate.
   //
-  // The plain sum plus renormalise is accurate ONLY while the sigma-point spread is
-  // small. An earlier comment here claimed that was guaranteed at 100 Hz because dt is
-  // tiny. That is wrong: the spread comes from P, not from dt, and P(QZ,QZ) grows
-  // without bound because yaw is unobservable. See tangent_space_quaternion_mean.
+  // The old code summed all four quaternion components and renormalised, on the stated
+  // grounds that the sigma-point spread is "guaranteed small at 100 Hz where dt is tiny".
+  // That was wrong and it was the bug: the spread comes from P, not from dt, and the yaw
+  // block grows without bound because yaw is unobservable. Once the points span the
+  // circle their sum cancels and normalising the residue aims it anywhere, which is the
+  // measured 180 degree flip at t=77 s.
   StateVector x_pred = StateVector::Zero();
   for (int i = 0; i < n_sigma; ++i)
     x_pred += Wm_[i] * sigma_pred.col(i);
 
-  if (params_.tangent_space_quaternion_mean) {
-    x_pred.segment<4>(QW) = quaternion_mean_tangent(sigma_pred, Wm_, n_sigma);
+  // Averaging in the tangent space about sigma point 0. There is nothing to cancel here,
+  // so a wide spread degrades the answer gradually instead of inverting it.
+  {
+    Eigen::Quaterniond ref(sigma_pred(QW, 0), sigma_pred(QX, 0),
+                           sigma_pred(QY, 0), sigma_pred(QZ, 0));
+    if (ref.norm() > 1e-12) {
+      ref.normalize();
+      for (int iter = 0; iter < 8; ++iter) {
+        Eigen::Vector3d mean_err = Eigen::Vector3d::Zero();
+        for (int i = 0; i < n_sigma; ++i) {
+          const Eigen::Quaterniond qi(sigma_pred(QW, i), sigma_pred(QX, i),
+                                      sigma_pred(QY, i), sigma_pred(QZ, i));
+          if (qi.norm() < 1e-12) { continue; }
+          mean_err += Wm_[i] * attitude::boxminus(qi, ref);
+        }
+        if (mean_err.norm() < 1e-13) { break; }
+        ref = attitude::boxplus(ref, mean_err);
+        if (mean_err.norm() < 1e-10) { break; }
+      }
+      x_pred[QW] = ref.w(); x_pred[QX] = ref.x();
+      x_pred[QY] = ref.y(); x_pred[QZ] = ref.z();
+    }
   }
   x_pred = normalize_state(x_pred);
 
@@ -216,7 +249,7 @@ void UKF::predict(double dt) {
   // Scaling by dt here would require re-tuning all Q values by the IMU rate (~100x),
   // which would break all existing configurations and cause GPS Mahalanobis rejections
   // as P grows too slowly to track real motion.
-  StateMatrix P_pred = Q_;
+  ErrorMatrix P_pred = Q_;
   if (pos_noise_scale_ != 1.0) {
     P_pred(X, X) *= pos_noise_scale_;
     P_pred(Y, Y) *= pos_noise_scale_;
@@ -228,11 +261,13 @@ void UKF::predict(double dt) {
     P_pred(B_GZ, B_GZ) *= gyro_bias_noise_scale_;
   }
   for (int i = 0; i < n_sigma; ++i) {
-    // Plain Euclidean difference: no normalize_state here.
-    // With quaternion state there is no angle wrapping; normalizing a diff
-    // vector would treat it as a quaternion and scale it to unit length,
-    // completely corrupting the covariance.
-    StateVector diff = sigma_pred.col(i) - x_pred;
+    // The residual is taken in the ERROR space, which is what makes it consistent with
+    // the manifold mean above. Measuring it as an ambient 4-vector difference against a
+    // manifold mean was tried and does not work: the residuals stop summing to zero and
+    // P picks up a spurious term that leaks through the quaternion/acceleration cross
+    // covariance, giving a 22% distance overshoot and +-5 m/s^2 of accelerometer
+    // oscillation on a still sensor. The mean and the residual have to move together.
+    const ErrorVector diff = extract_error(sigma_pred.col(i), x_pred);
     P_pred += Wc_[i] * diff * diff.transpose();
   }
   state_.x = x_pred;
@@ -251,7 +286,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
 
   using ZVector   = Eigen::Matrix<double, z_dim, 1>;
   using ZMatrix   = Eigen::Matrix<double, z_dim, z_dim>;
-  using PxzMatrix = Eigen::Matrix<double, STATE_DIM, z_dim>;
+  using PxzMatrix = Eigen::Matrix<double, ERROR_DIM, z_dim>;
 
   Eigen::MatrixXd sigma = generate_sigma_points();
   int n_sigma = 2 * n_aug_ + 1;
@@ -290,7 +325,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
     ZVector z_diff = sigma_z.col(i) - z_pred;
     for (int d = 0; d < z_dim; ++d)
       if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
-    StateVector x_diff = sigma.col(i) - state_.x;  // plain diff, no angle wrapping needed
+    const ErrorVector x_diff = extract_error(sigma.col(i), state_.x);
     S   += Wc_[i] * z_diff * z_diff.transpose();
     Pxz += Wc_[i] * x_diff * z_diff.transpose();
   }
@@ -303,9 +338,10 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   // when S is near-singular. K = Pxz * S^{-1} = (S^{-1} * Pxz^T)^T.
   auto S_ldlt = S.ldlt();
   PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
-  const StateVector correction = K * innovation;
-  last_pos_correction_ = std::hypot(correction[X], correction[Y]);
-  state_.x = normalize_state(state_.x + correction);
+  const ErrorVector correction = K * innovation;
+  last_pos_correction_ = std::hypot(correction[E_X], correction[E_Y]);
+  // The attitude part of the correction is a rotation, so it is applied as one.
+  state_.x = normalize_state(inject_error(state_.x, correction));
   state_.P -= K * S * K.transpose();
   // Symmetrize after each update to prevent floating-point asymmetry from
   // accumulating across the ~100 Hz IMU + 1 Hz GPS update stream.
@@ -407,54 +443,6 @@ double UKF::normalize_angle(double angle) {
   angle = std::fmod(angle + M_PI, 2.0 * M_PI);
   if (angle < 0.0) angle += 2.0 * M_PI;
   return angle - M_PI;
-}
-
-// Iterative tangent-space (Karcher) mean of the sigma points' attitudes.
-//
-// Repeatedly: express each sample as a rotation vector relative to the current reference
-// via the log map, take the weighted mean of those 3-vectors, and move the reference by
-// that much via the exp map. Unlike a 4-vector sum there is nothing to cancel, so a wide
-// spread degrades the answer gradually instead of flipping it.
-//
-// Converges in 2-3 passes for any realistic spread; the cap is a guard, not a budget.
-Eigen::Vector4d UKF::quaternion_mean_tangent(const Eigen::MatrixXd & sigma_pred,
-                                             const Eigen::VectorXd & Wm,
-                                             int n_sigma) {
-  Eigen::Quaterniond q_ref(sigma_pred(QW, 0), sigma_pred(QX, 0),
-                           sigma_pred(QY, 0), sigma_pred(QZ, 0));
-  if (q_ref.norm() < 1e-12) { return Eigen::Vector4d(1.0, 0.0, 0.0, 0.0); }
-  q_ref.normalize();
-
-  for (int iter = 0; iter < 8; ++iter) {
-    Eigen::Vector3d e_bar = Eigen::Vector3d::Zero();
-    double w_total = 0.0;
-    for (int i = 0; i < n_sigma; ++i) {
-      Eigen::Quaterniond qi(sigma_pred(QW, i), sigma_pred(QX, i),
-                            sigma_pred(QY, i), sigma_pred(QZ, i));
-      if (qi.norm() < 1e-12) { continue; }
-      qi.normalize();
-      Eigen::Quaterniond dq = q_ref.conjugate() * qi;
-      if (dq.w() < 0.0) { dq.coeffs() *= -1.0; }      // short way round
-      const double vn = dq.vec().norm();
-      // log map: 2*atan2(|v|, w) * v/|v|, with the small-angle limit handled directly.
-      Eigen::Vector3d e = Eigen::Vector3d::Zero();
-      if (vn >= 1e-12) { e = (2.0 * std::atan2(vn, dq.w()) / vn) * dq.vec(); }
-      e_bar += Wm[i] * e;
-      w_total += Wm[i];
-    }
-    if (std::abs(w_total) > 1e-12) { e_bar /= w_total; }
-
-    const double an = e_bar.norm();
-    if (an < 1e-10) { break; }
-    // exp map back onto the manifold.
-    const double half = 0.5 * an;
-    Eigen::Quaterniond dq(std::cos(half), 0, 0, 0);
-    dq.vec() = (std::sin(half) / an) * e_bar;
-    q_ref = q_ref * dq;
-    q_ref.normalize();
-    if (an < 1e-8) { break; }
-  }
-  return Eigen::Vector4d(q_ref.w(), q_ref.x(), q_ref.y(), q_ref.z());
 }
 
 StateVector UKF::normalize_state(const StateVector& x) {

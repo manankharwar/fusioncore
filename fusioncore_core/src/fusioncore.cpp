@@ -424,28 +424,16 @@ bool FusionCore::apply_delayed_measurement(
 }
 
 double FusionCore::compute_heading_sigma_rad() const {
-  const State& s = ukf_.state();
-  const double qw = s.x[QW], qx = s.x[QX], qy = s.x[QY], qz = s.x[QZ];
-
-  // d(yaw)/d(qw,qx,qy,qz): row 2 of the quaternion-to-Euler Jacobian
-  const double t3 = 2.0 * (qw*qz + qx*qy);
-  const double t4 = 1.0 - 2.0 * (qy*qy + qz*qz);
-  const double safe_denom = std::max(t3*t3 + t4*t4, 1e-12);
-
-  Eigen::Matrix<double, 1, 4> J;
-  J(0,0) = 2.0*qz*t4 / safe_denom;
-  J(0,1) = 2.0*qy*t4 / safe_denom;
-  J(0,2) = (2.0*qx*t4 + 4.0*qy*t3) / safe_denom;
-  J(0,3) = (2.0*qw*t4 + 4.0*qz*t3) / safe_denom;
-
-  static constexpr int qi[4] = {QW, QX, QY, QZ};
-  Eigen::Matrix4d P_quat;
-  for (int i = 0; i < 4; ++i)
-    for (int j = 0; j < 4; ++j)
-      P_quat(i,j) = s.P(qi[i], qi[j]);
-
-  double yaw_var = (J * P_quat * J.transpose())(0,0);
-  return std::sqrt(std::max(yaw_var, 0.0));
+  // Read straight off the covariance. With attitude error carried as a rotation vector
+  // in radians, the yaw variance IS P(E_YAW,E_YAW): there is nothing to differentiate.
+  //
+  // This used to propagate a 4x4 quaternion-component covariance through row 2 of the
+  // quaternion-to-Euler Jacobian, complete with a guard against a vanishing denominator.
+  // That whole construction existed only to convert a covariance that was in the wrong
+  // coordinates to begin with, and it inherited the 4x4 block's defect: when
+  // P(QZ,QZ) climbed past its own bound this returned a heading sigma of 25 to 90
+  // degrees, which is what kept the lever arm and GPS track heading switched off.
+  return std::sqrt(std::max(ukf_.state().P(E_YAW, E_YAW), 0.0));
 }
 
 // Inter-sensor clock-skew guard for the direct (non-retrodicted) update paths.
@@ -1294,7 +1282,7 @@ bool FusionCore::update_gnss(
   gnss_debug_.chi2_threshold     = config_.outlier_threshold_gnss;
   gnss_debug_.in_coast_mode      = gnss_in_coast_;
   gnss_debug_.consecutive_rejects = gnss_consecutive_rejects_;
-  const StateMatrix& P_now = ukf_.state().P;
+  const ErrorMatrix& P_now = ukf_.state().P;
   gnss_debug_.position_sigma_x   = std::sqrt(std::max(P_now(X, X), 0.0));
   gnss_debug_.position_sigma_y   = std::sqrt(std::max(P_now(Y, Y), 0.0));
 
@@ -1734,7 +1722,7 @@ bool FusionCore::apply_gnss_update(
       // prediction. Rejecting on that basis discards the one measurement that
       // would fix the drift, and the filter never re-acquires. See the config
       // comment for the measured NCLT case.
-      const StateMatrix& P_now = ukf_.state().P;
+      const ErrorMatrix& P_now = ukf_.state().P;
       const double pred_sigma_xy = std::sqrt(
           std::max(P_now(X, X), 0.0) + std::max(P_now(Y, Y), 0.0));
       const double drift_term = config_.gnss_max_speed_drift_k * pred_sigma_xy;
@@ -2178,7 +2166,7 @@ FusionCoreStatus FusionCore::get_status() const {
     (last_timestamp_ - last_gnss_time_) > stale ? SensorHealth::STALE :
     SensorHealth::OK;
 
-  const StateMatrix& P = ukf_.state().P;
+  const ErrorMatrix& P = ukf_.state().P;
   status.position_uncertainty = P(0,0) + P(1,1) + P(2,2);
 
   // Heading observability

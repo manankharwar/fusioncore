@@ -34,7 +34,7 @@ TEST(UKFTest, PredictRunsWithoutError) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
 
   ukf.init(initial);
 
@@ -50,7 +50,7 @@ TEST(UKFTest, StationaryRobotRemainsStationary) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.01;
+  initial.P = ErrorMatrix::Identity() * 0.01;
 
   ukf.init(initial);
 
@@ -82,7 +82,7 @@ TEST(UKFTest, ForwardMotionIntegratesPosition) {
   State initial;
   initial.x[VX]  = 1.0;   // 1 m/s forward
   // State() default-constructs with QW=1 (identity quaternion) = yaw 0, facing east
-  initial.P      = StateMatrix::Identity() * 1e-4;
+  initial.P      = ErrorMatrix::Identity() * 1e-4;
 
   ukf.init(initial);
 
@@ -102,7 +102,7 @@ TEST(UKFTest, CovarianceGrowsDuringPredict) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.01;
+  initial.P = ErrorMatrix::Identity() * 0.01;
 
   ukf.init(initial);
 
@@ -124,7 +124,7 @@ TEST(UKFTest, PositionUpdateCorrectState) {
   State initial;
   initial.x    = StateVector::Zero();
   initial.x[X] = 5.0;
-  initial.P    = StateMatrix::Identity() * 1.0;
+  initial.P    = ErrorMatrix::Identity() * 1.0;
 
   ukf.init(initial);
 
@@ -154,7 +154,7 @@ TEST(UKFTest, QuaternionRemainsNormalizedAfterPredict) {
   initial.x[QY] = 0.0;
   initial.x[QZ] = std::sin(1.5);
   initial.x[WZ] = 1.0;  // spinning
-  initial.P = StateMatrix::Identity() * 0.01;
+  initial.P = ErrorMatrix::Identity() * 0.01;
 
   ukf.init(initial);
 
@@ -203,7 +203,7 @@ TEST(UKFTest, AngleMeasurementMeanSurvivesThePiBoundary) {
   initial.x = StateVector::Zero();
   initial.x[QW] = std::cos(M_PI / 2.0);   // yaw = pi, right on the wrap
   initial.x[QZ] = std::sin(M_PI / 2.0);
-  initial.P = StateMatrix::Identity() * 1e-4;
+  initial.P = ErrorMatrix::Identity() * 1e-4;
   for (int q : {QW, QX, QY, QZ}) initial.P(q, q) = 1e-3;
   ukf.init(initial);
 

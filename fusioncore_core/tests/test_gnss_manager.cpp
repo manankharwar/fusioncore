@@ -12,7 +12,7 @@ TEST(GNSSManagerTest, PoorFixIsRejected) {
   FusionCore fc;
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   GnssFix bad_fix;
@@ -32,7 +32,7 @@ TEST(GNSSManagerTest, GoodFixIsAccepted) {
   FusionCore fc;
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   GnssFix good_fix;
@@ -61,7 +61,7 @@ TEST(GNSSManagerTest, GNSSCorrectsDriftedPosition) {
   State initial;
   initial.x     = StateVector::Zero();
   initial.x[X]  = 5.0;
-  initial.P     = StateMatrix::Identity() * 50.0;
+  initial.P     = ErrorMatrix::Identity() * 50.0;
   fc.init(initial, 0.0);
 
   GnssFix fix;
@@ -87,7 +87,7 @@ TEST(GNSSManagerTest, DualAntennaHeadingUpdate) {
 
   State initial;
   // State() default-constructs with QW=1 (identity) = yaw 0, facing east
-  initial.P       = StateMatrix::Identity() * 1.0;
+  initial.P       = ErrorMatrix::Identity() * 1.0;
   // Identity*1.0 puts 1.0 on the QUATERNION diagonal, which state.hpp specifies at
   // about 1e-8. At that spread the sigma points are thrown far off the unit sphere
   // and their yaws span well past +-pi, where a mean of angles has no single right
@@ -118,7 +118,7 @@ TEST(GNSSManagerTest, InvalidHeadingRejected) {
   FusionCore fc;
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   GnssHeading hdg;
@@ -189,7 +189,7 @@ TEST(GNSSManagerTest, StefanFullConfigurationWithGNSSCorrection) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   GnssFix fix;
@@ -246,7 +246,7 @@ TEST(GNSSManagerTest, PInflationBreaksCascadeLoop) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   GnssFix spike;
@@ -290,7 +290,7 @@ static FusionCore make_initialized_fc()
   FusionCore fc(cfg);
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 100.0;
+  s.P = ErrorMatrix::Identity() * 100.0;
   fc.init(s, 0.0);
   return fc;
 }
@@ -332,7 +332,7 @@ TEST(GNSSObservabilityTest, FixTypeRejectionReason)
   FusionCore fc(cfg);
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 0.1;
+  s.P = ErrorMatrix::Identity() * 0.1;
   fc.init(s, 0.0);
 
   GnssFix fix = make_good_fix();
@@ -354,7 +354,7 @@ TEST(GNSSObservabilityTest, Chi2RejectionPopulatesDistance)
   // Tight initial covariance so a 200m fix is a large Mahalanobis outlier
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 0.01;
+  s.P = ErrorMatrix::Identity() * 0.01;
   fc.init(s, 0.0);
 
   GnssFix fix = make_good_fix(200.0, 0.0, 0.0);  // 200m from origin
@@ -436,7 +436,7 @@ TEST(GNSSObservabilityTest, CoastModeReflectedInDebug)
   FusionCore fc(cfg);
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 0.01;
+  s.P = ErrorMatrix::Identity() * 0.01;
   fc.init(s, 0.0);
 
   // Three consecutive rejections (200m outlier) to trigger coast mode (coast_n=2)
@@ -475,7 +475,7 @@ TEST(HeadingThresholdTest, HighMinSpeedBlocksValidation)
   FusionCore fc(cfg);
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 100.0;
+  s.P = ErrorMatrix::Identity() * 100.0;
   fc.init(s, 0.0);
 
   // Drive at 1 m/s (below min_speed threshold) for 30 steps = ~3m
@@ -502,7 +502,7 @@ TEST(HeadingThresholdTest, DefaultMinSpeedAllowsValidation)
   FusionCore fc(cfg);
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 100.0;
+  s.P = ErrorMatrix::Identity() * 100.0;
   fc.init(s, 0.0);
 
   // Drive forward at 1 m/s, sending GPS fixes every 1s at 1m intervals.
@@ -539,9 +539,10 @@ TEST(LeverArmGatingTest, LeverArmDisabledWhenHeadingUncertain)
   State s;
   s.x = StateVector::Zero();
   // Large quaternion covariance = large heading sigma (will exceed 5 deg threshold)
-  s.P = StateMatrix::Identity() * 0.1;
-  s.P(QW,QW) = 1.0; s.P(QX,QX) = 1.0;
-  s.P(QY,QY) = 1.0; s.P(QZ,QZ) = 1.0;
+  s.P = ErrorMatrix::Identity() * 0.1;
+  s.P(E_ROLL,E_ROLL)   = 4.0 * 1.0;
+  s.P(E_PITCH,E_PITCH) = 4.0 * 1.0;
+  s.P(E_YAW,E_YAW)     = 4.0 * 1.0;
   fc.init(s, 0.0);
 
   // Set heading_validated so the bool-only gate would pass
@@ -582,7 +583,7 @@ TEST(LeverArmGatingTest, LeverArmActiveWhenHeadingTight)
 
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 0.01;  // tight: small heading sigma
+  s.P = ErrorMatrix::Identity() * 0.01;  // tight: small heading sigma
   fc.init(s, 0.0);
 
   // Drive to validate heading
@@ -619,7 +620,7 @@ TEST(LeverArmGatingTest, HeadingSignaDebugFieldPopulated)
   FusionCore fc(cfg);
   State s;
   s.x = StateVector::Zero();
-  s.P = StateMatrix::Identity() * 0.01;   // tight P: heading sigma stays small
+  s.P = ErrorMatrix::Identity() * 0.01;   // tight P: heading sigma stays small
   fc.init(s, 0.0);
 
   GnssFix fix = make_good_fix(1.0, 0.0, 0.0);

@@ -187,7 +187,10 @@ RunResult run(unsigned seed, const Scenario& sc) {
   }
 
   const State& st = fc.get_state();
-  out.final_heading_sigma_deg = std::sqrt(std::max(0.0, st.P(QZ, QZ))) * 2.0 * 180.0 / M_PI;
+  // Read straight off the error covariance: it is already an angle variance, so the
+  // factor of 2 that used to convert a quaternion COMPONENT sigma is gone.
+  out.final_heading_sigma_deg =
+    std::sqrt(std::max(0.0, st.P(E_YAW, E_YAW))) * 180.0 / M_PI;
   return out;
 }
 

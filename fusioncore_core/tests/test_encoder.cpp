@@ -67,7 +67,7 @@ TEST(EncoderTest, EncoderUpdateCorrectVelocity) {
   State initial;
   initial.x     = StateVector::Zero();
   initial.x[VX] = 5.0;   // wrong: think we're going 5 m/s
-  initial.P     = StateMatrix::Identity() * 1.0;
+  initial.P     = ErrorMatrix::Identity() * 1.0;
 
   ukf.init(initial);
 
@@ -105,7 +105,7 @@ TEST(EncoderTest, IMUAndEncoderTogetherEstimateBias) {
   State initial;
   initial.x       = StateVector::Zero();
   initial.x[B_GZ] = 0.1;   // wrong bias: reality has zero bias
-  initial.P       = StateMatrix::Identity() * 0.1;
+  initial.P       = ErrorMatrix::Identity() * 0.1;
   // B_EWZ is calibrated from prior GPS updates: treat as known zero.
   initial.P(B_EWZ, B_EWZ) = 1e-8;
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "fusioncore/state.hpp"
+#include "fusioncore/error_state.hpp"
 #include "fusioncore/motion_model.hpp"
 #include <Eigen/Dense>
 #include <functional>
@@ -263,7 +264,7 @@ private:
   Eigen::VectorXd Wc_; // weights for covariance
 
   // Process noise matrix
-  StateMatrix Q_;
+  ErrorMatrix Q_;
 
   void compute_weights();
   void build_process_noise();
@@ -277,9 +278,6 @@ private:
 
   // Normalize angle components of state vector
   static StateVector normalize_state(const StateVector& x);
-  static Eigen::Vector4d quaternion_mean_tangent(const Eigen::MatrixXd & sigma_pred,
-                                                 const Eigen::VectorXd & Wm,
-                                                 int n_sigma);
 };
 
 } // namespace fusioncore

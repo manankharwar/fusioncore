@@ -42,6 +42,55 @@ enum StateIndex {
 using StateVector = Eigen::Matrix<double, STATE_DIM, 1>;
 using StateMatrix = Eigen::Matrix<double, STATE_DIM, STATE_DIM>;
 
+// ─── The ERROR state, which is where the covariance lives ─────────────────────
+//
+// One fewer dimension than the state vector, because a rotation has three degrees of
+// freedom and a unit quaternion has four components tied by |q| = 1. Carrying a 4x4
+// covariance over the quaternion asserts an error direction that does not exist, and the
+// filter paid for that: sigma(QZ) reached 13.32 on a component bounded by 1, yaw flipped
+// 180 degrees in a single step at t=77 s, and on real rover bags the published yaw moved
+// 8.2 to 10.8 times further than the robot actually turned.
+//
+// The state VECTOR keeps all 23 components including the quaternion, so motion models and
+// measurement models are untouched. Only the covariance changes shape:
+//
+//     state x (23)                  covariance P (22)
+//     0..2    X  Y  Z               0..2    dX dY dZ
+//     3..6    QW QX QY QZ           3..5    d_theta, a rotation vector in RADIANS
+//     7..22   VX .. B_EWZ           6..21   dVX .. dB_EWZ
+//
+// Every physical state is still estimated, B_EWZ included. Nothing was deleted; the
+// redundant fourth quaternion coordinate was never a real degree of freedom.
+//
+// Conversions between the two live in error_state.hpp, which needs the manifold
+// operators. Only the shapes and names are here, so that state.hpp stays dependency free.
+
+constexpr int ERROR_DIM = STATE_DIM - 1;
+
+using ErrorVector = Eigen::Matrix<double, ERROR_DIM, 1>;
+using ErrorMatrix = Eigen::Matrix<double, ERROR_DIM, ERROR_DIM>;
+
+enum ErrorIndex {
+  E_X = 0, E_Y = 1, E_Z = 2,
+  E_ROLL = 3, E_PITCH = 4, E_YAW = 5,          // rotation vector, body frame, radians
+  E_VX = 6, E_VY = 7, E_VZ = 8,
+  E_WX = 9, E_WY = 10, E_WZ = 11,
+  E_AX = 12, E_AY = 13, E_AZ = 14,
+  E_B_GX = 15, E_B_GY = 16, E_B_GZ = 17,
+  E_B_AX = 18, E_B_AY = 19, E_B_AZ = 20,
+  E_B_EWZ = 21
+};
+
+// Ambient state index -> error index. The quaternion components are REJECTED rather than
+// folded onto a representative: "the error index of QW" is a question with no answer and
+// returning one anyway would hide a bug instead of surfacing it.
+inline constexpr int error_index_of(int state_index)
+{
+  return (state_index < QW)  ? state_index
+       : (state_index <= QZ) ? -1
+                             : state_index - 1;
+}
+
 // Rotation matrix (body-to-world) from quaternion state components.
 // R * v_body = v_world
 inline void quat_to_rotation_matrix(
@@ -75,17 +124,20 @@ inline void quat_to_euler(
 
 struct State {
   StateVector x = StateVector::Zero();   // state mean
-  StateMatrix P = StateMatrix::Identity(); // state covariance
+  ErrorMatrix P = ErrorMatrix::Identity(); // ERROR covariance, 22x22: see ErrorIndex
 
   State() {
     x[QW] = 1.0;  // identity quaternion: must NOT be zero
     // Quaternion components live on S³; P for them must stay tiny.
     // Orientation uncertainty propagates via q_angular_vel in Q, not via
     // large quaternion P. See generate_sigma_points() for the clamp rationale.
-    P(QW,QW) = 1e-8;
-    P(QX,QX) = 1e-8;
-    P(QY,QY) = 1e-8;
-    P(QZ,QZ) = 1e-8;
+    // Attitude, now in ANGLE units. The old form set 1e-8 on each of the four
+    // quaternion COMPONENTS; near the identity a rotation of theta gives a vector part
+    // of about theta/2, so the equivalent angle variance is 4x that. 4e-8 rad^2 is a
+    // sigma of about 0.0115 degrees, which is what the old value meant.
+    P(E_ROLL,E_ROLL)   = 4e-8;
+    P(E_PITCH,E_PITCH) = 4e-8;
+    P(E_YAW,E_YAW)     = 4e-8;
   }
 
   // Convenience accessors

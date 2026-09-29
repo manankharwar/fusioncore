@@ -5,28 +5,10 @@
 // switches over in the commit after this one, so that change is a diff about the filter
 // rather than a diff about indices.
 //
-// THE SHAPE OF THE MIGRATION, since it is not the obvious one. The state VECTOR keeps all
-// 23 components including the four quaternion terms, so motion models, measurement models
-// and every public accessor are untouched. What changes is the COVARIANCE, which drops to
-// 22x22 with a 3-vector attitude error in place of the 4-vector block:
-//
-//     ambient state x (23)            error covariance P (22)
-//     ------------------------        --------------------------
-//     0..2    X  Y  Z                 0..2    dX dY dZ
-//     3..6    QW QX QY QZ             3..5    d_theta (rotation vector, radians)
-//     7..22   VX .. B_EWZ             6..21   dVX .. dB_EWZ
-//
-// This is the standard error-state / USQUE arrangement and it is deliberately the least
-// invasive option available. Changing STATE_DIM itself would touch every motion model,
-// every measurement model and every test that indexes the state; this touches the UKF
-// internals and little else.
-//
-// WHY 22 IS THE HONEST NUMBER. The 23rd dimension was never real. A unit quaternion has
-// four components tied by |q| = 1, so the four-way covariance block asserts an error
-// direction that does not exist, and the filter has been paying for that assertion:
-// sigma(QZ) reaching 13.32 on a component bounded by 1, a 180 degree yaw flip in a single
-// step at t=77 s, and a published yaw on real rover bags that moves 8.2 to 10.8 times
-// further than the robot actually turned.
+// The shapes, indices and error_index_of() live in state.hpp so that header stays
+// dependency free. What is here is the part that needs the manifold operators: moving
+// between an ambient state and an error, in both directions, and converting a legacy
+// ambient covariance to the error form.
 
 #include <Eigen/Dense>
 
@@ -34,35 +16,6 @@
 #include "fusioncore/attitude.hpp"
 
 namespace fusioncore {
-
-// One fewer than STATE_DIM: four quaternion components become three error angles.
-constexpr int ERROR_DIM = STATE_DIM - 1;
-
-using ErrorVector = Eigen::Matrix<double, ERROR_DIM, 1>;
-using ErrorMatrix = Eigen::Matrix<double, ERROR_DIM, ERROR_DIM>;
-
-// Error-space indices. Position keeps its numbering, attitude collapses to three, and
-// everything after it shifts down by one.
-enum ErrorIndex {
-  E_X = 0, E_Y = 1, E_Z = 2,
-  E_ROLL = 3, E_PITCH = 4, E_YAW = 5,          // rotation vector, body frame, radians
-  E_VX = 6, E_VY = 7, E_VZ = 8,
-  E_WX = 9, E_WY = 10, E_WZ = 11,
-  E_AX = 12, E_AY = 13, E_AZ = 14,
-  E_B_GX = 15, E_B_GY = 16, E_B_GZ = 17,
-  E_B_AX = 18, E_B_AY = 19, E_B_AZ = 20,
-  E_B_EWZ = 21
-};
-
-// Map an ambient state index to its error index. The quaternion components have no
-// single counterpart, so they are rejected rather than silently folded: asking for "the
-// error index of QW" is a question with no answer and returning one would hide a bug.
-inline constexpr int error_index_of(int state_index)
-{
-  return (state_index < QW)  ? state_index
-       : (state_index <= QZ) ? -1                  // attitude: use E_ROLL/E_PITCH/E_YAW
-                             : state_index - 1;
-}
 
 // Apply an error vector to a nominal state, producing a new state. The attitude part
 // composes on the manifold; everything else adds.

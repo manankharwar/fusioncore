@@ -20,7 +20,7 @@ TEST(FusionCoreTest, InitializesCleanly) {
   initial.x     = StateVector::Zero();
   initial.x[X]  = 1.0;
   initial.x[Y]  = 2.0;
-  initial.P     = StateMatrix::Identity() * 0.1;
+  initial.P     = ErrorMatrix::Identity() * 0.1;
 
   fc.init(initial, 0.0);
 
@@ -36,7 +36,7 @@ TEST(FusionCoreTest, StatusReflectsSensorHealth) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   // Before any sensor data
@@ -59,7 +59,7 @@ TEST(FusionCoreTest, UncertaintyGrowsWithoutUpdates) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.01;
+  initial.P = ErrorMatrix::Identity() * 0.01;
   fc.init(initial, 0.0);
 
   double initial_uncertainty = fc.get_status().position_uncertainty;
@@ -93,11 +93,10 @@ TEST(FusionCoreTest, RobotDrivesForwardOneMeter) {
   // collapse the cos(yaw) average toward zero during position integration.
   // Keep orientation uncertainty tight; large uncertainty is on position/velocity.
   State initial;
-  initial.P = StateMatrix::Identity() * 1.0;
-  initial.P(QW,QW) = 0.01;
-  initial.P(QX,QX) = 0.01;
-  initial.P(QY,QY) = 0.01;
-  initial.P(QZ,QZ) = 0.01;
+  initial.P = ErrorMatrix::Identity() * 1.0;
+  initial.P(E_ROLL,E_ROLL)   = 4.0 * 0.01;
+  initial.P(E_PITCH,E_PITCH) = 4.0 * 0.01;
+  initial.P(E_YAW,E_YAW)     = 4.0 * 0.01;
   fc.init(initial, 0.0);
 
   // Robot drives forward at 1 m/s for 1 second
@@ -129,7 +128,7 @@ TEST(FusionCoreTest, ResetClearsState) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   fc.update_imu(0.01, 0,0,1, 0,0,9.8);
@@ -157,7 +156,7 @@ TEST(FusionCoreTest, SixAxisIMUYawBlockedRollPitchFused) {
   initial.x[QX] = std::sin(0.15);
   initial.x[QY] = 0.0;
   initial.x[QZ] = 0.0;
-  initial.P         = StateMatrix::Identity() * 0.1;
+  initial.P         = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   // Feed 200 orientation updates: correct roll=0, but yaw=π (wildly wrong).
@@ -187,7 +186,7 @@ TEST(FusionCoreTest, NineAxisIMUYawFusedNormally) {
 
   State initial;
   // State() default-constructs with QW=1 (identity quaternion) = yaw 0
-  initial.P       = StateMatrix::Identity() * 0.1;
+  initial.P       = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   // Feed 200 orientation updates with yaw=0.5 rad.
@@ -212,7 +211,7 @@ TEST(FusionCoreTest, BackwardTimeJumpDoesNotCrash) {
   FusionCore fc{FusionCoreConfig{}};
 
   State initial;
-  initial.P = StateMatrix::Identity() * 0.5;
+  initial.P = ErrorMatrix::Identity() * 0.5;
   fc.init(initial, 0.0);
 
   // Normal operation up to t = 10 s.

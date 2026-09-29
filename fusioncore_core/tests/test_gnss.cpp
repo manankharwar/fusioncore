@@ -161,7 +161,7 @@ TEST(GNSSTest, GNSSUpdateCorrectedDriftedPosition) {
   initial.x     = StateVector::Zero();
   initial.x[X]  = 50.0;   // drifted far from truth
   initial.x[Y]  = 30.0;
-  initial.P     = StateMatrix::Identity() * 10.0;
+  initial.P     = ErrorMatrix::Identity() * 10.0;
 
   ukf.init(initial);
 
@@ -204,7 +204,7 @@ TEST(GNSSTest, StefanConfigurationFullFusion) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   GnssParams gnss_params;
@@ -265,7 +265,7 @@ TEST(GNSSTest, RejectionReasonSurfacesInStatus) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   // Fresh filter: nothing rejected yet.
@@ -377,7 +377,7 @@ TEST(GNSSTest, SigmaRejectionNamesTheGateThatFired) {
 
   State initial;
   initial.x = StateVector::Zero();
-  initial.P = StateMatrix::Identity() * 0.1;
+  initial.P = ErrorMatrix::Identity() * 0.1;
   fc.init(initial, 0.0);
 
   // Wide horizontally: must say SIGMA_XY_HIGH, not HDOP_HIGH. Naming the wrong

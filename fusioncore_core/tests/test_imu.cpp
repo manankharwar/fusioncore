@@ -79,7 +79,7 @@ TEST(IMUTest, UKFUpdateFusesIMUMeasurement) {
   State initial;
   initial.x       = StateVector::Zero();
   initial.x[B_GZ] = 0.1;   // initial bias estimate
-  initial.P       = StateMatrix::Identity() * 0.1;
+  initial.P       = ErrorMatrix::Identity() * 0.1;
 
   ukf.init(initial);
 

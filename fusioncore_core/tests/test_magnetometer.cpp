@@ -59,7 +59,7 @@ TEST(MagnetometerTest, FlatPointingWest) {
 // rejected every single one of them with CHI2_FAILED.
 //
 // The cause is circular reasoning, not a bad sensor. The state is born at yaw 0
-// with P(QZ,QZ) = 1e-8, which claims a hundredth of a degree of certainty about
+// with P(E_YAW,E_YAW) = 4e-8, which claims a hundredth of a degree of certainty about
 // a heading nobody ever measured. A magnetometer that disagrees by any real
 // amount then fails chi2 forever, so the one sensor able to fix heading is the
 // one sensor locked out. The GPS track heading path already documents this trap
@@ -199,8 +199,7 @@ TEST(MagnetometerTest, UpdateMovesYawTowardMeasurement) {
   State initial;
   // Initialize with large yaw uncertainty so the filter accepts magnetometer corrections.
   // Default P[QW/QZ] is 1e-8, which would prevent convergence in any reasonable iteration count.
-  initial.P(QW, QW) = 0.5;
-  initial.P(QZ, QZ) = 0.5;
+  initial.P(E_YAW, E_YAW) = 4.0 * 0.5;
   fc.init(initial, 0.0);
 
   for (int i = 0; i < 20; ++i) {
@@ -355,8 +354,7 @@ TEST(MagnetometerTest, DisturbedFieldRejected) {
 
   FusionCore fc(cfg);
   State s0;
-  s0.P(QW, QW) = 0.5;
-  s0.P(QZ, QZ) = 0.5;
+  s0.P(E_YAW, E_YAW) = 4.0 * 0.5;
   fc.init(s0, 0.0);
   fc.update_imu(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.80665);
 
@@ -393,8 +391,7 @@ TEST(MagnetometerTest, BoundsHeadingDriftFromSlipDuringBlackout) {
     cfg.motion_model = create_motion_model("DifferentialDrive");
     FusionCore fc(cfg);
     State s0;
-    s0.P(QW, QW) = 0.25;
-    s0.P(QZ, QZ) = 0.25;
+    s0.P(E_YAW, E_YAW) = 4.0 * 0.25;
     fc.init(s0, 0.0);
 
     // Truth: driving straight east at 1 m/s (true yaw rate 0), GPS blacked out.
@@ -447,8 +444,7 @@ TEST(MagnetometerTest, ReportedFieldIsTheOneTheGateTested) {
 
   FusionCore fc(cfg);
   State s0;
-  s0.P(QW, QW) = 0.5;
-  s0.P(QZ, QZ) = 0.5;
+  s0.P(E_YAW, E_YAW) = 4.0 * 0.5;
   fc.init(s0, 0.0);
   fc.update_imu(0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 9.80665);
 
