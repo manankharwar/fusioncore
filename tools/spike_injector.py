@@ -3,6 +3,26 @@
 FusionCore GPS Spike Injector
 Press SPACE to inject a 500m GPS spike
 Press Q to quit
+
+Contract
+--------
+This is a live ROS 2 tool, not a bag processor. Each SPACE press publishes one
+fabricated NavSatFix on /gnss/fix, as three identical copies about 50 ms apart.
+
+* It replaces, it does not add. The fix is an absolute position: the fixed
+  ORIGIN_LAT / ORIGIN_LON moved north by SPIKE_METERS. It is not an offset on
+  the real fix. The last fix seen on /gnss/fix_real is stored but never used.
+* The magnitude is metres on the ground. SPIKE_METERS is converted to degrees
+  of latitude at 111320 m per degree. Longitude is the origin's, so the spike
+  is due north.
+* The covariance stays small. The fix always carries a diagonal covariance of
+  0.25 (sigma 0.5 m, type APPROXIMATED), so it claims about 0.5 m accuracy for
+  a position SPIKE_METERS away. That is what makes the spike adversarial: the
+  reported accuracy gives no reason to discount it, only the chi-squared gate
+  on the innovation can reject it.
+* Nothing else is touched. The tool never reads, changes or drops any other fix.
+
+Tests: python3 -m unittest tools/test_spike_injector.py
 """
 
 import rclpy
@@ -36,7 +56,7 @@ class SpikeInjector(Node):
         msg = NavSatFix()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.header.frame_id = 'gps'
-        # 500m north of current position
+        # SPIKE_METERS north of ORIGIN (a fixed point, not of the real fix)
         msg.latitude  = ORIGIN_LAT + (SPIKE_METERS / 111320.0)
         msg.longitude = ORIGIN_LON
         msg.altitude  = 0.0
