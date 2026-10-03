@@ -19,7 +19,8 @@ namespace fusioncore {
 
 // Apply an error vector to a nominal state, producing a new state. The attitude part
 // composes on the manifold; everything else adds.
-inline StateVector inject_error(const StateVector & x, const ErrorVector & e)
+inline StateVector inject_error(const StateVector & x, const ErrorVector & e,
+                                attitude::ErrorFrame frame = attitude::ErrorFrame::BODY)
 {
   StateVector out;
   out[X] = x[X] + e[E_X];
@@ -28,7 +29,7 @@ inline StateVector inject_error(const StateVector & x, const ErrorVector & e)
 
   const Eigen::Quaterniond q(x[QW], x[QX], x[QY], x[QZ]);
   const Eigen::Quaterniond q_new =
-    attitude::boxplus(q, Eigen::Vector3d(e[E_ROLL], e[E_PITCH], e[E_YAW]));
+    attitude::boxplus(q, Eigen::Vector3d(e[E_ROLL], e[E_PITCH], e[E_YAW]), frame);
   out[QW] = q_new.w();
   out[QX] = q_new.x();
   out[QY] = q_new.y();
@@ -39,7 +40,8 @@ inline StateVector inject_error(const StateVector & x, const ErrorVector & e)
 }
 
 // The inverse: the error that takes `from` to `to`. Exactly undoes inject_error.
-inline ErrorVector extract_error(const StateVector & to, const StateVector & from)
+inline ErrorVector extract_error(const StateVector & to, const StateVector & from,
+                                 attitude::ErrorFrame frame = attitude::ErrorFrame::BODY)
 {
   ErrorVector e;
   e[E_X] = to[X] - from[X];
@@ -48,7 +50,7 @@ inline ErrorVector extract_error(const StateVector & to, const StateVector & fro
 
   const Eigen::Quaterniond q_to(to[QW], to[QX], to[QY], to[QZ]);
   const Eigen::Quaterniond q_from(from[QW], from[QX], from[QY], from[QZ]);
-  const Eigen::Vector3d d = attitude::boxminus(q_to, q_from);
+  const Eigen::Vector3d d = attitude::boxminus(q_to, q_from, frame);
   e[E_ROLL] = d.x();
   e[E_PITCH] = d.y();
   e[E_YAW] = d.z();

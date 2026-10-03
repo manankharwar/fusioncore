@@ -75,24 +75,50 @@ inline Eigen::Vector3d log_map(const Eigen::Quaterniond & q_in)
   return (2.0 * std::atan2(vn, q.w()) / vn) * q.vec();
 }
 
-// Apply a body-frame rotation to an attitude.
+// WHICH FRAME THE ERROR LIVES IN, and it is not a cosmetic choice.
+//
+// Two conventions are possible and they are NOT equivalent for a filter:
+//
+//   BODY  (left-invariant)    q_true = q_est * exp(delta)
+//   WORLD (right-invariant)   q_true = exp(delta) * q_est
+//
+// The invariant-filtering literature (Barrau and Bonnabel; Hartley et al., IJRR 2020)
+// shows that for an IMU-driven system with gravity in the WORLD frame, the world-frame
+// error is the one that makes the propagation group-affine, which in turn makes the error
+// dynamics trajectory independent and keeps the observability structure correct.
+//
+// That matters here specifically. The standing #150 defect is that yaw is unobservable
+// yet the filter becomes CONFIDENT about it: measured, yaw ends 163 degrees out carrying a
+// 25 degree sigma. That is the textbook signature of spurious information gain along an
+// unobservable direction, which is exactly what a state-dependent linearisation causes and
+// what an invariant error is designed to prevent.
+//
+// Both are implemented so the choice can be measured rather than argued. Default stays
+// BODY, which is what the filter has always done, until the A/B says otherwise.
+enum class ErrorFrame { BODY, WORLD };
+
 inline Eigen::Quaterniond boxplus(const Eigen::Quaterniond & q,
-                                  const Eigen::Vector3d & delta)
+                                  const Eigen::Vector3d & delta,
+                                  ErrorFrame frame = ErrorFrame::BODY)
 {
-  Eigen::Quaterniond out = q * exp_map(delta);
+  Eigen::Quaterniond out = (frame == ErrorFrame::BODY)
+                             ? (q * exp_map(delta))
+                             : (exp_map(delta) * q);
   out.normalize();
   return out;
 }
 
-// The body-frame rotation that takes `from` to `to`.
+// The rotation that takes `from` to `to`, expressed in the chosen frame.
 inline Eigen::Vector3d boxminus(const Eigen::Quaterniond & to,
-                                const Eigen::Quaterniond & from)
+                                const Eigen::Quaterniond & from,
+                                ErrorFrame frame = ErrorFrame::BODY)
 {
   Eigen::Quaterniond a = to, b = from;
   if (a.norm() < 1e-12 || b.norm() < 1e-12) { return Eigen::Vector3d::Zero(); }
   a.normalize();
   b.normalize();
-  return log_map(b.conjugate() * a);
+  return (frame == ErrorFrame::BODY) ? log_map(b.conjugate() * a)
+                                     : log_map(a * b.conjugate());
 }
 
 // Iterative tangent-space (Karcher) mean of a weighted set of attitudes.

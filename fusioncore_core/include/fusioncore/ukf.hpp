@@ -130,6 +130,13 @@ struct UKFParams {
   // the evidence that the cheap half of it is not a shortcut. Kept, off, for that reason.
   bool tangent_space_quaternion_mean = false;
 
+  // Express attitude error in the WORLD frame (right-invariant) instead of the body
+  // frame. See attitude.hpp for why this is not cosmetic: the invariant-filtering
+  // result is that a world-frame error makes IMU propagation group-affine, which
+  // keeps the observability structure correct and is the principled fix for the
+  // overconfident-yaw signature in #150. Default false until the A/B says otherwise.
+  bool world_frame_attitude_error = false;
+
   // Process noise: how much we trust the motion model
   double q_position     = 0.01;   // m²/step
   // Quaternion regularization: keeps Q positive-definite.
@@ -277,6 +284,11 @@ private:
   static double normalize_angle(double angle);
 
   // Normalize angle components of state vector
+  attitude::ErrorFrame err_frame() const {
+    return params_.world_frame_attitude_error ? attitude::ErrorFrame::WORLD
+                                             : attitude::ErrorFrame::BODY;
+  }
+
   static StateVector normalize_state(const StateVector& x);
 };
 

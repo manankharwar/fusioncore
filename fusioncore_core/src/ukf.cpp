@@ -150,8 +150,8 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
   sigma.col(0) = state_.x;
   for (int i = 0; i < n_aug_; ++i) {
     const ErrorVector e = L.col(i);
-    sigma.col(i + 1)          = inject_error(state_.x,  e);
-    sigma.col(i + 1 + n_aug_) = inject_error(state_.x, -e);
+    sigma.col(i + 1)          = inject_error(state_.x,  e, err_frame());
+    sigma.col(i + 1 + n_aug_) = inject_error(state_.x, -e, err_frame());
   }
 
   // Keep each sigma point's attitude a physically meaningful sample. See
@@ -232,10 +232,10 @@ void UKF::predict(double dt) {
           const Eigen::Quaterniond qi(sigma_pred(QW, i), sigma_pred(QX, i),
                                       sigma_pred(QY, i), sigma_pred(QZ, i));
           if (qi.norm() < 1e-12) { continue; }
-          mean_err += Wm_[i] * attitude::boxminus(qi, ref);
+          mean_err += Wm_[i] * attitude::boxminus(qi, ref, err_frame());
         }
         if (mean_err.norm() < 1e-13) { break; }
-        ref = attitude::boxplus(ref, mean_err);
+        ref = attitude::boxplus(ref, mean_err, err_frame());
         if (mean_err.norm() < 1e-10) { break; }
       }
       x_pred[QW] = ref.w(); x_pred[QX] = ref.x();
@@ -267,7 +267,7 @@ void UKF::predict(double dt) {
     // P picks up a spurious term that leaks through the quaternion/acceleration cross
     // covariance, giving a 22% distance overshoot and +-5 m/s^2 of accelerometer
     // oscillation on a still sensor. The mean and the residual have to move together.
-    const ErrorVector diff = extract_error(sigma_pred.col(i), x_pred);
+    const ErrorVector diff = extract_error(sigma_pred.col(i), x_pred, err_frame());
     P_pred += Wc_[i] * diff * diff.transpose();
   }
   state_.x = x_pred;
@@ -325,7 +325,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
     ZVector z_diff = sigma_z.col(i) - z_pred;
     for (int d = 0; d < z_dim; ++d)
       if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
-    const ErrorVector x_diff = extract_error(sigma.col(i), state_.x);
+    const ErrorVector x_diff = extract_error(sigma.col(i), state_.x, err_frame());
     S   += Wc_[i] * z_diff * z_diff.transpose();
     Pxz += Wc_[i] * x_diff * z_diff.transpose();
   }
@@ -341,7 +341,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   const ErrorVector correction = K * innovation;
   last_pos_correction_ = std::hypot(correction[E_X], correction[E_Y]);
   // The attitude part of the correction is a rotation, so it is applied as one.
-  state_.x = normalize_state(inject_error(state_.x, correction));
+  state_.x = normalize_state(inject_error(state_.x, correction, err_frame()));
   state_.P -= K * S * K.transpose();
   // Symmetrize after each update to prevent floating-point asymmetry from
   // accumulating across the ~100 Hz IMU + 1 Hz GPS update stream.
