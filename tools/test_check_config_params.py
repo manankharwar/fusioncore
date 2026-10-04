@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Unit tests for the value rules in check_config_params.py."""
+import contextlib
+import io
 import os
 import sys
+import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(__file__))
 import check_config_params
@@ -68,6 +72,44 @@ class ValueRulesTest(unittest.TestCase):
             ("outlier_rejection", 2, "false"),
             ("outlier_threshold_gnss", 3, "7.0"),
         ))
+
+
+def run_main(*argv):
+    out = io.StringIO()
+    with mock.patch.object(sys, "argv", ["check_config_params.py", *argv]), \
+            contextlib.redirect_stdout(out), contextlib.redirect_stderr(out):
+        code = check_config_params.main()
+    return code, out.getvalue()
+
+
+class CommandLinePathsTest(unittest.TestCase):
+    def write_config(self, body):
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write(body)
+        self.addCleanup(os.remove, f.name)
+        return f.name
+
+    def test_named_file_is_checked_instead_of_shipped_configs(self):
+        path = self.write_config("fusioncore:\n  ros__parameters:\n    gnss.max_hodp: 2.0\n")
+
+        code, out = run_main(path)
+
+        self.assertEqual(1, code)
+        self.assertIn(path, out)
+        self.assertIn("gnss.max_hodp", out)
+        self.assertIn("1 config files checked", out)
+
+    def test_missing_named_file_fails(self):
+        code, out = run_main("/nonexistent/robot.yaml")
+
+        self.assertNotEqual(0, code)
+        self.assertIn("/nonexistent/robot.yaml", out)
+
+    def test_no_paths_checks_shipped_configs(self):
+        code, out = run_main("--quiet")
+
+        self.assertEqual(0, code)
+        self.assertRegex(out, r"\n[1-9]\d* config files checked")
 
 
 if __name__ == "__main__":
