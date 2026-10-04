@@ -135,3 +135,4 @@ scratchpad/
 # regenerable from the bags, and often large. Leading slash anchors to the root
 # ONLY, so the four figures the docs actually use (docs/assets/*.png) stay tracked.
 /*.png
+FINDINGS_20261003.md
