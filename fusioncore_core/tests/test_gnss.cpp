@@ -1154,3 +1154,200 @@ TEST(GNSSTest, SyntheticDopIsNotGated) {
   EXPECT_GT(strict_synthetic.first, 0)
       << "no fix survived, so the filter is dead reckoning on a config typo";
 }
+
+// ---------------------------------------------------------------------------
+// GNSS rotation heading bootstrap (#67, design by Jakub Kaflik)
+//
+// With the antenna at a lever arm from base_link, rotating the robot sweeps the
+// antenna along an arc. The observed GNSS displacement, the relative yaw over the
+// same window and the known lever arm give absolute heading without the straight
+// run gps_track_heading needs.
+//
+// OPERATING ENVELOPE, measured rather than assumed. The bootstrap needs two things
+// that pull against each other: enough rotation to sweep a usable arc, and little
+// enough elapsed time that the filter still knows the rotation it just made. Yaw
+// 1-sigma grows about 0.2 rad/s during an in-place spin with an IMU feeding, and
+// about 0.3 rad/s on encoder alone (probe on this commit, 0.6 rad/s spin: yaw sigma
+// 0.089 -> 0.361 over 1.8 s with IMU, 0.115 -> 0.564 without). So a SLOW rotation
+// accumulates more yaw variance than the gate allows before it has swept the arc,
+// and a brisk one finishes first. These tests use a brisk spin and one of them
+// pins the slow case as the thing that is correctly refused.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr double kRotLeverX = 0.32;
+
+// Antenna position for a base at the origin with heading `yaw`:
+//   p_antenna = p_base + R(yaw) * lever
+GnssFix makeRotationFix(double yaw, double sigma_xy = 0.02)
+{
+  GnssFix fix;
+  fix.fix_type   = GnssFixType::GPS_FIX;
+  fix.satellites = 8;
+  fix.hdop       = 1.0;
+  fix.vdop       = 1.0;
+  fix.lever_arm.x = kRotLeverX;
+  fix.x = std::cos(yaw) * kRotLeverX;
+  fix.y = std::sin(yaw) * kRotLeverX;
+  fix.z = 0.0;
+  fix.has_full_covariance = true;
+  fix.full_covariance = Eigen::Matrix3d::Zero();
+  fix.full_covariance(0, 0) = sigma_xy * sigma_xy;
+  fix.full_covariance(1, 1) = sigma_xy * sigma_xy;
+  fix.full_covariance(2, 2) = (2.0 * sigma_xy) * (2.0 * sigma_xy);
+  return fix;
+}
+
+FusionCoreConfig rotationHeadingConfig()
+{
+  FusionCoreConfig config;
+  config.outlier_rejection         = false;
+  config.adaptive_gnss             = false;
+  config.gps_track_heading_enabled = false;
+  config.gps_rotation_heading_enabled              = true;
+  config.gps_rotation_heading_min_yaw_delta        = 0.8;
+  config.gps_rotation_heading_min_arc_baseline     = 0.20;
+  config.gps_rotation_heading_max_base_translation = 0.05;
+  config.gps_rotation_heading_max_sigma            = 0.4;
+  config.gps_rotation_heading_sigma_floor          = 0.02;
+  config.gps_rotation_heading_delta_yaw_sigma      = 0.01;
+  return config;
+}
+
+FusionCore makeRotationFilter(const FusionCoreConfig& config)
+{
+  FusionCore fc(config);
+  State initial;
+  initial.P = StateMatrix::Identity() * 0.1;
+  for (int i : {QW, QX, QY, QZ})
+    for (int j : {QW, QX, QY, QZ})
+      initial.P(i, j) = (i == j) ? 1e-6 : 0.0;
+  fc.init(initial, 0.0);
+  return fc;
+}
+
+// Rotate in place at `wz` rad/s for `steps` of 10 ms, IMU and encoder both feeding,
+// which is what a real platform with this feature enabled looks like.
+double spinInPlace(FusionCore& fc, double t0, double wz, int steps)
+{
+  double t = t0;
+  for (int i = 1; i <= steps; ++i) {
+    t = t0 + i * 0.01;
+    fc.update_imu(t, 0.0, 0.0, wz, 0.0, 0.0, 9.81);
+    fc.update_encoder(t, 0.0, 0.0, wz, 1e-4, 1e-4, 1e-4);
+  }
+  return t;
+}
+
+// Brisk: 2.0 rad/s for 0.6 s sweeps past min_yaw_delta while the filter still knows
+// the rotation. Slow: 0.5 rad/s needs 1.6 s for the same angle and does not.
+constexpr double kBriskWz    = 2.0;
+constexpr int    kBriskSteps = 60;
+
+}  // namespace
+
+TEST(GNSSTest, RotationHeadingValidatesFromLeverArmArc)
+{
+  auto config = rotationHeadingConfig();
+  FusionCore fc = makeRotationFilter(config);
+
+  ASSERT_TRUE(fc.update_gnss(0.1, makeRotationFix(0.0)));
+  const double t = spinInPlace(fc, 0.1, kBriskWz, kBriskSteps);
+
+  const double yaw = fc.get_state().yaw();
+  ASSERT_GT(std::abs(yaw), config.gps_rotation_heading_min_yaw_delta)
+      << "the spin did not produce enough rotation to bootstrap from";
+  ASSERT_TRUE(fc.update_gnss(t, makeRotationFix(yaw)));
+
+  const auto status = fc.get_status();
+  EXPECT_TRUE(status.heading_validated);
+  EXPECT_EQ(status.heading_source, HeadingSource::GPS_ROTATION);
+  EXPECT_GT(status.last_heading_sigma, 0.0);
+  EXPECT_LT(status.last_heading_sigma, config.gps_rotation_heading_max_sigma);
+}
+
+// The gate #67 did not have, and the reason it matters.
+//
+// delta_yaw is a difference of two of the filter's own yaw estimates. #67 took its
+// uncertainty from a flat 0.03 rad constant, which asserts the filter knows its yaw
+// to 1.7 degrees over a window of up to 10 s. Taking it from P instead means the
+// bootstrap declines when the filter has lost track of its own rotation, which is
+// the #150 state: WZ + B_GZ slides along an unobservable direction, Q keeps pumping
+// energy in, and yaw variance climbs.
+//
+// Identical geometry and identical GNSS in both arms. The only difference is how
+// long the filter spent rotating to get there.
+TEST(GNSSTest, RotationHeadingDeclinesWhenTheFilterHasLostTheRotation)
+{
+  auto config = rotationHeadingConfig();
+
+  FusionCore brisk = makeRotationFilter(config);
+  ASSERT_TRUE(brisk.update_gnss(0.1, makeRotationFix(0.0)));
+  const double t_brisk = spinInPlace(brisk, 0.1, kBriskWz, kBriskSteps);
+  ASSERT_TRUE(brisk.update_gnss(t_brisk, makeRotationFix(brisk.get_state().yaw())));
+  ASSERT_EQ(brisk.get_status().heading_source, HeadingSource::GPS_ROTATION)
+      << "control arm must bootstrap, or this test proves nothing";
+
+  // Same angle swept, four times as long spent getting there.
+  FusionCore slow = makeRotationFilter(config);
+  ASSERT_TRUE(slow.update_gnss(0.1, makeRotationFix(0.0)));
+  const double t_slow = spinInPlace(slow, 0.1, kBriskWz / 4.0, kBriskSteps * 4);
+  ASSERT_GT(std::abs(slow.get_state().yaw()), config.gps_rotation_heading_min_yaw_delta)
+      << "slow arm must still sweep enough angle, or it is refused for the wrong reason";
+  ASSERT_TRUE(slow.update_gnss(t_slow, makeRotationFix(slow.get_state().yaw())));
+
+  const auto status = slow.get_status();
+  EXPECT_NE(status.heading_source, HeadingSource::GPS_ROTATION)
+      << "bootstrapped from a delta_yaw the filter no longer knows";
+  EXPECT_DOUBLE_EQ(status.last_heading_sigma, 0.0)
+      << "no rotation heading should have been fused";
+}
+
+// Only the ANGLE of the observed displacement carries heading. Its LENGTH is a
+// validity test: a displacement that is not the size the rotation model predicts
+// was not produced by rotation about the lever arm, so its angle means nothing.
+// The encoder translation guard does not catch this, because encoders slip.
+TEST(GNSSTest, RotationHeadingRejectsDisplacementOfTheWrongLength)
+{
+  auto config = rotationHeadingConfig();
+  FusionCore fc = makeRotationFilter(config);
+
+  ASSERT_TRUE(fc.update_gnss(0.1, makeRotationFix(0.0)));
+  const double t = spinInPlace(fc, 0.1, kBriskWz, kBriskSteps);
+  const double yaw = fc.get_state().yaw();
+
+  // Correct bearing, wrong magnitude: the antenna appears to have moved 20x the arc
+  // the rotation can account for, while the encoder reports no base translation.
+  const GnssFix start = makeRotationFix(0.0);
+  GnssFix stretched   = makeRotationFix(yaw);
+  stretched.x = start.x + (stretched.x - start.x) * 20.0;
+  stretched.y = start.y + (stretched.y - start.y) * 20.0;
+
+  ASSERT_TRUE(fc.update_gnss(t, stretched));
+
+  const auto status = fc.get_status();
+  EXPECT_NE(status.heading_source, HeadingSource::GPS_ROTATION)
+      << "fused a heading from a displacement rotation cannot explain";
+  EXPECT_DOUBLE_EQ(status.last_heading_sigma, 0.0);
+}
+
+TEST(GNSSTest, RotationHeadingDoesNotRebootstrapAfterValidation)
+{
+  auto config = rotationHeadingConfig();
+  FusionCore fc = makeRotationFilter(config);
+
+  ASSERT_TRUE(fc.update_gnss(0.1, makeRotationFix(0.0)));
+  double t = spinInPlace(fc, 0.1, kBriskWz, kBriskSteps);
+  ASSERT_TRUE(fc.update_gnss(t, makeRotationFix(fc.get_state().yaw())));
+  ASSERT_EQ(fc.get_status().heading_source, HeadingSource::GPS_ROTATION);
+
+  const double sigma_after_first = fc.get_status().last_heading_sigma;
+
+  // A second rotation must not re-bootstrap: heading is owned now.
+  t = spinInPlace(fc, t, kBriskWz, kBriskSteps);
+  ASSERT_TRUE(fc.update_gnss(t, makeRotationFix(fc.get_state().yaw())));
+
+  EXPECT_DOUBLE_EQ(fc.get_status().last_heading_sigma, sigma_after_first)
+      << "bootstrap fired twice; it is a bootstrap, not a heading source";
+}

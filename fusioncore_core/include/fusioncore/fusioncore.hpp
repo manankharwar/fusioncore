@@ -103,6 +103,31 @@ struct FusionCoreConfig {
   // at 0.0 and keep the rate check.
   double gps_track_heading_max_window_turn_deg = 0.0;  // degrees, 0 = use max_yaw_rate
 
+  // GNSS rotation heading bootstrap (RTK only in practice).
+  //
+  // When the antenna sits off base_link, rotating the robot sweeps the antenna
+  // along an arc. The observed GNSS displacement, the relative yaw over the same
+  // window and the known lever arm give absolute heading without the robot having
+  // to drive in a straight line, which is what gps_track_heading needs.
+  //
+  // This is an RTK-grade feature and the noise model enforces that on its own
+  // rather than through a flag: passing max_sigma at min_arc_baseline requires the
+  // lateral sigma of the displacement between the two fixes to be under about
+  // 10 cm, so roughly 7 cm per fix. Consumer GNSS at 2 to 5 m is far outside that
+  // and the bootstrap simply never fires. Leaving it enabled costs nothing there.
+  bool   gps_rotation_heading_enabled              = true;
+  double gps_rotation_heading_min_yaw_delta        = 1.0;   // radians of rotation needed
+  double gps_rotation_heading_min_arc_baseline     = 0.25;  // metres of predicted arc
+  double gps_rotation_heading_max_base_translation = 0.20;  // metres the base may move
+  double gps_rotation_heading_max_sigma            = 0.4;   // radians, reject above this
+  double gps_rotation_heading_sigma_floor          = 0.05;  // radians, floor on the result
+  double gps_rotation_heading_delta_yaw_sigma      = 0.03;  // radians, FLOOR on delta-yaw sigma
+  double gps_rotation_heading_max_window_s         = 10.0;  // seconds, window lifetime
+  // How many sigma the observed displacement length may differ from the length the
+  // rotation model predicts before the window is discarded. The angle of a
+  // displacement that is the wrong size carries no heading information.
+  double gps_rotation_heading_max_len_residual_sigma = 3.0;
+
   // Lever arm correction is only applied when heading uncertainty is below this threshold.
   // When heading_sigma exceeds this value (e.g. during prolonged turns with no GPS track
   // heading fusions firing), rotating the lever arm by an uncertain heading adds more
@@ -568,6 +593,7 @@ enum class HeadingSource {
   IMU_ORIENTATION = 2,  // AHRS/IMU published full orientation
   GPS_TRACK       = 3,  // robot moved enough for heading to be geometric
   MAGNETOMETER    = 4,  // raw magnetometer field fused directly
+  GPS_ROTATION    = 5,  // GNSS antenna lever-arm arc swept during rotation
 };
 
 // Why a GNSS fix was rejected (or ACCEPTED if it passed)
@@ -750,6 +776,8 @@ struct FusionCoreStatus {
   // Heading observability
   bool          heading_validated   = false;
   HeadingSource heading_source      = HeadingSource::NONE;
+  // 1-sigma of the last heading observation actually fused, radians. 0 if none.
+  double        last_heading_sigma  = 0.0;
   // Outcome of the most recent encoder update, and how surprising it was against
   // the gate that judged it. chi2 is -1 when no encoder update has been gated.
   EncoderRejectionReason encoder_reason = EncoderRejectionReason::NOT_PROCESSED;
@@ -1386,6 +1414,38 @@ private:
     const std::function<void()>& apply_fn
   );
   void update_distance_traveled(double x, double y, double pre_update_speed = -1.0);
+
+  // Reference endpoint for the GNSS rotation heading bootstrap. yaw_sigma is stored
+  // alongside yaw because the uncertainty of the window's delta_yaw is the filter's
+  // own, not a constant.
+  struct GpsRotationHeadingWindow {
+    bool            set                = false;
+    double          timestamp          = 0.0;
+    double          fix_x              = 0.0;
+    double          fix_y              = 0.0;
+    Eigen::Matrix2d fix_cov            = Eigen::Matrix2d::Identity();
+    double          yaw                = 0.0;
+    double          yaw_sigma          = 0.0;
+    double          encoder_distance   = 0.0;
+  };
+
+  GpsRotationHeadingWindow gps_rotation_hdg_window_;
+  bool   gps_rotation_hdg_fused_ = false;
+  double last_heading_sigma_     = 0.0;
+
+  // Path length integrated from the ENCODER, not from GNSS fix positions.
+  // distance_traveled_ is fed fix.x/fix.y, so when the antenna sweeps an arc it
+  // counts that arc as travel. The rotation bootstrap needs the opposite: it has
+  // to know the base stayed put while the antenna moved, so it cannot use a
+  // counter that the arc itself advances.
+  double encoder_distance_ = 0.0;
+
+  bool try_fuse_gps_rotation_heading(
+    double timestamp_seconds, const sensors::GnssFix& fix,
+    const sensors::GnssPosNoiseMatrix& R_meas);
+  void reset_gps_rotation_heading_window(
+    double timestamp_seconds, const sensors::GnssFix& fix,
+    const sensors::GnssPosNoiseMatrix& R_meas);
 };
 
 } // namespace fusioncore

@@ -397,6 +397,23 @@ public:
     // never overrides the heading source. 0 = off. See issue #73.
     declare_parameter("gnss.track_heading_cross_check_deg", 15.0);
     declare_parameter("gnss.track_heading_min_speed",    0.2);
+
+    // GNSS rotation heading bootstrap (#67). RTK only in practice: the noise model
+    // requires the lateral sigma of the displacement between the two fixes to be
+    // under about 10 cm, so roughly 7 cm per fix, and consumer GNSS at 2 to 5 m is
+    // far outside that. Leaving it enabled costs nothing on such a receiver because
+    // it simply never fires. It also needs a BRISK rotation: yaw 1-sigma grows about
+    // 0.2 rad/s while turning, so a slow turn loses the rotation before it has swept
+    // enough arc, and the delta-yaw gate correctly refuses.
+    declare_parameter("gnss.rotation_heading_enabled",              true);
+    declare_parameter("gnss.rotation_heading_min_yaw_delta",        1.0);
+    declare_parameter("gnss.rotation_heading_min_arc_baseline",     0.25);
+    declare_parameter("gnss.rotation_heading_max_base_translation", 0.20);
+    declare_parameter("gnss.rotation_heading_max_sigma",            0.4);
+    declare_parameter("gnss.rotation_heading_sigma_floor",          0.05);
+    declare_parameter("gnss.rotation_heading_delta_yaw_sigma",      0.03);
+    declare_parameter("gnss.rotation_heading_max_window_s",         10.0);
+    declare_parameter("gnss.rotation_heading_max_len_residual_sigma", 3.0);
     declare_parameter("gnss.track_heading_max_yaw_rate", 0.3);
     // #144: discard the bearing window on the ANGLE turned across it rather than
     // on one instantaneous yaw-rate sample. 0.0 keeps the rate check, so this is
@@ -787,6 +804,25 @@ public:
         get_parameter("gnss.track_heading_cross_check_deg").as_double();
     heading_xcheck_deg_ = config.gps_track_heading_cross_check_deg;
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
+
+    config.gps_rotation_heading_enabled =
+      get_parameter("gnss.rotation_heading_enabled").as_bool();
+    config.gps_rotation_heading_min_yaw_delta =
+      get_parameter("gnss.rotation_heading_min_yaw_delta").as_double();
+    config.gps_rotation_heading_min_arc_baseline =
+      get_parameter("gnss.rotation_heading_min_arc_baseline").as_double();
+    config.gps_rotation_heading_max_base_translation =
+      get_parameter("gnss.rotation_heading_max_base_translation").as_double();
+    config.gps_rotation_heading_max_sigma =
+      get_parameter("gnss.rotation_heading_max_sigma").as_double();
+    config.gps_rotation_heading_sigma_floor =
+      get_parameter("gnss.rotation_heading_sigma_floor").as_double();
+    config.gps_rotation_heading_delta_yaw_sigma =
+      get_parameter("gnss.rotation_heading_delta_yaw_sigma").as_double();
+    config.gps_rotation_heading_max_window_s =
+      get_parameter("gnss.rotation_heading_max_window_s").as_double();
+    config.gps_rotation_heading_max_len_residual_sigma =
+      get_parameter("gnss.rotation_heading_max_len_residual_sigma").as_double();
     config.gps_track_heading_max_yaw_rate  = get_parameter("gnss.track_heading_max_yaw_rate").as_double();
     config.gps_track_heading_max_window_turn_deg =
       get_parameter("gnss.track_heading_max_window_turn_deg").as_double();

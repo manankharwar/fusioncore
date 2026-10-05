@@ -7,6 +7,13 @@
 
 namespace fusioncore {
 
+namespace {
+// Wrap to (-pi, pi]. UKF::normalize_angle is private, and this is the only place in
+// this translation unit that needs it.
+inline double wrap_pi(double a) { return std::atan2(std::sin(a), std::cos(a)); }
+}  // namespace
+
+
 // ─── Adaptive noise covariance implementation ─────────────────────────────
 
 // ─── Mahalanobis outlier rejection ────────────────────────────────────────
@@ -129,6 +136,7 @@ void FusionCore::init(const State& initial_state, double timestamp_seconds) {
   heading_source_    = HeadingSource::NONE;
   gnss_pos_set_      = false;
   distance_traveled_ = 0.0;
+  encoder_distance_  = 0.0;
   last_gnss_x_       = 0.0;
   last_gnss_y_       = 0.0;
   hdg_fix_set_          = false;
@@ -237,6 +245,7 @@ void FusionCore::reset() {
   heading_source_    = HeadingSource::NONE;
   gnss_pos_set_      = false;
   distance_traveled_ = 0.0;
+  encoder_distance_  = 0.0;
   hdg_fix_set_          = false;
   last_hdg_fix_x_       = 0.0;
   last_hdg_fix_y_       = 0.0;
@@ -446,6 +455,208 @@ double FusionCore::compute_heading_sigma_rad() const {
 
   double yaw_var = (J * P_quat * J.transpose())(0,0);
   return std::sqrt(std::max(yaw_var, 0.0));
+}
+
+void FusionCore::reset_gps_rotation_heading_window(
+  double timestamp_seconds, const sensors::GnssFix& fix,
+  const sensors::GnssPosNoiseMatrix& R_meas)
+{
+  gps_rotation_hdg_window_.set               = true;
+  gps_rotation_hdg_window_.timestamp         = timestamp_seconds;
+  gps_rotation_hdg_window_.fix_x             = fix.x;
+  gps_rotation_hdg_window_.fix_y             = fix.y;
+  gps_rotation_hdg_window_.fix_cov           = R_meas.topLeftCorner<2, 2>();
+  gps_rotation_hdg_window_.yaw               = ukf_.state().yaw();
+  gps_rotation_hdg_window_.yaw_sigma         = compute_heading_sigma_rad();
+  gps_rotation_hdg_window_.encoder_distance  = encoder_distance_;
+}
+
+// Absolute heading from the arc the antenna sweeps when the robot rotates.
+//
+// With the antenna at a lever arm from base_link, a rotation of delta_yaw moves the
+// antenna by  R(yaw_start) * (R(delta_yaw) - I) * lever  in the world frame. The
+// predicted body-frame arc is known from the lever arm and delta_yaw, GNSS observes
+// the world-frame displacement, so the rotation between them is yaw_start:
+//
+//   yaw_start = atan2(observed) - atan2(arc_body)
+//
+// Only the ANGLE of the observed displacement carries heading. Its LENGTH is a
+// validity test, and this checks it: a displacement of the wrong size was not
+// produced by rotation about the lever arm, so its angle means nothing.
+//
+// Original design by Jakub Kaflik (#67), on an OpenMower with an offset RTK antenna.
+bool FusionCore::try_fuse_gps_rotation_heading(
+  double timestamp_seconds, const sensors::GnssFix& fix,
+  const sensors::GnssPosNoiseMatrix& R_meas)
+{
+  if (!config_.gps_rotation_heading_enabled || fix.lever_arm.is_zero()) return false;
+
+  // Only bootstrap while nothing stronger owns heading, and only once.
+  if (heading_validated_ &&
+      heading_source_ != HeadingSource::GPS_TRACK &&
+      heading_source_ != HeadingSource::GPS_ROTATION) {
+    return false;
+  }
+  if (heading_validated_ &&
+      heading_source_ == HeadingSource::GPS_ROTATION &&
+      gps_rotation_hdg_fused_) {
+    return false;
+  }
+
+  const Eigen::Vector2d lever(fix.lever_arm.x, fix.lever_arm.y);
+  if (lever.norm() < 1e-6) return false;   // arc is in the horizontal plane only
+
+  if (!gps_rotation_hdg_window_.set) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  if (config_.gps_rotation_heading_max_window_s > 0.0 &&
+      timestamp_seconds - gps_rotation_hdg_window_.timestamp >
+        config_.gps_rotation_heading_max_window_s) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  // The base itself must stay put, or the displacement is translation, not arc.
+  const double base_translation =
+    encoder_distance_ - gps_rotation_hdg_window_.encoder_distance;
+  if (base_translation > config_.gps_rotation_heading_max_base_translation) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  const double current_yaw = ukf_.state().yaw();
+  const double delta_yaw =
+    wrap_pi(current_yaw - gps_rotation_hdg_window_.yaw);
+  if (std::abs(delta_yaw) < config_.gps_rotation_heading_min_yaw_delta) return false;
+
+  // delta_yaw is a difference of two of the filter's own yaw estimates, so its
+  // uncertainty belongs to the filter, not to a config constant. #67 used a flat
+  // 0.03 rad, which asserts the filter knows its yaw to 1.7 degrees over a window
+  // of up to 10 s. Issue #150 is precisely where that is false.
+  //
+  // The quantity wanted is Var(yaw2 - yaw1), not Var(yaw1) + Var(yaw2). Summing
+  // the two absolute variances double counts everything the two endpoints have in
+  // common, which is most of it: measured on a 1.8 s in-place spin that gave
+  // 0.618 rad, enough to block a bootstrap whose geometry was exact. For a yaw
+  // that accumulates as a random walk over the window,
+  //
+  //   Var(yaw2) = Var(yaw1) + Var(dyaw)   so   Var(dyaw) = Var(yaw2) - Var(yaw1)
+  //
+  // so the variance ADDED across the window is the honest figure. It is also the
+  // right signal for #150: it is large exactly when Q is pumping energy into the
+  // unobservable WZ + B_GZ direction, and small when yaw is merely offset by a
+  // constant the filter has never been able to observe, which does not corrupt a
+  // relative rotation. gps_rotation_heading_delta_yaw_sigma is now a floor.
+  //
+  // If a heading measurement landed inside the window the variance can fall, and
+  // the difference clamps at zero and falls back to the floor. That is mildly
+  // optimistic and the alternative, the absolute sigma, is wrong by a factor that
+  // blocks the feature outright.
+  const double dys = config_.gps_rotation_heading_delta_yaw_sigma;
+  const double yaw_sigma_now = compute_heading_sigma_rad();
+  const double yaw_var_added = std::max(
+    0.0,
+    yaw_sigma_now * yaw_sigma_now -
+      gps_rotation_hdg_window_.yaw_sigma * gps_rotation_hdg_window_.yaw_sigma);
+  const double delta_yaw_sigma = std::sqrt(yaw_var_added + dys * dys);
+
+  // Predicted arc in the body frame: (R(delta_yaw) - I) * lever
+  const double c = std::cos(delta_yaw);
+  const double s = std::sin(delta_yaw);
+  const Eigen::Vector2d arc_body(
+    (c - 1.0) * lever.x() - s * lever.y(),
+     s * lever.x() + (c - 1.0) * lever.y());
+  const double arc_len = arc_body.norm();
+  if (arc_len < config_.gps_rotation_heading_min_arc_baseline) return false;
+
+  const Eigen::Vector2d observed(
+    fix.x - gps_rotation_hdg_window_.fix_x,
+    fix.y - gps_rotation_hdg_window_.fix_y);
+  const double observed_len = observed.norm();
+  if (observed_len < 1e-6) return false;
+
+  // Summing both endpoint covariances is conservative: short-baseline differencing
+  // cancels most of the correlated error, so the true displacement noise is smaller.
+  const Eigen::Matrix2d C_delta =
+    gps_rotation_hdg_window_.fix_cov + R_meas.topLeftCorner<2, 2>();
+
+  // Length residual. arc_len = 2*|lever|*|sin(delta_yaw/2)|, so its own sigma is
+  // |lever| * |cos(delta_yaw/2)| * delta_yaw_sigma. Encoders already bound base
+  // translation above, but they slip; this tests the GNSS displacement directly.
+  const Eigen::Vector2d u_along(observed.x() / observed_len, observed.y() / observed_len);
+  const double along_var = std::max(0.0, (u_along.transpose() * C_delta * u_along)(0, 0));
+  const double arc_len_sigma =
+    lever.norm() * std::abs(std::cos(0.5 * delta_yaw)) * delta_yaw_sigma;
+  const double len_sigma = std::sqrt(along_var + arc_len_sigma * arc_len_sigma);
+  if (len_sigma > 0.0 &&
+      std::abs(observed_len - arc_len) >
+        config_.gps_rotation_heading_max_len_residual_sigma * len_sigma) {
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  // A lateral error of e on a baseline of length L is an angle error of e/L.
+  const Eigen::Vector2d u_perp(-observed.y() / observed_len, observed.x() / observed_len);
+  const double lateral_var = std::max(0.0, (u_perp.transpose() * C_delta * u_perp)(0, 0));
+  const double sigma_floor = config_.gps_rotation_heading_sigma_floor;
+  const double sigma_hdg = std::sqrt(
+    lateral_var / (arc_len * arc_len) +
+    delta_yaw_sigma * delta_yaw_sigma +
+    sigma_floor * sigma_floor);
+
+  if (!std::isfinite(sigma_hdg) || sigma_hdg > config_.gps_rotation_heading_max_sigma) {
+    return false;   // keep the window; the next fix may be tighter
+  }
+
+  const double yaw_start_est =
+    std::atan2(observed.y(), observed.x()) - std::atan2(arc_body.y(), arc_body.x());
+  const double yaw_current_est = wrap_pi(yaw_start_est + delta_yaw);
+
+  sensors::GnssHdgMeasurement z_hdg;
+  z_hdg[0] = yaw_current_est;
+
+  sensors::GnssHdgNoiseMatrix R_hdg;
+  R_hdg(0, 0) = sigma_hdg * sigma_hdg;
+
+  constexpr unsigned int HDG_ANGLE_DIMS = 0b1;
+
+  // Same reasoning as the track-heading gate: the first fusion cannot be gated
+  // against a heading nothing has established yet. The length residual above is
+  // what protects that first one.
+  bool fuse = true;
+  if (config_.outlier_rejection && gps_rotation_hdg_fused_) {
+    sensors::GnssHdgMeasurement innov_pre;
+    sensors::GnssHdgNoiseMatrix S_pre;
+    ukf_.predict_measurement<sensors::GNSS_HDG_DIM>(
+      z_hdg, sensors::gnss_hdg_measurement_function, R_hdg, innov_pre, S_pre,
+      HDG_ANGLE_DIMS);
+    fuse = !is_outlier<sensors::GNSS_HDG_DIM>(
+      innov_pre, S_pre, config_.outlier_threshold_hdg);
+  }
+
+  if (!fuse) {
+    ++hdg_outliers_;
+    reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+    return false;
+  }
+
+  ukf_.update<sensors::GNSS_HDG_DIM>(
+    z_hdg, sensors::gnss_hdg_measurement_function, R_hdg, HDG_ANGLE_DIMS);
+
+  gps_rotation_hdg_fused_ = true;
+  last_heading_sigma_     = sigma_hdg;
+
+  if (!heading_validated_ ||
+      heading_source_ == HeadingSource::GPS_TRACK ||
+      heading_source_ == HeadingSource::GPS_ROTATION) {
+    heading_validated_ = true;
+    heading_source_    = HeadingSource::GPS_ROTATION;
+  }
+
+  reset_gps_rotation_heading_window(timestamp_seconds, fix, R_meas);
+  return true;
 }
 
 // Inter-sensor clock-skew guard for the direct (non-retrodicted) update paths.
@@ -914,6 +1125,11 @@ void FusionCore::update_encoder(
         std::isfinite(var_vx) && std::isfinite(var_vy) && std::isfinite(var_wz))) {
     encoder_reason_ = EncoderRejectionReason::NOT_FINITE;
     return;
+  }
+
+  if (last_enc_raw_stamp_ >= 0.0 && timestamp_seconds > last_enc_raw_stamp_) {
+    const double dt_enc = timestamp_seconds - last_enc_raw_stamp_;
+    encoder_distance_ += std::sqrt(vx * vx + vy * vy) * dt_enc;
   }
 
   // Moving again: hand the position noise scale back. Only ever undoes what
@@ -2049,6 +2265,10 @@ bool FusionCore::apply_gnss_update(
     }
   }
 
+  // Rotation bootstrap last: it declines while a stronger source owns heading, and
+  // gps_track_heading above is the stronger source whenever it can fire at all.
+  try_fuse_gps_rotation_heading(timestamp_seconds, fix, R_meas);
+
   return true;
 }
 
@@ -2183,6 +2403,8 @@ FusionCoreStatus FusionCore::get_status() const {
 
   // Heading observability
   status.heading_validated = heading_validated_;
+  status.heading_source     = heading_source_;
+  status.last_heading_sigma = last_heading_sigma_;
   status.yaw_rate_sign_conflict = yaw_sign_conflict_;
   status.yaw_rate_turn_samples = yaw_sign_votes_;
   if (yaw_sign_votes_ > 0)

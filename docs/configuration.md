@@ -304,6 +304,60 @@ fusioncore:
     # the bearing changes too quickly for a reliable heading measurement.
     # Decrease for robots that make tight turns at slow speed.
 
+    gnss.rotation_heading_enabled: true
+    # Absolute heading from the arc the antenna sweeps when the robot rotates in
+    # place. Needs gnss.lever_arm_x/y to be nonzero, since with the antenna on
+    # base_link there is no arc.
+    #
+    # RTK ONLY in practice, and the noise model enforces that rather than a flag.
+    # Passing rotation_heading_max_sigma at rotation_heading_min_arc_baseline needs
+    # the lateral sigma of the displacement BETWEEN the two fixes to be under about
+    # 10 cm, so roughly 7 cm per fix. A 2 to 5 m consumer receiver is far outside
+    # that and the bootstrap never fires, which costs nothing, so there is no reason
+    # to turn this off on such a receiver.
+    #
+    # It also needs a BRISK rotation. Yaw 1-sigma grows about 0.2 rad/s while
+    # turning with an IMU feeding and about 0.3 rad/s on encoder alone, so a slow
+    # turn loses track of its own rotation before it has swept enough arc and the
+    # delta-yaw gate refuses it. Measured: a 2.0 rad/s turn bootstraps, the same
+    # angle taken at 0.5 rad/s does not. Turn at a rad/s or more.
+
+    gnss.rotation_heading_min_yaw_delta: 1.0
+    # Radians of rotation the window must accumulate before a heading is computed.
+
+    gnss.rotation_heading_min_arc_baseline: 0.25
+    # Metres of predicted antenna arc required. The arc is
+    # 2 * lever_arm_length * |sin(yaw_delta / 2)|, so a short lever arm needs more
+    # rotation. With a 0.32 m lever arm, 1.0 rad of turn gives 0.31 m.
+
+    gnss.rotation_heading_max_base_translation: 0.20
+    # Metres the base itself may travel across the window, from the ENCODER. If the
+    # base drives, the displacement is translation rather than arc.
+
+    gnss.rotation_heading_max_sigma: 0.4
+    # Radians. Reject a computed heading whose 1-sigma exceeds this.
+
+    gnss.rotation_heading_sigma_floor: 0.05
+    # Radians. Floor on the reported heading sigma, so a very long baseline cannot
+    # claim an implausibly tight heading.
+
+    gnss.rotation_heading_delta_yaw_sigma: 0.03
+    # Radians. FLOOR on the uncertainty of the window's delta_yaw. The value used is
+    # taken from the filter's own yaw covariance: specifically the variance ADDED
+    # across the window, which is the honest figure for a difference of two
+    # estimates. This is what makes the bootstrap decline while the filter has lost
+    # track of its rotation (issue #150) instead of trusting a constant.
+
+    gnss.rotation_heading_max_window_s: 10.0
+    # Seconds a window may stay open before it is discarded.
+
+    gnss.rotation_heading_max_len_residual_sigma: 3.0
+    # How many sigma the observed displacement LENGTH may differ from the length the
+    # rotation model predicts. Only the angle of the displacement carries heading;
+    # a displacement of the wrong size was not produced by rotation about the lever
+    # arm, so its angle means nothing. Catches wheel slip, which the encoder
+    # translation guard above cannot.
+
     gnss.track_heading_cross_check_deg: 15.0
     # Reject a GPS track heading that disagrees with the current heading estimate
     # by more than this, measured as the median of recent disagreements rather
