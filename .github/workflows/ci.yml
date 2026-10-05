@@ -27,7 +27,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Attempted twice on purpose. setup-ros resolves the ros-apt-source version
+      # with a bare `curl -s`, no --fail, no --retry and no fallback, and then
+      # interpolates the result straight into a download URL:
+      #
+      #   export ROS_APT_SOURCE_VERSION=$(curl -s $repo | grep -F tag_name | awk ...)
+      #
+      # Any blip on that one call yields an empty version, the URL collapses to
+      # .../download//ros2-apt-source_.<codename>_all.deb, and the job dies in 12 s
+      # before compiling anything. The download curl immediately after it DOES carry
+      # --retry 3; only the version lookup is unprotected, and the action exposes no
+      # input to pin or skip it, while `export` overwrites anything preset in env.
+      #
+      # Three occurrences so far: 2026-09-04 on jammy, and twice on 2026-10-05, once
+      # per distro. A second attempt seconds later clears a transient blip. It will
+      # not clear a sustained upstream outage, which is what fail-fast: false above is
+      # for, so this reduces the noise rather than pretending to fix the action.
       - uses: ros-tooling/setup-ros@v0.7
+        id: setup_ros
+        continue-on-error: true
+        with:
+          required-ros-distributions: ${{ matrix.ros_distro }}
+
+      - uses: ros-tooling/setup-ros@v0.7
+        if: steps.setup_ros.outcome == 'failure'
         with:
           required-ros-distributions: ${{ matrix.ros_distro }}
 
