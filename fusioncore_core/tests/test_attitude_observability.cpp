@@ -260,3 +260,145 @@ TEST(AttitudeObservability, CharacteriseThatVelocityStaysPerfectWhilePositionDoe
   EXPECT_NEAR(x[VX], 1.000, 0.01) << "velocity should be perfect; it is the position that is short";
   EXPECT_LT(x[X], 0.90 * kSpeed * t) << "position should be short by roughly 19%";
 }
+
+// ─── The same defect on YAW, and the probe that makes it cheap to check ──────
+//
+// Everything above dead-reckons in a straight line. This spins in place instead, and it
+// turns the 19% position shortfall into the same ratio on YAW, in 1.8 seconds, with no
+// dataset. Found while landing the rotation heading bootstrap (#67): the bootstrap would
+// not fire, and the reason was that the filter does not know the rotation it just made.
+//
+// Why these are worth having as tests rather than a note: judging an attempt at #150 used
+// to mean a 70 minute NCLT sequence. These run in milliseconds and read the mechanism
+// directly off the state vector.
+
+namespace {
+
+struct SpinResult {
+  double wz;          // the filter's angular rate
+  double b_gz;        // the filter's yaw gyro bias
+  double yaw;         // integrated yaw
+  double yaw_sigma;   // 1-sigma from the quaternion block of P
+};
+
+// Rotate in place at a KNOWN true rate, IMU and encoder both feeding, and report what the
+// filter believes afterwards. with_imu=false drops the IMU to show the two arms fail in
+// opposite directions.
+SpinResult spin_in_place(double true_wz, double seconds, bool with_imu = true)
+{
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection = false;
+  cfg.adaptive_gnss = false;
+  cfg.gps_track_heading_enabled = false;
+  FusionCore fc(cfg);
+
+  State s;
+  s.P = StateMatrix::Identity() * 0.1;
+  for (int i : {QW, QX, QY, QZ})
+    for (int j : {QW, QX, QY, QZ})
+      s.P(i, j) = (i == j) ? 1e-6 : 0.0;   // heading tightly known at init
+  fc.init(s, 0.0);
+
+  const int steps = static_cast<int>(seconds / 0.01);
+  for (int i = 1; i <= steps; ++i) {
+    const double t = i * 0.01;
+    if (with_imu) fc.update_imu(t, 0.0, 0.0, true_wz, 0.0, 0.0, kG);
+    fc.update_encoder(t, 0.0, 0.0, true_wz, 1e-4, 1e-4, 1e-4);
+  }
+
+  const auto & x = fc.get_state().x;
+  const auto & P = fc.get_state().P;
+  const double qw = x[QW], qz = x[QZ];
+  const double t3 = 2.0 * (qw * qz);
+  const double t4 = 1.0 - 2.0 * (qz * qz);
+  const double den = std::max(t3 * t3 + t4 * t4, 1e-12);
+  const double j0 = 2.0 * qz * t4 / den;
+  const double j3 = (2.0 * qw * t4 + 4.0 * qz * t3) / den;
+  const double var = j0 * j0 * P(QW, QW) + j3 * j3 * P(QZ, QZ)
+                   + 2.0 * j0 * j3 * P(QW, QZ);
+
+  SpinResult r;
+  r.wz        = x[WZ];
+  r.b_gz      = x[B_GZ];
+  r.yaw       = std::atan2(t3, t4);
+  r.yaw_sigma = std::sqrt(std::max(var, 0.0));
+  return r;
+}
+
+}  // namespace
+
+// INVARIANT. The acceptance criterion for #150 stated on the yaw rate rather than on
+// yaw itself, which is the sharpest form of it: WZ and B_GZ are not separately
+// observable from a gyro alone, so the filter is free to slide the true rate between
+// them at zero measurement cost. Nothing that integrates WZ alone survives that, and
+// yaw does exactly that.
+TEST(AttitudeObservability, DISABLED_YawRateDoesNotSlideOntoTheGyroBias)
+{
+  const SpinResult r = spin_in_place(0.6, 1.8);
+  EXPECT_NEAR(r.wz, 0.6, 0.02)
+      << "WZ carries only " << r.wz << " of a true 0.6; the rest went to B_GZ";
+  EXPECT_NEAR(r.b_gz, 0.0, 0.02)
+      << "a zero-bias gyro produced a bias estimate of " << r.b_gz;
+}
+
+// CHARACTERISATION. The pair sums to the truth while neither half is right. This is the
+// clearest statement of the #150 mechanism anywhere in the suite: the sum costs nothing
+// to get right, so the filter gets it right, and the split is unconstrained.
+TEST(AttitudeObservability, CharacteriseThatTheYawRatePairSumsCorrectlyWhileSplitWrong)
+{
+  const SpinResult r = spin_in_place(0.6, 1.8);
+
+  EXPECT_NEAR(r.wz + r.b_gz, 0.6, 0.005)
+      << "the SUM is observable and the filter tracks it";
+  EXPECT_LT(r.wz, 0.55)
+      << "if WZ now carries the full rate, #150 moved; measured 0.4800 on this commit";
+  EXPECT_GT(r.b_gz, 0.05)
+      << "if B_GZ is now near zero, #150 moved; measured 0.1200 on this commit";
+}
+
+// CHARACTERISATION. Yaw integrates WZ alone, so it inherits the split exactly. 81.6%
+// here against the 80.7% that CharacteriseTheDeadReckoningDecay measures for position
+// against a perfect velocity: the same number, which says these are one defect and not
+// two. If a migration fixes one and not the other, this pair is where it shows.
+TEST(AttitudeObservability, CharacteriseThatYawAdvancesAtTheSameFractionAsPosition)
+{
+  const double true_wz = 0.6, seconds = 1.8;
+  const SpinResult r = spin_in_place(true_wz, seconds);
+  const double ratio = r.yaw / (true_wz * seconds);
+
+  EXPECT_NEAR(ratio, 0.816, 0.03)
+      << "yaw advanced at " << ratio << " of truth; 0.816 is what this commit does, and "
+         "it is the position shortfall over again";
+  EXPECT_NEAR(ratio, r.wz / true_wz, 0.02)
+      << "the shortfall should equal the share of the rate WZ kept, which is the mechanism";
+}
+
+// CHARACTERISATION. Why the rotation heading bootstrap needs a brisk turn, and the
+// numbers configuration.md quotes. Yaw uncertainty grows while turning, so a slow turn
+// has lost the rotation by the time it has swept a usable arc.
+TEST(AttitudeObservability, CharacteriseYawUncertaintyGrowthWhileTurning)
+{
+  const SpinResult with    = spin_in_place(0.6, 1.8, true);
+  const SpinResult without = spin_in_place(0.6, 1.8, false);
+
+  EXPECT_NEAR(with.yaw_sigma,    0.361, 0.05) << "measured 0.361 rad with an IMU feeding";
+  EXPECT_NEAR(without.yaw_sigma, 0.564, 0.07) << "measured 0.564 rad on encoder alone";
+  EXPECT_LT(with.yaw_sigma, without.yaw_sigma)
+      << "the IMU should constrain attitude; if not, the gyro is not reaching the filter";
+}
+
+// CHARACTERISATION. The two arms fail in OPPOSITE directions, which matters because it
+// rules out a single sign error and should stop the next mechanism proposal that assumes
+// one. With the IMU yaw falls short of truth; on encoder alone it overshoots.
+TEST(AttitudeObservability, CharacteriseThatTheEncoderOnlyArmOvershootsInstead)
+{
+  const double true_wz = 0.6, seconds = 1.8;
+  const SpinResult with    = spin_in_place(true_wz, seconds, true);
+  const SpinResult without = spin_in_place(true_wz, seconds, false);
+  const double denom = true_wz * seconds;
+
+  EXPECT_LT(with.yaw / denom,    1.0) << "with IMU: measured 81.6% of truth";
+  EXPECT_GT(without.yaw / denom, 1.0) << "encoder only: measured 106.6% of truth";
+  EXPECT_NEAR(without.wz + without.b_gz, 0.4, 0.05)
+      << "and on encoder alone even the SUM is wrong, 0.40 against a true 0.60";
+}
