@@ -54,18 +54,34 @@ where `Ĉ` is the empirical innovation covariance and `α = 0.01`. A floor preve
 | 2012-02-04 | Winter | 77 min | **49.7 m** | 265.5 m | FC +81% |
 | 2012-03-31 | Spring | 87 min | **22.0 m** | 156.5 m | FC +86% |
 | 2012-05-11 | Spring | 84 min | **9.7 m** | 11.5 m | FC +16% |
-| 2012-06-15 | Summer | 55 min | 49.2 m | **18.2 m** | RL +63% |
-| 2012-08-20 | Summer | 83 min | 98.3 m | **10.6 m** | RL +89% |
+| 2012-06-15 | Summer | 55 min | 49.2 m † | **18.2 m** | RL +63% |
+| 2012-08-20 | Summer | 83 min | 98.3 m † | **10.6 m** | RL +89% |
 | 2012-09-28 | Fall | 77 min | **22.4 m** | 53.8 m | FC +58% |
 | 2012-10-28 | Fall | 85 min | **15.6 m** | 56.4 m | FC +72% |
 | 2012-11-04 | Fall | 79 min | **60.1 m** | 122.0 m | FC +51% |
 | 2012-12-01 | Winter | 75 min | **21.0 m** | 90.7 m | FC +77% |
 | 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
-| 2013-04-05 | Spring | 68 min | **12.1 m** | 268.9 m | FC +96% |
+| 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
 
 RL-UKF diverged with NaN on all twelve sequences. FusionCore wins 10 of 12.
 
-> **Note on these numbers.** This table is a snapshot pending a controlled full-suite re-run on the current `main`. The 10-of-12 result holds, but treat the individual magnitudes as directional: at least one sequence (2013-04-05) has regressed since this snapshot, so the 12.1 m figure above is stale. The regression-tracking harness and current baseline live in `tools/benchmark_regression.md` and `tools/benchmark_baseline.json`. The table will be refreshed once a verified full re-run lands.
+> **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
+>
+> | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
+> |---|---|---|---|
+> | 2012-06-15 | 49.2 m | confirmed **73.3 m** on current `main` 2026-10-05 (73.5 m on `bcc0e09`) | 18.2 m vs 18.487 then 18.489 m |
+> | 2012-08-20 | 98.3 m | **145.2 m** on current `main` 2026-10-05 (116.4 m on `bcc0e09`) | 10.6 m vs 10.519 then 10.507 m |
+> | 2013-04-05 | 12.1 m | **189.7 m** (`bcc0e09`), then **50.2 m** (2026-10-03) | 268.9 m vs 266.7 to 268.8 m |
+>
+> The RL-EKF control held on the two rows re-measured on 2026-10-05, moving **+0.01%** and **-0.11%** against an established band of under 1%. That is what rules out the harness and places these moves in FusionCore's own column.
+>
+> **The 10-of-12 record still holds and nothing flipped**: 2012-06-15 and 2012-08-20 were already losses, and 2013-04-05 remains a large win. What changed is the magnitudes, and the two losses are now worse than published, RL-EKF winning by 75% and 93% rather than 63% and 89%.
+>
+> **2012-08-20 is a live regression, not only a stale figure.** 145.2 m against 116.4 m on `bcc0e09` and repeats of 116.97 and 122.32 is outside its 4.57% spread, and `tools/check_benchmark_regression.py` puts it at +18.3% on XY. The baseline has deliberately not been moved to match it.
+>
+> **Worth flagging rather than explaining:** both confirmed rows overstate FusionCore by almost exactly the same factor, **1.490x** and **1.477x**. Two independent sequences landing on one ratio suggests something systematic rather than drift, and it should be understood before any published figure is rewritten.
+>
+> Harness and baseline: `tools/benchmark_regression.md` and `tools/benchmark_baseline.json`. Rows this note affects are marked † below.
 
 Metric: ATE RMSE (meters), SE3-aligned to RTK ground truth using EVO. Same IMU, wheel odometry, and GPS inputs. Full methodology in the [benchmark reference](reference/benchmark.md).
 
@@ -75,9 +91,9 @@ Metric: ATE RMSE (meters), SE3-aligned to RTK ground truth using EVO. Same IMU, 
 
 Both losses have identified root causes. They are documented here rather than hidden.
 
-**2012-06-15 (FC 49.2m, RL 18.2m):** The dataset's GPS-sparsest sequence, with a 462-second blackout. During coast mode, residual wheel-encoder yaw bias (`b_ewz`) and gyro drift accumulate into quadratic position error over the multi-minute outage. RL-EKF's 2D mode has fewer divergence degrees of freedom. The lever for this is an absolute heading source during the outage: `magnetometer.enabled: true` bounds heading drift instead of letting it accumulate (demonstrated in a unit test with slipping wheel odometry). **Honesty caveat:** this cannot be validated against *this NCLT number*, the dataset publishes no usable magnetometer and its ground-truth orientation is too noisy to score a few-metre change. So the magnetometer is validated by construction and in test, and awaits real-hardware confirmation; it is not proven to close this specific loss.
+**2012-06-15 (FC 49.2m †, now measured 73.3m; RL 18.2m):** The dataset's GPS-sparsest sequence, with a 462-second blackout. During coast mode, residual wheel-encoder yaw bias (`b_ewz`) and gyro drift accumulate into quadratic position error over the multi-minute outage. RL-EKF's 2D mode has fewer divergence degrees of freedom. The lever for this is an absolute heading source during the outage: `magnetometer.enabled: true` bounds heading drift instead of letting it accumulate (demonstrated in a unit test with slipping wheel odometry). **Honesty caveat:** this cannot be validated against *this NCLT number*, the dataset publishes no usable magnetometer and its ground-truth orientation is too noisy to score a few-metre change. So the magnetometer is validated by construction and in test, and awaits real-hardware confirmation; it is not proven to close this specific loss.
 
-**2012-08-20 (FC 98.3m, RL 10.6m):** 105 mode-3 GPS fixes located 720-840m from RTK ground truth appear in a 24-second window at a blackout boundary. Coast mode relaxes the chi-squared gate slightly to re-acquire GPS after the blackout; the adversarial cluster each individually pass the gate and collectively pull the estimate. RL-EKF incidentally rejects them through its miscalibrated gate (the same gate that causes its ten other losses). FusionCore now ships a physical-plausibility gate (`gnss.max_speed`) that rejects this cluster and cuts the peak spike. **Honesty caveat:** this does *not* fix the score. The sequence's ATE is dominated by dead-reckoning drift accumulated *during* the 211-second blackout, not by the cluster spike, so rejecting the cluster lowers the peak but not the overall number. The real lever, as with 2012-06-15, is an absolute heading source during the outage.
+**2012-08-20 (FC 98.3m †, now measured 145.2m; RL 10.6m):** 105 mode-3 GPS fixes located 720-840m from RTK ground truth appear in a 24-second window at a blackout boundary. Coast mode relaxes the chi-squared gate slightly to re-acquire GPS after the blackout; the adversarial cluster each individually pass the gate and collectively pull the estimate. RL-EKF incidentally rejects them through its miscalibrated gate (the same gate that causes its ten other losses). FusionCore now ships a physical-plausibility gate (`gnss.max_speed`) that rejects this cluster and cuts the peak spike. **Honesty caveat:** this does *not* fix the score. The sequence's ATE is dominated by dead-reckoning drift accumulated *during* the 211-second blackout, not by the cluster spike, so rejecting the cluster lowers the peak but not the overall number. The real lever, as with 2012-06-15, is an absolute heading source during the outage.
 
 ---
 
