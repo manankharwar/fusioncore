@@ -104,16 +104,16 @@ Evaluated against robot_localization EKF on the [NCLT dataset](http://robots.eng
 | 2012-02-04 | Winter | 77 min | **49.7 m** | 265.5 m | FC +81% |
 | 2012-03-31 | Spring | 87 min | **22.0 m** | 156.5 m | FC +86% |
 | 2012-05-11 | Spring | 84 min | **9.7 m** | 11.5 m | FC +16% |
-| 2012-06-15 | Summer | 55 min | 49.2 m | **18.2 m** | RL +63% |
-| 2012-08-20 | Summer | 83 min | 98.3 m | **10.6 m** | RL +89% |
+| 2012-06-15 | Summer | 55 min | 49.2 m † | **18.2 m** | RL +63% |
+| 2012-08-20 | Summer | 83 min | 98.3 m † | **10.6 m** | RL +89% |
 | 2012-09-28 | Fall | 77 min | **22.4 m** | 53.8 m | FC +58% |
 | 2012-10-28 | Fall | 85 min | **15.6 m** | 56.4 m | FC +72% |
 | 2012-11-04 | Fall | 79 min | **60.1 m** | 122.0 m | FC +51% |
 | 2012-12-01 | Winter | 75 min | **21.0 m** | 90.7 m | FC +77% |
 | 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
-| 2013-04-05 | Spring | 68 min | **12.1 m** | 268.9 m | FC +96% |
+| 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
 
-> **Note:** these numbers are a snapshot pending a controlled full-suite re-run on current `main`. The 10/12 result holds, but the 2013-04-05 figure (12.1 m) is stale: it has since regressed to ~19.4 m (still a 93% win). See `tools/benchmark_regression.md`.
+> **Note:** three of these rows no longer describe current `main`, and in all three the published figure is better than every later measurement: 2012-06-15 (49.2 m published, 73.5 m measured), 2012-08-20 (98.3 m, 116.4 m), and 2013-04-05 (12.1 m, then 189.7 m on `bcc0e09` and 50.2 m on current `main`). The RL-EKF control reproduces within 2% on all three, so the move is FusionCore's own. On 2013-04-05 the real margin over RL-EKF is 81% at the current figure, not the 93% quoted here until 2026-10-05. The other nine rows have no run record. A controlled full-suite re-run is owed. Affected rows are marked †. See `tools/benchmark_regression.md`.
 
 **10/12 FC wins.** RL-EKF's losses trace to a single root cause: NCLT's GPS driver reports 3m sigma, but measured against RTK ground truth, actual p95 noise ranges from 9.7m to 53.1m depending on the day. RL's Mahalanobis gate is calibrated to the stated 3m, so it rejects valid fixes on sequences with higher actual noise. FusionCore's adaptive noise estimation (`adaptive.gnss: true`) adjusts the noise model in real time and keeps chi2 statistics calibrated.
 

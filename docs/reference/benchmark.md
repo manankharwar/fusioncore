@@ -12,16 +12,26 @@ FusionCore vs robot_localization EKF on the [NCLT dataset](http://robots.engin.u
 | 2012-02-04 | Winter | 77 min | 18,808 | 184s | **49.7 m** | 265.5 m | FC +81% |
 | 2012-03-31 | Spring | 87 min | 20,482 | 262s | **22.0 m** | 156.5 m | FC +86% |
 | 2012-05-11 | Spring | 84 min | 21,621 | 120s | **9.7 m** | 11.5 m | FC +16% |
-| 2012-06-15 | Summer | 55 min | 12,399 | **462s** | 49.2 m | **18.2 m** | RL +63% |
-| 2012-08-20 | Summer | 83 min | 20,025 | 228s | 98.3 m | **10.6 m** | RL +89% |
+| 2012-06-15 | Summer | 55 min | 12,399 | **462s** | 49.2 m † | **18.2 m** | RL +63% |
+| 2012-08-20 | Summer | 83 min | 20,025 | 228s | 98.3 m † | **10.6 m** | RL +89% |
 | 2012-09-28 | Fall | 77 min | 19,191 | 196s | **22.4 m** | 53.8 m | FC +58% |
 | 2012-10-28 | Fall | 85 min | 21,060 | 256s | **15.6 m** | 56.4 m | FC +72% |
 | 2012-11-04 | Fall | 79 min | 17,840 | 400s | **60.1 m** | 122.0 m | FC +51% |
 | 2012-12-01 | Winter | 75 min | 17,941 | 173s | **21.0 m** | 90.7 m | FC +77% |
 | 2013-02-23 | Winter | 78 min | 19,333 | 240s | **59.4 m** | 82.2 m | FC +28% |
-| 2013-04-05 | Spring | 68 min | 16,297 | 275s | **12.1 m** | 268.9 m | FC +96% |
+| 2013-04-05 | Spring | 68 min | 16,297 | 275s | **12.1 m** † | 268.9 m | FC +96% |
 
-> **Note:** these numbers are a snapshot pending a controlled full-suite re-run on current `main`. The 10-of-12 result holds, but the 2013-04-05 figure (12.1 m) is stale: it has since regressed to ~19.4 m (still a 93% win). See `tools/benchmark_regression.md`.
+> **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
+>
+> | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
+> |---|---|---|---|
+> | 2012-06-15 | 49.2 m | **73.5 m** (2026-09-13, `bcc0e09`) | 18.2 m vs 18.5 m |
+> | 2012-08-20 | 98.3 m | **116.4 m** (2026-09-13, `bcc0e09`) | 10.6 m vs 10.5 m |
+> | 2013-04-05 | 12.1 m | **189.7 m** (`bcc0e09`), then **50.2 m** (2026-10-03, current `main`) | 268.9 m vs 266.7 to 268.8 m |
+>
+> The RL-EKF control reproduces within 2% on all three rows. That is what rules out the harness and places the move in FusionCore's own column. On 2013-04-05 the margin over RL-EKF is 81% at the current figure and 29% at the September one, not the 93% this note claimed until 2026-10-05, and the 19.4 m it quoted is not supported by any run on file. The other nine rows have no run record and have not been re-measured in either direction.
+>
+> A controlled full-suite re-run is the open work. `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
 
 ATE = absolute trajectory error, SE3-aligned to RTK GPS ground truth. GPS Fixes = mode-3 (3D) fixes only, as published by nclt_player.
 
@@ -41,9 +51,9 @@ RL-UKF: NaN divergence on all twelve sequences (known numerical instability unde
 |            | RL-EKF     | 156.5 m | 156.3 m | 0.2% | 0.6% | 16.16 | 42.7 m |
 | 2012-05-11 | FusionCore | **9.7 m** | **4.9 m** | 45.9% | 82.6% | **1.05** | 19.0 m |
 |            | RL-EKF     | 11.5 m | 9.0 m | 56.2% | 90.1% | 1.25 | **20.2 m** |
-| 2012-06-15 | FusionCore | 49.2 m | 48.4 m | 2.4% | 20.0% | 8.40 | 22.4 m |
+| 2012-06-15 | FusionCore | 49.2 m † | 48.4 m | 2.4% | 20.0% | 8.40 | 22.4 m |
 |            | RL-EKF     | **18.2 m** | **17.1 m** | 42.8% | 78.4% | **3.11** | **22.3 m** |
-| 2012-08-20 | FusionCore | 98.3 m | 97.9 m | 0.1% | 13.8% | 13.08 | 53.7 m |
+| 2012-08-20 | FusionCore | 98.3 m † | 97.9 m | 0.1% | 13.8% | 13.08 | 53.7 m |
 |            | RL-EKF     | **10.6 m** | **9.9 m** | 59.4% | 89.3% | **1.40** | **19.1 m** |
 | 2012-09-28 | FusionCore | **22.4 m** | **19.2 m** | 24.1% | 72.1% | **3.10** | **23.5 m** |
 |            | RL-EKF     | 53.8 m | 53.5 m | 3.9% | 24.9% | 7.45 | 27.6 m |
@@ -55,7 +65,7 @@ RL-UKF: NaN divergence on all twelve sequences (known numerical instability unde
 |            | RL-EKF     | 90.7 m | 90.5 m | 5.3% | 20.6% | 12.53 | 42.1 m |
 | 2013-02-23 | FusionCore | **59.4 m** | **58.5 m** | 1.6% | 16.2% | **6.67** | **24.1 m** |
 |            | RL-EKF     | 82.2 m | 81.8 m | 0.0% | 0.6% | 9.23 | 35.0 m |
-| 2013-04-05 | FusionCore | **12.1 m** | **10.1 m** | 32.8% | 81.5% | **2.26** | 30.2 m |
+| 2013-04-05 | FusionCore | **12.1 m** † | **10.1 m** | 32.8% | 81.5% | **2.26** | 30.2 m |
 |            | RL-EKF     | 268.9 m | 268.7 m | 0.0% | 0.0% | 50.11 | **27.3 m** |
 
 ---
@@ -130,7 +140,7 @@ FC drift rate is consistent at 1-4 m/km on clean sequences. Values above 6 m/km 
 
 ## FC performance tiers
 
-**Excellent (< 20m ATE):** 2012-05-11 (9.7m), 2013-04-05 (12.1m), 2012-10-28 (15.6m), 2012-01-08 (18.6m)
+**Excellent (< 20m ATE):** 2012-05-11 (9.7m), 2013-04-05 (12.1m) †, 2012-10-28 (15.6m), 2012-01-08 (18.6m)
 
 High GPS fix count (19k-22k), max blackout under 300s, no adversarial GPS. FC operates as intended.
 
@@ -138,13 +148,15 @@ High GPS fix count (19k-22k), max blackout under 300s, no adversarial GPS. FC op
 
 Moderate GPS density, blackouts under 275s, clean GPS at boundaries. Occasional heading drift corrected quickly on GPS return.
 
-**Moderate (35-65m ATE):** 2012-02-04 (49.7m), 2012-06-15 (49.2m), 2013-02-23 (59.4m), 2012-11-04 (60.1m)
+**Moderate (35-65m ATE):** 2012-02-04 (49.7m), 2012-06-15 (49.2m) †, 2013-02-23 (59.4m), 2012-11-04 (60.1m)
 
 Long blackouts (240-462s) or low GPS density. Heading drift compounds over coast mode duration before correction.
 
-**Poor (> 65m ATE):** 2012-08-20 (98.3m)
+**Poor (> 65m ATE):** 2012-08-20 (98.3m) †
 
-Structurally different failure: adversarial GPS cluster at blackout boundary. Outside the 2-3 minute transient windows, FC tracks at 5-10m, on-par with RL-EKF.
+Structurally different failure: adversarial GPS cluster at blackout boundary.
+
+These tiers are derived from the May 2026 table above. All three sequences re-measured since would move: 2013-04-05 from Excellent to Moderate (50.2 m), 2012-06-15 from Moderate to Poor (73.5 m), and 2012-08-20 stays Poor (116.4 m). The tiers are left as published rather than half-rewritten from three rows out of twelve. Outside the 2-3 minute transient windows, FC tracks at 5-10m, on-par with RL-EKF.
 
 ---
 

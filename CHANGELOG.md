@@ -10,6 +10,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Documentation
 
+- **The published NCLT table overstated FusionCore on all three rows that have since
+  been re-measured, and the note that was supposed to correct it was itself wrong.**
+  The note claimed 2013-04-05 had "regressed 12.1 m to ~19.4 m, still a 93% win". No run
+  on file supports 19.4 m. `tools/benchmark_baseline.json` recorded **189.700 m** on
+  `bcc0e09` (repeats 190.15, 190.47), and two runs on current `main` on 2026-10-03 read
+  **49.486 m** and **50.243 m**. The real margin over RL-EKF is 81% at the current figure
+  and 29% at the September one, not 93%.
+
+  The same pattern holds on the other two re-measured sequences: 2012-06-15 published
+  49.2 m against 73.525 m measured, and 2012-08-20 published 98.3 m against 116.444 m.
+  The RL-EKF control reproduces within 2% on all three (18.2/18.5, 10.6/10.5,
+  268.9/266.7-268.8), which rules out the harness and places the move in FusionCore's
+  own column.
+
+  The twelve-row table is left as the labelled May 2026 snapshot rather than half-rewritten
+  from three rows, but the three affected rows now carry a `†` marker and the corrected
+  figures, in `README.md`, `docs/index.md`, `docs/reference/benchmark.md`,
+  `benchmarks/README.md` and the MicroStrain certified-config page. The performance tiers
+  now say which sequences would change tier. A controlled full-suite re-run is still owed
+  before any published number is updated.
+
 - **Three parameters named in the docs do not exist**, found in an audit of all 50
   user-facing markdown files. ROS 2 ignores an override for an undeclared parameter
   in silence, so a reader following these set something, see no warning, and get
@@ -684,7 +705,7 @@ Three fixes found by running FusionCore on real hardware: one from a user's fiel
 - **Benchmark regression tracking**: `evaluate.py` now emits `metrics.json`, and `tools/check_benchmark_regression.py` compares a run against `tools/benchmark_baseline.json` so a tuning change that silently worsens another sequence is caught instead of shipping unnoticed. Documented in `tools/benchmark_regression.md`.
 
 ### Changed
-- **Documentation accuracy pass**: the benchmark and comparison pages no longer describe the magnetometer as a roadmap item (it ships) or `gnss.max_speed` as hypothetical (it ships), the long-blackout losses are explained honestly as dead-reckoning drift rather than the visible GPS transients, and the published NCLT numbers now carry a note that they predate a controlled full-suite re-run (the 2013-04-05 figure has regressed 12.1 m to ~19.4 m, still a 93% win).
+- **Documentation accuracy pass**: the benchmark and comparison pages no longer describe the magnetometer as a roadmap item (it ships) or `gnss.max_speed` as hypothetical (it ships), the long-blackout losses are explained honestly as dead-reckoning drift rather than the visible GPS transients, and the published NCLT numbers now carry a note that they predate a controlled full-suite re-run (the 2013-04-05 figure has regressed 12.1 m to ~19.4 m, still a 93% win). **The ~19.4 m and 93% figures in that note were wrong and are retracted; see the Unreleased section.**
 
 ---
 

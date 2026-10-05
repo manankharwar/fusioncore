@@ -112,7 +112,17 @@ Every project has these. Most do not write them down.
 
 FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/): same IMU, wheel odometry and GPS, no manual tuning, twelve full-length sequences across all seasons. RL-EKF run with chi-squared-equivalent thresholds at 99.9% confidence.
 
-**Read the caveat in the section above before quoting these.** They are a May 2026 snapshot and have not been re-verified end to end on current `main`. One is known to have moved: 2013-04-05 has regressed from 12.1 m to about 19.4 m, still a 93% win.
+> **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
+>
+> | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
+> |---|---|---|---|
+> | 2012-06-15 | 49.2 m | **73.5 m** (2026-09-13, `bcc0e09`) | 18.2 m vs 18.5 m |
+> | 2012-08-20 | 98.3 m | **116.4 m** (2026-09-13, `bcc0e09`) | 10.6 m vs 10.5 m |
+> | 2013-04-05 | 12.1 m | **189.7 m** (`bcc0e09`), then **50.2 m** (2026-10-03, current `main`) | 268.9 m vs 266.7 to 268.8 m |
+>
+> The RL-EKF control reproduces within 2% on all three rows. That is what rules out the harness and places the move in FusionCore's own column. On 2013-04-05 the margin over RL-EKF is 81% at the current figure and 29% at the September one, not the 93% this note claimed until 2026-10-05, and the 19.4 m it quoted is not supported by any run on file. The other nine rows have no run record and have not been re-measured in either direction.
+>
+> A controlled full-suite re-run is the open work. `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
 
 | Sequence | Season | Duration | FC ATE RMSE | RL-EKF ATE RMSE | Winner |
 |---|---|---|---|---|---|
@@ -120,14 +130,14 @@ FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.
 | 2012-02-04 | Winter | 77 min | **49.7 m** | 265.5 m | FC +81% |
 | 2012-03-31 | Spring | 87 min | **22.0 m** | 156.5 m | FC +86% |
 | 2012-05-11 | Spring | 84 min | **9.7 m** | 11.5 m | FC +16% |
-| 2012-06-15 | Summer | 55 min | 49.2 m | **18.2 m** | RL +63% |
-| 2012-08-20 | Summer | 83 min | 98.3 m | **10.6 m** | RL +89% |
+| 2012-06-15 | Summer | 55 min | 49.2 m † | **18.2 m** | RL +63% |
+| 2012-08-20 | Summer | 83 min | 98.3 m † | **10.6 m** | RL +89% |
 | 2012-09-28 | Fall | 77 min | **22.4 m** | 53.8 m | FC +58% |
 | 2012-10-28 | Fall | 85 min | **15.6 m** | 56.4 m | FC +72% |
 | 2012-11-04 | Fall | 79 min | **60.1 m** | 122.0 m | FC +51% |
 | 2012-12-01 | Winter | 75 min | **21.0 m** | 90.7 m | FC +77% |
 | 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
-| 2013-04-05 | Spring | 68 min | **12.1 m** | 268.9 m | FC +96% |
+| 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
 
 <img width="1422" height="1245" alt="fig_trajectory" src="https://github.com/user-attachments/assets/7f78474b-e70b-4b38-95ef-c759e1fcea02" />
 

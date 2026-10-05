@@ -128,10 +128,10 @@ Evaluated against RTK GPS ground truth (Novatel SPAN-CPT RTK mode) using `evo_ap
 | 2012-01-08 | 18.6 m | +55% better |
 | 2012-05-11 | 9.7 m | +16% better |
 | 2012-09-28 | 22.4 m | +58% better |
-| 2013-04-05 | 12.1 m | +96% better |
-| 2012-08-20 | 98.3 m | RL wins (adversarial GPS cluster at blackout boundary) |
+| 2013-04-05 | 12.1 m † | +96% better |
+| 2012-08-20 | 98.3 m † | RL wins (adversarial GPS cluster at blackout boundary) |
 
-> **Note:** the 2013-04-05 figure (12.1 m) is stale, it has since regressed to ~19.4 m (still a 93% win). These numbers predate a controlled full-suite re-run on current `main`. See `tools/benchmark_regression.md`.
+> **Note:** three of these rows no longer describe current `main`, and in all three the published figure is better than every later measurement: 2012-06-15 (49.2 m published, 73.5 m measured), 2012-08-20 (98.3 m, 116.4 m), and 2013-04-05 (12.1 m, then 189.7 m on `bcc0e09` and 50.2 m on current `main`). The RL-EKF control reproduces within 2% on all three, so the move is FusionCore's own. On 2013-04-05 the real margin over RL-EKF is 81% at the current figure, not the 93% quoted here until 2026-10-05. The other nine rows have no run record. A controlled full-suite re-run is owed. Affected rows are marked †. See `tools/benchmark_regression.md`.
 
 Full results across all 12 sequences: [Benchmark Results](../reference/benchmark.md).
 
