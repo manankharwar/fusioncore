@@ -116,13 +116,17 @@ FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.
 >
 > | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
 > |---|---|---|---|
-> | 2012-06-15 | 49.2 m | **73.5 m** (2026-09-13, `bcc0e09`) | 18.2 m vs 18.5 m |
-> | 2012-08-20 | 98.3 m | **116.4 m** (2026-09-13, `bcc0e09`) | 10.6 m vs 10.5 m |
-> | 2013-04-05 | 12.1 m | **189.7 m** (`bcc0e09`), then **50.2 m** (2026-10-03, current `main`) | 268.9 m vs 266.7 to 268.8 m |
+> | 2012-06-15 | 49.2 m | **73.5 m** (`bcc0e09`), confirmed **73.3 m** on current `main` 2026-10-05 | 18.2 m vs 18.487 then 18.489 m |
+> | 2012-08-20 | 98.3 m | **116.4 m** (`bcc0e09`), now **145.2 m** on current `main` 2026-10-05 | 10.6 m vs 10.519 then 10.507 m |
+> | 2013-04-05 | 12.1 m | **189.7 m** (`bcc0e09`), then **50.2 m** (2026-10-03) | 268.9 m vs 266.7 to 268.8 m |
 >
 > The RL-EKF control reproduces within 2% on all three rows. That is what rules out the harness and places the move in FusionCore's own column. On 2013-04-05 the margin over RL-EKF is 81% at the current figure and 29% at the September one, not the 93% this note claimed until 2026-10-05, and the 19.4 m it quoted is not supported by any run on file. The other nine rows have no run record and have not been re-measured in either direction.
 >
-> A controlled full-suite re-run is the open work. `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
+> The two rows re-measured on 2026-10-05 are load-bearing because their controls held: the RL-EKF figure moved **+0.01%** on 2012-06-15 and **-0.11%** on 2012-08-20, against an established band of under 1%. 2012-06-15 is now confirmed three independent times and sits inside its own n=8 spread. 2012-08-20 is worse than previously recorded and is a genuine regression, outside its 4.57% spread, so the baseline has deliberately not been moved to match it. The 2013-04-05 arm of that re-run is **void**: its control moved -4.40% after 20 `rl_ekf` update-rate misses, so it was CPU-starved and says nothing. It is being re-run.
+>
+> **Worth flagging rather than explaining:** both confirmed rows overstate FusionCore by almost exactly the same factor, **1.490x** and **1.477x**. Two independent sequences landing on one ratio suggests something systematic rather than drift, and that should be understood before any published figure is rewritten.
+>
+> `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
 
 | Sequence | Season | Duration | FC ATE RMSE | RL-EKF ATE RMSE | Winner |
 |---|---|---|---|---|---|
