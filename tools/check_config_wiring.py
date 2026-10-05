@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Check that ROS parameters mapped into FusionCoreConfig are actually read."""
+import argparse
 import pathlib
 import re
 import sys
@@ -46,7 +47,12 @@ def load_tree():
     return config_mappings(node_source), "\n".join(sources)
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     mappings, core_source = load_tree()
     if not mappings:
         print(f"{NODE}: found no config/get_parameter mappings, the regex is wrong")

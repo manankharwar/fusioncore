@@ -24,6 +24,7 @@ Usage:
     python3 tools/check_docs_test_count.py
 """
 
+import argparse
 import pathlib
 import re
 import sys
@@ -118,7 +119,12 @@ def expected(counts):
     }
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     try:
         counts = tally()
     except Uncountable as e:
