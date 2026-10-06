@@ -361,17 +361,35 @@ def check_observability(series):
             "observed and the lever arm stays inert."))
     if min(left, right) < 0.02 * len(odom):
         out.append(finding(
-            "BLOCKER", "The robot never turned both ways",
+            "INFO", "The robot only turned one way",
             f"{left} samples turning left, {right} turning right.",
-            "A constant gyro bias and a constant yaw rate are indistinguishable "
-            "until you turn BOTH directions. Without a reversal the pair slides "
-            "along WZ + B_GZ = const at zero measurement cost, which is measured at "
-            "a correlation of -0.998 in this project's own tests. No tuning fixes "
-            "this; drive two figure-eights."))
+            "This limits what GNSS track heading can be cross-checked against. It "
+            "does NOT affect the gyro bias: turning both ways does not separate a "
+            "rate from a bias on that rate, because the gyro reads their sum at "
+            "every instant whichever way you turn. Only a stop does that."))
+
+    # The finding that actually matters for the bias, and the one the stationary
+    # check above measures. A constant gyro bias and a constant yaw rate are in the
+    # null space of the gyro's own measurement, so no trajectory separates them.
+    # ZUPT is a different measurement, z = WZ with no bias term.
+    still = sum(1 for o in odom
+                if o.get("v") is not None and o.get("wz") is not None
+                and abs(o["v"]) < STILL_SPEED and abs(o["wz"]) < STILL_RATE)
+    if still < 0.01 * len(odom):
+        out.append(finding(
+            "BLOCKER", "The robot never stopped, so the gyro bias is unobservable",
+            f"Only {still} of {len(odom)} samples had the platform still.",
+            "The gyro reports rate + bias, so any split of the two fits it equally "
+            "and the pair slides at zero measurement cost. Measured at a correlation "
+            "of -0.998. Stopping is the only thing that breaks it, because a "
+            "zero-velocity update asserts the rate is zero with no bias term, which "
+            "turns the gyro reading into a direct measurement of the bias. Measured: "
+            "without a stop, yaw integrates at 85% of truth; after a two-second "
+            "stop, 100%. No amount of tuning or driving substitutes for it."))
     else:
-        out.append(finding("OK", "Both turn directions present",
-                           f"{left} samples left, {right} right: a bias and a rate "
-                           f"are separable in this data."))
+        out.append(finding("OK", "The robot stopped at least once",
+                           f"{still} still samples: the gyro bias is observable in "
+                           f"this data."))
     return out
 
 

@@ -122,8 +122,8 @@ TEST(ObservabilityReport, DrivingStraightDoesNotSeparateThePair)
   }
   const auto r = fc.observability();
   EXPECT_GE(std::abs(r.wz_bgz_correlation), kWzBgzCorrelationLimit);
-  EXPECT_EQ(r.next, ExcitationManoeuvre::FIGURE_EIGHT)
-      << "if the bias is free, straight driving is not the answer";
+  EXPECT_EQ(r.next, ExcitationManoeuvre::STOP_AND_WAIT)
+      << "if the bias is free, the answer is to stop, not to drive differently";
 }
 
 // A low correlation alone must not read as observable. At init P is diagonal, so the
@@ -198,22 +198,92 @@ TEST(ObservabilityReport, EveryObservabilityValueHasAName)
   }
 }
 
-// At startup the gyro bias is always unconstrained, so a figure-eight is correctly
-// the first thing asked for: it covers straights, turns and a reversal, which is
-// everything. Pinning this because it means the more specific manoeuvres only ever
-// surface once the bias has settled, and a reader of the enum would not guess that.
-TEST(ObservabilityReport, AtStartupTheAnswerIsAlwaysAFigureEight)
+// At startup the gyro bias is always unconstrained, so the answer is STOP, whichever
+// heading path is enabled. The bias outranks heading because driving before it is
+// observed is what produces the 81.6% yaw integration in the first place.
+TEST(ObservabilityReport, AtStartupTheAnswerIsAlwaysToStop)
 {
   for (bool rotation_enabled : {false, true}) {
     auto cfg = obsConfig();
     cfg.gps_rotation_heading_enabled = rotation_enabled;
     FusionCore fc(cfg);
     initTight(fc);
-    EXPECT_EQ(fc.observability().next, ExcitationManoeuvre::FIGURE_EIGHT)
-        << "rotation_enabled=" << rotation_enabled
-        << ": an unconstrained bias outranks the heading path, because a figure-eight "
-           "fixes both and the specific manoeuvres fix only one";
+    EXPECT_EQ(fc.observability().next, ExcitationManoeuvre::STOP_AND_WAIT)
+        << "rotation_enabled=" << rotation_enabled;
   }
+}
+
+// The measurement that corrected this file. An earlier version asked for a
+// figure-eight on the reasoning that reversing the turn separates a constant bias
+// from a constant rate. It does not, and the difference is not subtle:
+//
+//   spin one way only           B_GZ err +0.1000   r = -0.9997
+//   figure-eight, never stops   B_GZ err +0.1000   r = -0.9978
+//   figure-eight WITH stops     B_GZ err  0.0000   r = -0.1069
+//
+// The gyro reads WZ + B_GZ at every instant whichever way the robot turns, so the
+// degeneracy is in the measurement Jacobian and no trajectory adds an independent
+// equation. ZUPT is a different measurement: z = WZ with no bias term.
+TEST(ObservabilityReport, AFigureEightWithoutStopsDoesNotSeparateTheBias)
+{
+  auto drive = [](bool with_stops) {
+    auto cfg = obsConfig();
+    FusionCore fc(cfg);
+    initTight(fc);
+    double t = 0.0;
+    const double true_bias = 0.05;
+    for (int lap = 0; lap < 6; ++lap) {
+      const double dir = (lap % 2) ? -1.0 : 1.0;
+      for (int i = 0; i < 300; ++i) {
+        t += 0.01;
+        fc.update_imu(t, 0.0, 0.0, 0.6 * dir + true_bias, 0.0, 0.0, 9.81);
+        fc.update_encoder(t, 1.0, 0.0, 0.6 * dir, 1e-4, 1e-4, 1e-4);
+      }
+      if (with_stops) {
+        for (int i = 0; i < 200; ++i) {
+          t += 0.01;
+          fc.update_imu(t, 0.0, 0.0, true_bias, 0.0, 0.0, 9.81);
+          fc.update_encoder(t, 0.0, 0.0, 0.0, 1e-4, 1e-4, 1e-4);
+          fc.update_zupt(t);
+        }
+      }
+    }
+    return fc.get_state().x[B_GZ];
+  };
+
+  const double no_stops   = drive(false);
+  const double with_stops = drive(true);
+
+  EXPECT_GT(std::abs(no_stops - 0.05), 0.05)
+      << "a figure-eight with no stops left B_GZ at " << no_stops
+      << " against a true 0.05; if this ever passes, the formulation changed";
+  EXPECT_NEAR(with_stops, 0.05, 0.005)
+      << "stopping must recover the true bias; got " << with_stops;
+}
+
+// The whole of #150 in one assertion: stopping first turns 81.6% into 100.1%.
+TEST(ObservabilityReport, AStopBeforeMovingFixesTheYawIntegration)
+{
+  auto yaw_ratio = [](double still_secs) {
+    auto cfg = obsConfig();
+    FusionCore fc(cfg);
+    initTight(fc);
+    double t = 0.0;
+    for (int i = 0; i < static_cast<int>(still_secs / 0.01); ++i) {
+      t += 0.01;
+      fc.update_imu(t, 0.0, 0.0, 0.0, 0.0, 0.0, 9.81);
+      fc.update_encoder(t, 0.0, 0.0, 0.0, 1e-4, 1e-4, 1e-4);
+      fc.update_zupt(t);
+    }
+    for (int i = 0; i < 180; ++i) {
+      t += 0.01;
+      fc.update_imu(t, 0.0, 0.0, 0.6, 0.0, 0.0, 9.81);
+      fc.update_encoder(t, 0.0, 0.0, 0.6, 1e-4, 1e-4, 1e-4);
+    }
+    return fc.get_state().yaw() / (0.6 * 1.8);
+  };
+  EXPECT_LT(yaw_ratio(0.0),  0.90) << "measured 0.816 with no stop";
+  EXPECT_NEAR(yaw_ratio(10.0), 1.0, 0.03) << "measured 1.001 after a 10 s stop";
 }
 
 // Once the bias IS constrained, the manoeuvre has to match the heading path that is

@@ -449,14 +449,20 @@ const char* excitation_instruction(ExcitationManoeuvre m) {
              "and the bootstrap correctly declines. Needs a non-zero GNSS lever arm "
              "and an RTK-grade receiver";
     case ExcitationManoeuvre::FIGURE_EIGHT:
-      return "drive two figure-eights, each loop 5 m or wider, at 0.5 m/s or more. "
-             "The straight segments give GNSS track heading, the turns separate the "
-             "yaw rate from its bias, and reversing the turn direction is what stops "
-             "a constant bias from looking like a constant rate";
+      return "drive two figure-eights, each loop 5 m or wider, at 0.5 m/s or more, "
+             "STOPPING for a few seconds at each crossing. The straight segments give "
+             "GNSS track heading and the stops are what make the gyro bias observable. "
+             "The turns themselves do NOT separate the yaw rate from its bias: that "
+             "was measured, and a figure-eight driven without stopping leaves the bias "
+             "exactly as wrong as driving in a circle does";
     case ExcitationManoeuvre::STOP_AND_WAIT:
-      return "stop completely for 10 s or more with the wheels still. ZUPT then "
-             "fuses a zero-velocity pseudo-measurement, which is what lets the accel "
-             "and gyro biases settle instead of integrating into drift";
+      return "stop completely with the wheels still. Two seconds is enough and ten is "
+             "comfortable. This is the ONLY thing that makes the yaw gyro bias "
+             "observable: ZUPT asserts WZ = 0 with no bias term, which turns the gyro "
+             "reading into a direct measurement of the bias. Measured on a true rate "
+             "of 0.6 rad/s with a true bias of 0.05: without a stop the filter splits "
+             "them 0.50 / 0.15 and yaw integrates at 85% of truth, and after a stop it "
+             "recovers 0.60 / 0.05 exactly and yaw reaches 100.1%";
   }
   return "unknown manoeuvre";
 }
@@ -547,7 +553,20 @@ ObservabilityReport FusionCore::observability() const {
   // when the bias is the problem, because reversing the turn direction is what stops
   // a constant bias from looking like a constant rate.
   if (r.gyro_bias_z == Observability::UNOBSERVABLE) {
-    r.next = ExcitationManoeuvre::FIGURE_EIGHT;
+    // STOP, do not drive. Measured 2026-10-06, and it corrects an earlier version of
+    // this function that asked for a figure-eight:
+    //
+    //   spin one way only           B_GZ err +0.1000   r = -0.9997
+    //   figure-eight, never stops   B_GZ err +0.1000   r = -0.9978
+    //   figure-eight WITH stops     B_GZ err  0.0000   r = -0.1069
+    //
+    // A figure-eight does nothing. The gyro reads WZ + B_GZ at every instant
+    // whichever way the robot turns, so the degeneracy lives in the measurement
+    // Jacobian and no path through space adds an independent equation. What breaks
+    // it is a different MEASUREMENT: zupt_measurement_function observes z = WZ with
+    // no bias term, so while stationary WZ is pinned to zero and the gyro reading
+    // becomes a direct observation of B_GZ.
+    r.next = ExcitationManoeuvre::STOP_AND_WAIT;
   } else if (r.heading == Observability::UNOBSERVABLE ||
              r.heading == Observability::MARGINAL) {
     r.next = config_.gps_rotation_heading_enabled

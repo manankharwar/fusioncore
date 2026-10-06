@@ -198,23 +198,40 @@ class StationaryBiasTest(unittest.TestCase):
 class ObservabilityContentTest(unittest.TestCase):
     """Whether the bag contains a manoeuvre that makes the quantities observable."""
 
-    def test_turning_only_one_way_is_a_blocker(self):
-        odom = [{"t": i * 0.01, "recv": i * 0.01, "v": 1.0, "wz": 0.5}
-                for i in range(1000)]
+    def test_never_stopping_is_the_blocker(self):
+        # Measured: the gyro reads rate + bias, so no trajectory separates them.
+        # Only a zero-velocity update does, because it observes the rate with no
+        # bias term. A bag with no stop cannot answer the question.
+        odom = [{"t": i * 0.01, "recv": i * 0.01, "v": 1.0,
+                 "wz": 0.5 if i % 2 else -0.5} for i in range(1000)]
         f = br.check_observability({"odom": odom})
         b = sev(f, "BLOCKER")
         self.assertTrue(b, titles(f))
-        self.assertIn("never turned both ways", b[0]["title"])
-        self.assertIn("figure-eight", b[0]["fix"])
+        self.assertIn("never stopped", b[0]["title"])
 
-    def test_both_directions_is_ok(self):
-        odom = []
-        for i in range(1000):
-            odom.append({"t": i * 0.01, "recv": i * 0.01, "v": 1.0,
-                         "wz": 0.5 if i % 2 else -0.5})
+    def test_turning_one_way_is_informational_not_a_blocker(self):
+        # It was a blocker in the first version, on the reasoning that reversing the
+        # turn separates a bias from a rate. Measured: it does not. A figure-eight
+        # driven without stopping leaves the bias exactly as wrong as a circle does.
+        odom = [{"t": i * 0.01, "recv": i * 0.01, "v": 1.0, "wz": 0.5}
+                for i in range(1000)]
+        odom += [{"t": 10 + i * 0.01, "recv": 10 + i * 0.01, "v": 0.0, "wz": 0.0}
+                 for i in range(100)]
         f = br.check_observability({"odom": odom})
-        self.assertEqual(sev(f, "BLOCKER"), [])
-        self.assertTrue(sev(f, "OK"), titles(f))
+        one_way = [x for x in f if "only turned one way" in x["title"]]
+        self.assertTrue(one_way, titles(f))
+        self.assertEqual(one_way[0]["severity"], "INFO")
+        self.assertIn("Only a stop does that", one_way[0]["fix"])
+
+    def test_a_bag_with_a_stop_is_ok(self):
+        odom = [{"t": i * 0.01, "recv": i * 0.01, "v": 1.0,
+                 "wz": 0.5 if i % 2 else -0.5} for i in range(1000)]
+        odom += [{"t": 10 + i * 0.01, "recv": 10 + i * 0.01, "v": 0.0, "wz": 0.0}
+                 for i in range(100)]
+        f = br.check_observability({"odom": odom})
+        self.assertEqual(sev(f, "BLOCKER"), [], titles(f))
+        self.assertTrue(any("stopped at least once" in x["title"] for x in f),
+                        titles(f))
 
     def test_no_straight_driving_is_flagged(self):
         odom = [{"t": i * 0.01, "recv": i * 0.01, "v": 1.0,

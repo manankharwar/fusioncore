@@ -29,12 +29,40 @@ Four verdicts, and the difference between the middle two is the one that matters
 
 ## The manoeuvres
 
-### Figure-eight: two loops, each 5 m or wider, at 0.5 m/s or more
+### Stop and wait: a few seconds, wheels still
 
-The general answer, and what you get asked for at startup. The straight segments give
-GNSS track heading, the turns separate the yaw rate from its bias, and **reversing
-the turn direction is the part that matters**: a constant bias and a constant rate are
-indistinguishable until you turn both ways.
+**This is the only thing that makes the yaw gyro bias observable, and it is the first
+thing the filter will ask for.** Two seconds is enough, ten is comfortable.
+
+Measured on a true rate of 0.6 rad/s with a true bias of 0.05 rad/s:
+
+```
+  no stop     WZ 0.50  B_GZ 0.15   yaw  84.9% of truth   r(WZ,B_GZ) = -0.998
+  10 s stop   WZ 0.60  B_GZ 0.05   yaw 100.1% of truth   r(WZ,B_GZ) = -0.330
+```
+
+Why stopping and nothing else: the gyro reports `WZ + B_GZ`, so any
+`(WZ + d, B_GZ - d)` fits it identically and the pair is in the null space of the
+measurement Jacobian. ZUPT is a **different measurement**, `z = WZ` with no bias
+term, so while stationary `WZ` is pinned to zero and the gyro reading becomes a
+direct observation of the bias.
+
+### Figure-eight: two loops, each 5 m or wider, at 0.5 m/s or more, stopping at each crossing
+
+The straights give GNSS track heading. **The turns do not separate the yaw rate from
+its bias**, and an earlier version of this page said they did. That was wrong and the
+correction is worth stating, because the intuition behind it is a common one:
+
+```
+  spin one way only           B_GZ error +0.1000   r = -0.9997
+  figure-eight, never stops   B_GZ error +0.1000   r = -0.9978
+  figure-eight WITH stops     B_GZ error  0.0000   r = -0.1069
+```
+
+A figure-eight driven without stopping leaves the bias exactly as wrong as driving in
+a circle does. The gyro reads `WZ + B_GZ` at every instant whichever way the robot is
+turning, so no path through space adds an independent equation. The **stops** at the
+crossings are what do the work.
 
 ### Drive straight: 10 m or more, over 0.2 m/s, no turning
 
@@ -54,11 +82,6 @@ alone. Enough rotation and little enough elapsed time pull against each other, s
 slow turn loses track of its own rotation before it has swept enough arc and the
 bootstrap correctly declines. A 2.0 rad/s turn bootstraps; the same angle taken at
 0.5 rad/s does not.
-
-### Stop and wait: 10 s or more, wheels still
-
-ZUPT fuses a zero-velocity pseudo-measurement, which is what lets the accelerometer
-and gyro biases settle instead of integrating into drift.
 
 ## What each verdict is computed from
 
