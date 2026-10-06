@@ -68,6 +68,7 @@ nav:
   - Docker: docker.md
   - Configuration: configuration.md
   - Observability: observability.md
+  - Bag report: bag-report.md
   - Hardware:
     - Overview & Configs: hardware/index.md
     - Indoor / Wheels only (no GPS): hardware/wheels-indoor.md
