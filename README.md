@@ -6,9 +6,33 @@
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
 [![Newsletter](https://img.shields.io/badge/newsletter-subscribe-orange)](https://manankharwar.substack.com)
 
-**A 23-state UKF for outdoor robots: IMU, wheel encoders, GPS and visual SLAM at 100 Hz. It fuses the sensors you already have, and when the estimate goes wrong it tells you which sensor and why instead of drifting silently. Apache 2.0, ROS 2 Jazzy and Humble, and the filter itself is a plain C++ library with no ROS dependency.**
+**A 23-state UKF for outdoor robots: IMU, wheel encoders, GPS and visual SLAM at 100 Hz. Two numbers from your IMU datasheet instead of days of tuning, and when the estimate goes wrong it names the sensor and the reason instead of drifting silently. Apache 2.0, ROS 2 Jazzy and Humble, and the filter itself is a plain C++ library with no ROS dependency.**
 
 <img width="1080" height="608" alt="586785007-e1e07cfb-74e0-48b9-9bfd-32b68ee5a6ef" src="https://github.com/user-attachments/assets/d59b74ec-af94-4cb1-ab19-e5310a5d138b" />
+
+---
+
+## Start without installing anything
+
+If you have a rosbag, you can get something useful out of this before you build it.
+Point `bag_report.py` at the bag and it tells you what is wrong with your estimation
+setup, in terms of your robot rather than a benchmark dataset:
+
+```bash
+python3 tools/bag_report.py /path/to/your/bag
+```
+
+No config, no ROS distro to match, and every check works with no ground truth, which
+is the point: almost nobody has a surveyed reference for their own robot. It reports
+things like whether your IMU and your wheels disagree about which way the robot
+turned, whether two sensors are on different clocks, and whether the bag even
+contains a manoeuvre that makes heading observable. Details in
+[docs/bag-report.md](https://manankharwar.github.io/fusioncore/bag-report/).
+
+The first bag it was ever run on had an IMU and wheel encoders reporting opposite
+yaw-rate signs on 100% of turns, over 127,419 samples. That bag was from this
+project's own benchmark harness, and the bug had been there for every number it had
+ever published.
 
 ---
 
@@ -105,6 +129,27 @@ Every project has these. Most do not write them down.
 | **The robot sits still for minutes** | ZUPT fuses a zero-velocity pseudo-measurement when encoder speed and angular rate are both below threshold, so IMU noise does not integrate into drift while idle. |
 
 <img width="1200" height="675" alt="fusioncore_demo_hmm" src="https://github.com/user-attachments/assets/89e9134d-3ec1-4cd9-898b-e3a9c62852dd" />
+
+---
+
+## What it costs you to run
+
+Accuracy is the easy claim to make and the hard one to verify, especially on a robot
+nobody has surveyed. These are the costs, which you can check against your own setup
+in an afternoon:
+
+| | |
+|---|---|
+| **Tuning** | Two numbers, `imu.gyro_noise` and `imu.accel_noise`, both off your IMU datasheet. The adaptive estimators handle the rest. A bad frame or a bad timestamp still needs fixing by hand, and the tools below find those. |
+| **Finding out why it drifted** | Every sensor has a named rejection reason, and the gated ones carry their chi-squared value too, published on a debug topic while it runs. So "it drifts" becomes a count per reason rather than a guess about which of six sensors did it. |
+| **Knowing whether to trust it** | The filter reports which quantities are actually observable and what to drive to fix the rest, rather than leaving you to infer it. See [Observability](https://manankharwar.github.io/fusioncore/observability/). |
+| **Catching a config typo** | ROS 2 silently ignores an override for a parameter a node never declared, so a typo tunes nothing and warns nobody. `tools/check_config_params.py` fails on it. |
+| **Evaluating it at all** | `tools/bag_report.py` on a recording, before you build anything. |
+
+Three of those five exist because they were the thing that cost days here first. The
+observability report exists because three separate issues in this project turned out
+to be "the robot was never driven in a way that made this observable", and nothing
+said so for weeks.
 
 ---
 

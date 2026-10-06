@@ -1,10 +1,26 @@
 # FusionCore
 
-**ROS 2 UKF sensor fusion for robots that run in the real world. IMU + wheel encoders + GPS at 100 Hz. Handles bad calibration, timestamp jitter, delayed GPS, wheel slip, and ARM hardware out of the box. Apache 2.0.**
+**ROS 2 UKF sensor fusion for robots that run in the real world. IMU + wheel encoders + GPS at 100 Hz. Two numbers from your IMU datasheet instead of days of tuning, and when it drifts it names the sensor and the reason. Handles bad calibration, timestamp jitter, delayed GPS, wheel slip, and ARM hardware out of the box. Apache 2.0.**
 
 [![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
 [![arXiv](https://img.shields.io/badge/arXiv-2605.25239-b31b1b)](https://arxiv.org/abs/2605.25239)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20091053.svg)](https://doi.org/10.5281/zenodo.20091053)
+
+---
+
+## Start without installing anything
+
+If you have a rosbag, you can get something out of this before building it:
+
+```bash
+python3 tools/bag_report.py /path/to/your/bag
+```
+
+Every check works with no ground truth, because almost nobody has a surveyed
+reference for their own robot. It reports whether your IMU and wheels disagree about
+which way the robot turned, whether two sensors are on different clocks, and whether
+the bag contains a manoeuvre that makes heading observable at all. See
+[Bag report](bag-report.md).
 
 ---
 
