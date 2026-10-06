@@ -136,3 +136,4 @@ scratchpad/
 # ONLY, so the four figures the docs actually use (docs/assets/*.png) stay tracked.
 /*.png
 FINDINGS_20261003.md
+RECORD_20261006.md
