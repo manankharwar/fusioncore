@@ -79,6 +79,28 @@ def main():
     seqs = base['sequences']
     threshold = args.threshold if args.threshold is not None else base.get('regression_threshold_pct', 10.0)
 
+    # A baseline entry has to be self-consistent before it can judge anything.
+    # ATE RMSE 3D = sqrt(mean(dx^2+dy^2+dz^2)) and XY = sqrt(mean(dx^2+dy^2)), so 3D
+    # is >= XY always: adding a non-negative dz^2 cannot shrink it. Two of the three
+    # entries in this repo's own baseline violated that (2012-08-20 at 3D 116.444 vs
+    # XY 121.669, and 2013-04-05 at 3D 189.700 vs XY 200.910), which means those two
+    # numbers came from different runs or were transposed. The gate gates on XY, so a
+    # transposed XY silently shifts every regression percentage measured against it.
+    bad = []
+    for seq, v in seqs.items():
+        a, b = v.get('fusioncore_ate_rmse_3d'), v.get(BASELINE_KEY)
+        if a is not None and b is not None and a < b:
+            bad.append((seq, a, b))
+    if bad:
+        print(f'FAIL: {len(bad)} baseline entr(ies) are internally impossible, '
+              f'3D ATE is below XY ATE:')
+        for seq, a, b in bad:
+            print(f'  {seq}: 3D {a:.3f} m < XY {b:.3f} m')
+        print('  3D cannot be smaller than XY. These came from different runs or were '
+              'transposed, so any percentage measured against them is meaningless. '
+              'Re-measure before using this baseline to gate anything.')
+        return 2
+
     paths = list(args.metrics)
     if args.glob:
         paths += sorted(globmod.glob(args.glob))

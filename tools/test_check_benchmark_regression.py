@@ -254,5 +254,57 @@ class ControlVoidTest(unittest.TestCase):
         self.assertIn("UNCHECKED", out)
 
 
+class BaselineIntegrityTest(unittest.TestCase):
+    """A reference has to be self-consistent before it can judge anything.
+
+    Found 2026-10-06 while investigating the 2012-08-20 regression: two of the three
+    entries in this repo's own baseline had 3D ATE BELOW XY ATE, which is impossible,
+    since 3D adds a non-negative dz^2 to the same sum. The gate gates on XY, so a
+    transposed XY quietly shifts every percentage measured against it.
+    """
+
+    def _baseline(self, d, a3d, axy):
+        p = pathlib.Path(d) / "baseline.json"
+        p.write_text(json.dumps({
+            "baseline_commit": "abc1234", "recorded": "2026-09-14",
+            "regression_threshold_pct": 10.0,
+            "sequences": {"2012-08-20": {
+                "fusioncore_ate_rmse_3d": a3d, "fusioncore_ate_rmse_xy": axy,
+                "rl_ate_rmse_3d": 10.5, "verified": True}},
+        }))
+        return str(p)
+
+    def test_3d_below_xy_is_refused(self):
+        # The real 2012-08-20 entry.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7))
+            code, out = run([m, "--baseline", self._baseline(d, 116.444, 121.669)])
+        self.assertEqual(code, 2, "an impossible baseline must not grade anything")
+        self.assertIn("impossible", out)
+        self.assertIn("2012-08-20", out)
+
+    def test_a_consistent_baseline_is_accepted(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7))
+            code, out = run([m, "--baseline", self._baseline(d, 125.0, 121.669)])
+        self.assertEqual(code, 0)
+        self.assertNotIn("impossible", out)
+
+    def test_equal_3d_and_xy_is_allowed(self):
+        # Legitimate: a perfectly planar run has dz = 0 throughout.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7))
+            code, out = run([m, "--baseline", self._baseline(d, 121.669, 121.669)])
+        self.assertEqual(code, 0)
+
+    def test_it_refuses_before_grading_not_after(self):
+        # Even a clean run must not be graded against a broken reference.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 100.0))
+            code, out = run([m, "--baseline", self._baseline(d, 116.444, 121.669)])
+        self.assertEqual(code, 2)
+        self.assertNotIn("improved", out)
+
+
 if __name__ == "__main__":
     unittest.main()
