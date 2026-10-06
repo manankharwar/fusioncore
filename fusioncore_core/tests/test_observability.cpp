@@ -419,14 +419,72 @@ TEST(ObservabilityReport, TheSplitFollowsTheCovarianceRatioFormula)
 
 TEST(ObservabilityReport, ATighterBiasPriorGivesYawBackMostOfTheRate)
 {
-  // The practical consequence. 0.1 is the old blanket prior, 0.0004 is the square of
-  // the new 0.02 rad/s default.
-  const double old_default = wzShare(0.1);
-  const double new_default = wzShare(0.02 * 0.02);
-  EXPECT_NEAR(old_default, 0.800, 0.01) << "the prior behaviour, pinned";
-  EXPECT_GT(new_default, 0.99)
-      << "a physically defensible gyro bias prior should return nearly all of the "
-         "rate to WZ; got " << new_default;
+  // The direction of the effect, which is solid and is the reason the knob exists.
+  // A driver that calibrates the gyro at startup can set 0.01 and get nearly all of
+  // the rate back; the shipped default is deliberately looser, see below.
+  EXPECT_NEAR(wzShare(0.1), 0.800, 0.01) << "the old blanket prior, pinned";
+  EXPECT_GT(wzShare(0.01 * 0.01), 0.99)
+      << "a tight prior, for a driver that actually calibrates, returns the rate";
+}
+
+// Why the SHIPPED default is loose rather than tight, measured in both directions.
+//
+// Datasheet initial zero-rate offset, which is what an uncalibrated driver hands the
+// filter: MPU-6050 +/- 20 deg/s, ICM-20948 +/- 5 dps. Both are everywhere on hobby
+// ROS robots. A 1.1 deg/s prior is tight and WRONG for either, and the cost measured
+// at a 0.6 rad/s turn rate over 10 s before any stop was:
+//
+//   true bias  0 deg/s ->   +7.4 deg      true bias  5 deg/s ->  +31.4 deg
+//   true bias  1 deg/s ->  +12.2 deg      true bias 20 deg/s -> +103.2 deg
+//
+// The loose error is bounded by the turn rate. The tight error is unbounded in the
+// true bias. That asymmetry is the whole argument for the default.
+TEST(ObservabilityReport, TheDefaultPriorSurvivesAnUncalibratedGyro)
+{
+  auto yaw_err_before_any_stop = [](double prior_sigma, double true_bias) {
+    FusionCoreConfig cfg;
+    cfg.outlier_rejection = false;
+    cfg.adaptive_gnss = false;
+    cfg.gps_track_heading_enabled = false;
+    FusionCore fc(cfg);
+    State s;
+    s.P = StateMatrix::Identity() * 0.1;
+    for (int i : {QW, QX, QY, QZ})
+      for (int j : {QW, QX, QY, QZ})
+        s.P(i, j) = (i == j) ? 1e-6 : 0.0;
+    s.P(B_GZ, B_GZ)   = prior_sigma * prior_sigma;
+    s.P(B_EWZ, B_EWZ) = prior_sigma * prior_sigma;
+    fc.init(s, 0.0);
+    double t = 0.0;
+    for (int i = 1; i <= 1000; ++i) {
+      t = i * 0.01;
+      fc.update_imu(t, 0.0, 0.0, 0.6 + true_bias, 0.0, 0.0, 9.80665);
+      fc.update_encoder(t, 0.0, 0.0, 0.6, 1e-4, 1e-4, 1e-4);
+    }
+    double yaw = fc.get_state().yaw();
+    const double expect = 0.6 * t;
+    while (yaw - expect >  M_PI) yaw -= 2 * M_PI;
+    while (expect - yaw >  M_PI) yaw += 2 * M_PI;
+    return std::abs(yaw - expect) * 180.0 / M_PI;
+  };
+
+  const double big_bias = 20.0 * M_PI / 180.0;     // a raw MPU-6050
+  const double tight = yaw_err_before_any_stop(0.02,  big_bias);
+  const double loose = yaw_err_before_any_stop(0.175, big_bias);
+
+  // Measured: tight 103.2 deg, loose 77.2 deg. The loose prior IS better, which is
+  // why it ships, but by 25% rather than by a lot.
+  EXPECT_GT(tight, 90.0) << "the withdrawn 0.02 default, measured at 103 deg";
+  EXPECT_LT(loose, tight) << "the shipped default must at least not be worse";
+
+  // THE POINT, and it is the more useful half of this test: NEITHER prior saves you.
+  // 77 degrees of yaw error in 10 s is not a working robot. A prior cannot fix an
+  // uncalibrated gyro, it can only choose which way to be wrong. The fix is to
+  // MEASURE the bias at boot, which robots can almost always do because they start
+  // stationary, or to accept that nothing is trustworthy until the first stop.
+  EXPECT_GT(loose, 30.0)
+      << "if a prior alone ever makes this acceptable, the model changed and the "
+         "boot-calibration argument needs revisiting; measured 77.2 deg";
 }
 
 // The false OK this prevents. With a tight bias prior the bias barely moves, so

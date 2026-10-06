@@ -141,27 +141,56 @@ struct FusionCoreConfig {
   //
   //     WZ fraction = n*r / (1 + n*r)        each bias fraction = 1 / (1 + n*r)
   //
-  // Measured on this filter, where r works out to 2 * P0_wz / P0_bias, confirmed to
-  // four decimals across four orders of magnitude of P0_bias:
+  // Measured with n = 2 (a gyro and an encoder), varying P0_bias with P0_wz at 0.1:
   //
   //     P0_bias 0.1    -> WZ 0.8000     P0_bias 0.01   -> WZ 0.9756
   //     P0_bias 0.05   -> WZ 0.8889     P0_bias 0.001  -> WZ 0.9975
+  //
+  // An earlier version of this comment claimed r = 2 * P0_wz / P0_bias "confirmed
+  // across four orders of magnitude". That was wrong, and wrong for a reason worth
+  // recording: it only ever varied P0_bias. Varying P0_wz instead, with P0_bias
+  // fixed, gives r = 1 + P0_wz / P0_bias exactly (1.25, 1.5, 2, 3, 5 for P0_wz of
+  // 0.025 to 0.4). The two fits agree only where the sweeps cross. A one-sided sweep
+  // cannot identify a two-variable relationship, which is the same mistake as reading
+  // a ratio off a single turn rate. The direction of the effect is solid; the closed
+  // form is not, and nothing here depends on it.
   //
   // The node used to initialise EVERY state at 0.1, which is a bias sigma of 0.316
   // rad/s, or 18 deg/s. No MEMS gyro is that bad, and claiming it is hands 20% of
   // every yaw rate to the bias. Yaw integrates WZ alone, so yaw then advances at 80%
   // of truth. That was the whole of the measured 81.6% in issue #150.
   //
-  // 0.02 rad/s is about 1.1 deg/s, a defensible figure for a consumer MEMS gyro's
-  // zero-rate offset. RAISE IT if your gyro is poorly calibrated or runs hot: a prior
-  // that is tight and WRONG is worse than one that is loose, because the filter will
-  // not correct a bias it believes it already knows.
+  // THE DEFAULT IS DELIBERATELY LOOSE, and 0.02 was tried and withdrawn.
   //
-  // This does NOT make the pair observable. The degeneracy is structural and only a
-  // zero-rate update or an absolute heading removes it. It puts the split somewhere
-  // defensible until one of those arrives.
-  double gyro_bias_initial_sigma  = 0.02;   // rad/s
-  double accel_bias_initial_sigma = 0.10;   // m/s^2, same class of prior, untested
+  // Datasheet initial zero-rate offset, which is what an UNCALIBRATED driver hands
+  // the filter at boot:
+  //
+  //     MPU-6050    +/- 20 deg/s  (0.35 rad/s)
+  //     ICM-20948   +/-  5 dps    (0.087 rad/s)
+  //
+  // Both are everywhere on hobby ROS robots. A 0.02 rad/s prior is 1.1 deg/s, so it
+  // is tight and WRONG for either of them, and the cost is not subtle. Measured at a
+  // 0.6 rad/s turn rate, yaw error after 10 s of driving before any stop:
+  //
+  //     true bias  0 deg/s ->   +7.4 deg      true bias  5 deg/s ->  +31.4 deg
+  //     true bias  1 deg/s ->  +12.2 deg      true bias 20 deg/s -> +103.2 deg
+  //
+  // 0.175 rad/s (10 deg/s) covers a raw MPU-6050 without claiming to know a bias
+  // nobody measured. It costs accuracy in the other direction: a loose prior hands
+  // roughly 20% of the yaw rate to the bias until something observes it. That is the
+  // right trade, because the loose error is bounded by the turn rate while the tight
+  // error is unbounded in the true bias.
+  //
+  // TIGHTEN IT, to 0.01 or below, if your driver calibrates the gyro at startup or
+  // you have measured the offset yourself. That is the common case on a good driver
+  // and it is worth doing: it returns nearly all of the rate to WZ.
+  //
+  // Either way this does NOT make the pair observable. The degeneracy is structural
+  // and only a zero-rate update or an absolute heading removes it. Once ZUPT fires
+  // the bias converges immediately whatever the prior was, so the prior governs the
+  // window BEFORE the first stop, which is exactly when a robot drives off its dock.
+  double gyro_bias_initial_sigma  = 0.175;  // rad/s, ~10 deg/s: covers a raw MPU-6050
+  double accel_bias_initial_sigma = 0.30;   // m/s^2, same class of prior, untested
 
   // ---- inter-sensor time offset ----
   //

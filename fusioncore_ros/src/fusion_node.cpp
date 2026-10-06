@@ -414,8 +414,8 @@ public:
     // separately observable. 0.02 rad/s is about 1.1 deg/s. RAISE it for a poorly
     // calibrated or hot-running gyro, because a tight prior that is WRONG is worse
     // than a loose one. See docs/observability.md.
-    declare_parameter("imu.gyro_bias_initial_sigma",  0.02);
-    declare_parameter("imu.accel_bias_initial_sigma", 0.10);
+    declare_parameter("imu.gyro_bias_initial_sigma",  0.175);
+    declare_parameter("imu.accel_bias_initial_sigma", 0.30);
     declare_parameter("time_offset.estimate_interval_s", 10.0);
     declare_parameter("encoder.time_offset", 0.0);
 
@@ -3494,8 +3494,8 @@ private:
   bool heading_announced_ = false;
   bool yaw_sign_announced_ = false;
   bool obs_announced_ = false;
-  double cfg_bias_gyro_sigma_  = 0.02;
-  double cfg_bias_accel_sigma_ = 0.10;
+  double cfg_bias_gyro_sigma_  = 0.175;
+  double cfg_bias_accel_sigma_ = 0.30;
   std::tuple<fusioncore::Observability, fusioncore::Observability,
              fusioncore::Observability, fusioncore::ExcitationManoeuvre> obs_last_{};
 

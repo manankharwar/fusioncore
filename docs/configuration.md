@@ -998,8 +998,8 @@ When `gnss.use_gps_fix: true`, FusionCore picks the best available covariance so
     #
     # The reported offset is what to ADD to align the streams, so the signs match.
 
-    imu.gyro_bias_initial_sigma: 0.02
-    imu.accel_bias_initial_sigma: 0.10
+    imu.gyro_bias_initial_sigma: 0.175
+    imu.accel_bias_initial_sigma: 0.30
     # How well you know the sensor's zero offset AT STARTUP, as a 1-sigma
     # (rad/s for the gyro, m/s^2 for the accelerometer).
     #
@@ -1023,10 +1023,30 @@ When `gnss.use_gps_fix: true`, FusionCore picks the best available covariance so
     # of every yaw rate to the bias, and since yaw integrates the rate alone, yaw
     # advanced at 80% of truth. That was the measured 81.6% in issue #150.
     #
-    # 0.02 rad/s is about 1.1 deg/s, defensible for a consumer MEMS gyro's zero-rate
-    # offset. RAISE IT if your gyro is poorly calibrated or runs hot. A prior that is
-    # tight and WRONG is worse than one that is loose, because the filter will not
-    # correct a bias it believes it already knows.
+    # THE DEFAULT IS DELIBERATELY LOOSE. Datasheet initial zero-rate offset, which is
+    # what an UNCALIBRATED driver hands the filter at boot:
+    #
+    #     MPU-6050    +/- 20 deg/s  (0.35 rad/s)
+    #     ICM-20948   +/-  5 dps    (0.087 rad/s)
+    #
+    # Both are everywhere on hobby ROS robots. 0.175 rad/s is 10 deg/s, which covers
+    # a raw MPU-6050 without claiming to know a bias nobody measured.
+    #
+    # TIGHTEN IT to 0.01 or below if your driver calibrates the gyro at startup or
+    # you measured the offset yourself. That returns nearly all of the yaw rate to
+    # the rate state instead of leaking ~20% into the bias.
+    #
+    # The cost of getting it wrong, measured at a 0.6 rad/s turn over 10 s with no
+    # stop, for a 20 deg/s true bias (a raw MPU-6050):
+    #
+    #     tight prior (0.02)    103.2 deg of yaw error
+    #     loose prior (0.175)    77.2 deg of yaw error
+    #
+    # The loose one is better, and NEITHER is acceptable. A prior cannot fix an
+    # uncalibrated gyro, it can only choose which way to be wrong. If your driver
+    # does not calibrate, the only real answer is to keep the robot still for a few
+    # seconds at startup so ZUPT can measure the bias: it converges immediately once
+    # a zero-velocity update fires, whatever the prior was.
     #
     # This does NOT make the pair observable, and the filter will still report the
     # gyro bias as UNOBSERVABLE until a zero-velocity update or an absolute heading
