@@ -36,6 +36,41 @@ ever published.
 
 ---
 
+## Answers to the things that stop people trying it
+
+**Yes, you can run it beside robot_localization rather than instead of it.** Same bag,
+same inputs, both filters, compare the two trajectories. That is how the numbers here
+were produced, and `fusioncore_ros/tests/test_rl_interface_conformance.py` locks the
+interface so it stays a drop-in comparison rather than a rewrite.
+
+**Yes, your existing robot_localization config converts.** `tools/rl_to_fusioncore.py`
+reads it and emits the FusionCore equivalent, because that config already encodes
+everything you learned about your robot. It refuses to guess: anything that does not
+map cleanly comes out as a commented `TODO` with the reason, repeated on stderr so it
+is visible when you redirect stdout to a file. A config that looks complete but
+quietly invented a number is worse than one that admits what it does not know.
+
+**No, you do not need ROS 2.** The filter is a plain C++ library with Eigen and no ROS
+dependency. The ROS 2 wrapper is a separate package you can ignore.
+
+**No, you do not need ground truth to evaluate it.** `tools/bag_report.py` works
+entirely on raw sensor topics, because almost nobody has a surveyed reference for
+their own robot. It will not give you an accuracy number, and it says so rather than
+inventing one.
+
+**Yes, it runs on a Raspberry Pi 4.** Well under 1 ms per cycle in a Release build,
+same source on ARM and x86. Build unoptimised and it is drastically slower, so do not
+skip `CMAKE_BUILD_TYPE`.
+
+**No, you should not trust the benchmark table below right now.** Three of its twelve
+rows have been re-measured since it was published and all three were better than
+reality, by about 1.48x on the two that are confirmed, with one sequence in active
+regression. It is marked, the corrected figures are stated beside it, and a
+re-measurement is owed. If a benchmark table in a README has never been wrong, nobody
+has checked it.
+
+---
+
 ## Quick start
 
 ```bash
