@@ -522,3 +522,114 @@ TEST(ObservabilityReport, ATighterPriorDoesNotMakeThePairObservable)
       << "nothing has observed the bias, so a low correlation must not read as OK";
   EXPECT_EQ(r.next, ExcitationManoeuvre::STOP_AND_WAIT);
 }
+
+// ─── Why the encoder bias prior is NOT the cheap fix for #150 ────────────────
+//
+// The hypothesis was good and half of it is confirmed. Encoders do not have a
+// constant additive yaw-rate bias; their errors are scale (track width),
+// speed-proportional (wheel radius) and slip events. Giving B_EWZ a free constant
+// bias with a prior like the gyro's is what creates the null direction, so shrinking
+// that prior should hand the disagreement back to the gyro bias where it belongs.
+//
+// It does, spectacularly, on a CLEAN encoder. 20 deg/s true gyro bias, 10 s at
+// 0.6 rad/s, no stop and no GNSS:
+//
+//   P0(enc) 0.175     yaw err +77.17 deg   B_GZ 0.2297   B_EWZ -0.1193
+//   P0(enc) 0.0175    yaw err  +9.20 deg   B_GZ 0.3465   B_EWZ -0.0025
+//   P0(enc) 0.00175   yaw err  +7.74 deg   B_GZ 0.3490   B_EWZ -0.0000
+//                                          true  0.3491
+//
+// B_GZ recovers the true bias to four decimals WHILE MOVING. So "the gyro bias is
+// unobservable unless the robot stops" is an artifact of the encoder model, not a
+// fact about the sensors. The prior does all the work: q_encoder_wz_bias from 1e-7
+// to 1e-14 changes nothing.
+//
+// AND IT IS STILL NOT SAFE TO SHIP, because B_EWZ is load-bearing. It absorbs the
+// encoder SCALE error, which at constant speed is indistinguishable from a constant
+// bias. With NCLT's measured 1.297 over-report:
+//
+//   scenario                            P0enc .175   P0enc .00175
+//   clean                                  -16.45        +7.72
+//   gyro bias 20 dps, enc clean            +77.17        +7.74
+//   NO gyro bias, enc scale 1.297          +31.48      +110.50   <- much worse
+//   enc scale 1.297, slow turn 0.15         +8.69       +28.82
+//   enc scale 1.297, fast turn 1.2         +55.61      -146.91   <- catastrophic
+//
+// The speed dependence is the tell: a constant-bias proxy for a scale error holds at
+// one speed and falls apart across speeds, 8.69 deg at 0.15 rad/s against 55.61 at
+// 1.2. Tighten the prior and nothing absorbs the scale at all.
+//
+// So the real fix is to model encoder error as a SCALE term plus a speed-proportional
+// term plus gated slip events, rather than as a constant offset. That removes the
+// null direction AND keeps the scale absorbed. Changing the prior alone trades one
+// failure for a worse one, and these tests exist so that trade is not made by
+// accident.
+
+namespace {
+
+// Yaw error in degrees after 10 s of turning at `rate`, no stop and no GNSS.
+double yawErrDeg(double p0_enc, double gyro_bias_dps, double enc_scale, double rate)
+{
+  const double b = gyro_bias_dps * M_PI / 180.0;
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection = false;
+  cfg.adaptive_gnss = false;
+  cfg.gps_track_heading_enabled = false;
+  FusionCore fc(cfg);
+  State s;
+  s.P = StateMatrix::Identity() * 0.1;
+  for (int i : {QW, QX, QY, QZ})
+    for (int j : {QW, QX, QY, QZ})
+      s.P(i, j) = (i == j) ? 1e-6 : 0.0;
+  s.P(B_GZ, B_GZ)   = 0.175 * 0.175;
+  s.P(B_EWZ, B_EWZ) = p0_enc * p0_enc;
+  fc.init(s, 0.0);
+  double t = 0.0;
+  for (int i = 1; i <= 1000; ++i) {
+    t = i * 0.01;
+    fc.update_imu(t, 0.0, 0.0, rate + b, 0.0, 0.0, 9.80665);
+    fc.update_encoder(t, 0.0, 0.0, rate * enc_scale, 1e-4, 1e-4, 1e-4);
+  }
+  double yaw = fc.get_state().yaw();
+  const double e = rate * t;
+  double y = yaw;
+  while (y - e >  M_PI) y -= 2 * M_PI;
+  while (e - y >  M_PI) y += 2 * M_PI;
+  return (y - e) * 180.0 / M_PI;
+}
+
+}  // namespace
+
+TEST(ObservabilityReport, ATightEncoderBiasPriorMakesTheGyroBiasObservableWhileMoving)
+{
+  // The confirmed half. On a clean encoder this is a 10x improvement and the gyro
+  // bias is recovered to four decimals with no stop at all.
+  EXPECT_GT(std::abs(yawErrDeg(0.175,   20.0, 1.0, 0.6)), 60.0) << "measured +77.17";
+  EXPECT_LT(std::abs(yawErrDeg(0.00175, 20.0, 1.0, 0.6)), 15.0) << "measured  +7.74";
+}
+
+TEST(ObservabilityReport, ButTheEncoderBiasStateIsLoadBearingForScaleError)
+{
+  // The reason it cannot simply be tightened. B_EWZ absorbs the encoder scale error,
+  // which at constant speed looks exactly like a constant bias. NCLT's encoder
+  // over-reports rotation by 1.297.
+  const double loose = std::abs(yawErrDeg(0.175,   0.0, 1.297, 0.6));
+  const double tight = std::abs(yawErrDeg(0.00175, 0.0, 1.297, 0.6));
+  EXPECT_LT(loose, tight)
+      << "with a real scale error the LOOSE prior must win: loose " << loose
+      << " deg vs tight " << tight << " deg (measured 31.48 vs 110.50)";
+  EXPECT_GT(tight, 90.0) << "measured 110.50";
+}
+
+TEST(ObservabilityReport, TheConstantBiasProxyForScaleBreaksDownAcrossSpeeds)
+{
+  // The signature that says a scale error is being modelled as a constant offset:
+  // it holds at one rate and falls apart at another. This is the argument for a
+  // multiplicative term rather than a tighter prior.
+  const double slow = std::abs(yawErrDeg(0.175, 0.0, 1.297, 0.15));
+  const double fast = std::abs(yawErrDeg(0.175, 0.0, 1.297, 1.2));
+  EXPECT_LT(slow, 20.0) << "measured  +8.69 at 0.15 rad/s";
+  EXPECT_GT(fast, 40.0) << "measured +55.61 at 1.2 rad/s";
+  EXPECT_GT(fast, slow * 3.0)
+      << "a true constant bias would give a rate-independent error; this does not";
+}
