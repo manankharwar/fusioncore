@@ -63,6 +63,38 @@ def euler_to_quat(roll: float, pitch: float, yaw: float) -> Quaternion:
     return q
 
 
+def ned_yaw_rate_to_enu(omega_ned):
+    """Convert a NED yaw rate to ENU. Issue #169.
+
+    NCLT's odometry_mu_100hz.csv carries the vehicle's integrated wheel odometry in
+    the same NED-like body frame as the IMU: x-forward, y-right, z-down. This file's
+    header states the resulting rule, `wz_enu = -wz_ned`, and the IMU reader applies
+    it (`wz = -float(row[9])`). The odometry reader did not, for every benchmark
+    number this project has ever published.
+
+    The effect was not subtle. Measured on 2013-04-05 across 137,509 samples where
+    both sources exceeded 0.08 rad/s:
+
+        odom raw  vs  imu raw   (col 9)     0.0% disagree
+        odom raw  vs  imu ENU  (-col 9)   100.0% disagree    <- what was shipped
+        odom neg  vs  imu ENU  (-col 9)     0.0% disagree    <- with this applied
+
+    The raw odometry rate and the raw gyro agree perfectly, which is the proof they
+    share a frame. Negating one and not the other is what produced the conflict.
+
+    FusionCore did not diverge on this, which is why twelve sequences of
+    benchmarking never surfaced it: imu.gyro_noise is tighter than encoder.yaw_noise,
+    so the filter leaned on the gyro and spent gain rejecting the encoder on every
+    turn. A quiet tax rather than a crash.
+
+    NOT fixed here, and worth keeping separate: the magnitudes still disagree. The
+    median |odom| / |imu| ratio over those same samples is 1.297, so NCLT's own wheel
+    odometry over-reports rotation by about 30%, which is a scale or track-width term
+    and not a frame convention. Do not assume this function closes that.
+    """
+    return -omega_ned
+
+
 def angle_diff(a: float, b: float) -> float:
     d = a - b
     while d > math.pi:  d -= 2 * math.pi
@@ -287,9 +319,17 @@ class NCLTPlayer(Node):
             if dt <= 0 or dt > 0.5:
                 continue
             dx, dy = x - px, y - py
+            # Body-frame projection. vx is the forward component and is correct in
+            # either convention, because projecting NED displacement onto a NED
+            # heading is self-consistent. The two LATERAL quantities are not.
             vx    = ( dx * math.cos(h) + dy * math.sin(h)) / dt
-            vy    = (-dx * math.sin(h) + dy * math.cos(h)) / dt  # ≈0 for diff drive
-            omega = angle_diff(h, ph) / dt
+            # NED body y is RIGHT, ENU body y is LEFT, so this flips. It is ~0 on a
+            # differential drive so the numbers barely move, but the sign was wrong.
+            vy    = -(-dx * math.sin(h) + dy * math.cos(h)) / dt
+            # NED yaw increases clockwise, ENU counter-clockwise, so the rate flips.
+            # See ned_yaw_rate_to_enu() for why this was wrong for every published
+            # benchmark number.
+            omega = ned_yaw_rate_to_enu(angle_diff(h, ph) / dt)
             self._events.append((utime, 'odom', [vx, vy, omega]))
             count += 1
         self.get_logger().info(f'  Odom: {count} velocity estimates from {os.path.basename(path)}')
