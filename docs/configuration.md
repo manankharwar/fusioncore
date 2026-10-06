@@ -1052,3 +1052,46 @@ When `gnss.use_gps_fix: true`, FusionCore picks the best available covariance so
     # gyro bias as UNOBSERVABLE until a zero-velocity update or an absolute heading
     # actually fires. A better prior starts the split somewhere defensible; only a
     # measurement separates the pair. See docs/observability.md.
+
+    encoder.yaw_scale_model: false
+    encoder.wz_scale_initial_sigma: 0.30
+    # How encoder yaw-rate error is modelled.
+    #
+    #   false (default)  z_wz = WZ + B_EWZ          an additive bias
+    #   true             z_wz = (1 + B_EWZ) * WZ    a multiplicative scale
+    #
+    # An encoder has no constant additive yaw-rate offset. Its errors are scale
+    # (track width), speed-proportional (wheel radius) and slip events. None is a
+    # constant. Modelling scale as a bias creates a null direction that the GYRO bias
+    # hides in: the gyro reads WZ + b_g and the encoder reads WZ + b_ewz, which is two
+    # equations and three unknowns.
+    #
+    # Why the scale model removes it, which is not obvious: ON A STRAIGHT DRIVE the
+    # encoder reads zero yaw rate whatever the scale is, since (1 + s) * 0 = 0. So
+    # every straight stretch is a KNOWN ZERO for the yaw rate, and the gyro's reading
+    # there is its bias. The robot never has to stop. With the additive model the same
+    # stretch gives WZ = -b_ewz, which pins nothing.
+    #
+    # Measured over 30 s of alternating 3 s straight and 3 s turning, yaw error:
+    #
+    #   gyro bias 20 dps, clean encoder    additive -119.12 deg   scale   +9.61 deg
+    #   encoder scale 1.297, turn 0.15     additive  +45.51       scale   +3.17
+    #                        turn 0.60     additive  +66.68       scale   +9.62
+    #                        turn 1.20     additive  -47.51       scale   +7.66
+    #
+    # The additive model's error swings with turn rate because a constant-bias proxy
+    # for a scale error only holds at one speed. The scale model recovers 0.30 against
+    # a true 0.297 at every rate.
+    #
+    # KNOWN LIMIT, and it is not a bug: a constant-rate circle with no straight
+    # segments is still unobservable, and the scale model is WORSE there (-145 deg
+    # against the additive model's -57). With no straight stretch there is no known
+    # zero, so two equations cannot resolve three unknowns. If your robot only ever
+    # drives circles at one rate, this will not help you.
+    #
+    # Slip is handled by the existing chi-squared gate, so outlier_rejection must be
+    # on. Measured: a 1 s slip burst left the scale at 0.30, identical to the run
+    # without it.
+    #
+    # OFF BY DEFAULT because it is unvalidated on real data. When on, B_EWZ holds a
+    # DIMENSIONLESS scale error, not a rad/s bias.

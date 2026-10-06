@@ -1338,7 +1338,7 @@ void FusionCore::update_encoder(
   if (config_.outlier_rejection) {
     sensors::EncoderMeasurement innovation_pre;
     sensors::EncoderNoiseMatrix S;
-    ukf_.predict_measurement<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R, innovation_pre, S);
+    ukf_.predict_measurement<sensors::ENCODER_DIM>(z, (config_.encoder_yaw_scale_model ? sensors::encoder_scale_measurement_function : sensors::encoder_measurement_function), R, innovation_pre, S);
     // Same quantity is_outlier() tests, computed once here so the number can be
     // published rather than only compared. Without it a user sees a rejection
     // count and has no way to tell a marginal reject from a wild one.
@@ -1352,7 +1352,7 @@ void FusionCore::update_encoder(
   }
   encoder_reason_ = EncoderRejectionReason::ACCEPTED;
 
-  auto innovation = ukf_.update<sensors::ENCODER_DIM>(z, sensors::encoder_measurement_function, R);
+  auto innovation = ukf_.update<sensors::ENCODER_DIM>(z, (config_.encoder_yaw_scale_model ? sensors::encoder_scale_measurement_function : sensors::encoder_measurement_function), R);
 
   last_encoder_innovation_norm_ = innovation.norm();
 

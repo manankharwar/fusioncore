@@ -112,6 +112,14 @@ if(BUILD_TESTING)
 
   ament_add_gtest(test_time_offset tests/test_time_offset.cpp TIMEOUT 300)
   target_link_libraries(test_time_offset fusioncore_core Eigen3::Eigen)
+
+  ament_add_gtest(test_sweep tests/test_sweep.cpp TIMEOUT 120)
+  target_link_libraries(test_sweep fusioncore_core Eigen3::Eigen)
+  target_include_directories(test_sweep PRIVATE tests)
+
+  ament_add_gtest(test_encoder_scale_model tests/test_encoder_scale_model.cpp TIMEOUT 300)
+  target_link_libraries(test_encoder_scale_model fusioncore_core Eigen3::Eigen)
+  target_include_directories(test_encoder_scale_model PRIVATE tests)
 endif()
 
 ament_export_targets(fusioncore_core_targets HAS_LIBRARY_TARGET)

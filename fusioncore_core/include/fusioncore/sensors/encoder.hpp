@@ -29,6 +29,37 @@ struct EncoderParams {
 // Mirrors the IMU measurement function which adds B_GZ to WZ.
 // This allows the UKF to estimate and subtract the encoder WZ bias online,
 // so that heading drift during GPS blackouts is eliminated rather than accumulated.
+// h(x) for the SCALE model of encoder yaw error:  z_wz = (1 + s_e) * WZ
+//
+// Replaces the additive bias with a multiplicative scale, because an encoder does not
+// have a constant additive yaw-rate offset. Its errors are scale (track width),
+// speed-proportional (wheel radius) and slip events. None is a constant.
+//
+// Modelling scale as a bias creates a null direction. The gyro reads WZ + b_g and the
+// encoder reads WZ + b_ewz, which is two equations and three unknowns, so the gyro
+// bias can hide in the encoder bias. Measured: a 20 deg/s gyro bias produced 77 deg
+// of yaw error in 10 s because B_EWZ absorbed 0.1193 rad/s of it.
+//
+// The scale model breaks that, and the reason is worth stating because it is not
+// obvious: ON A STRAIGHT DRIVE the encoder reads zero yaw rate whatever the scale is,
+// since (1 + s_e) * 0 = 0. So every straight stretch is a KNOWN ZERO for WZ, and the
+// gyro's reading there is its bias. The robot does not have to stop, only to drive
+// straight on good traction.
+//
+// With the additive model the same straight stretch gives WZ = -b_ewz, which pins
+// nothing. That is the whole difference.
+//
+// When this model is selected, B_EWZ holds a DIMENSIONLESS scale error, not a rad/s
+// bias. 0.297 means the encoder over-reports rotation by 29.7%, which is the value
+// measured on NCLT.
+inline EncoderMeasurement encoder_scale_measurement_function(const StateVector& x) {
+  EncoderMeasurement z;
+  z[0] = x[VX];
+  z[1] = x[VY];
+  z[2] = x[WZ] * (1.0 + x[B_EWZ]);
+  return z;
+}
+
 inline EncoderMeasurement encoder_measurement_function(const StateVector& x) {
   EncoderMeasurement z;
   z[0] = x[VX];            // forward velocity (assume no VX encoder bias)

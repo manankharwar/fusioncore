@@ -414,6 +414,12 @@ public:
     // separately observable. 0.02 rad/s is about 1.1 deg/s. RAISE it for a poorly
     // calibrated or hot-running gyro, because a tight prior that is WRONG is worse
     // than a loose one. See docs/observability.md.
+    // Encoder yaw-error model. false = additive bias (default), true = multiplicative
+    // scale. An encoder has no constant additive yaw-rate offset; its errors are
+    // scale, speed-proportional and slip. Modelling scale as a bias creates a null
+    // direction the gyro bias hides in. OFF until measured on real data.
+    declare_parameter("encoder.yaw_scale_model", false);
+    declare_parameter("encoder.wz_scale_initial_sigma", 0.30);
     declare_parameter("imu.gyro_bias_initial_sigma",  0.175);
     declare_parameter("imu.accel_bias_initial_sigma", 0.30);
     declare_parameter("time_offset.estimate_interval_s", 10.0);
@@ -825,6 +831,10 @@ public:
         get_parameter("gnss.track_heading_cross_check_deg").as_double();
     heading_xcheck_deg_ = config.gps_track_heading_cross_check_deg;
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
+    config.encoder_yaw_scale_model =
+      get_parameter("encoder.yaw_scale_model").as_bool();
+    config.encoder_wz_scale_initial_sigma =
+      get_parameter("encoder.wz_scale_initial_sigma").as_double();
     config.gyro_bias_initial_sigma =
       get_parameter("imu.gyro_bias_initial_sigma").as_double();
     config.accel_bias_initial_sigma =
