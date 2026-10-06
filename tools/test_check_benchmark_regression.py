@@ -33,24 +33,27 @@ def write_json(d, obj):
     return str(p)
 
 
-def metrics(sequence, xy, ate3d=None):
-    """Shaped like a real tools/evaluate.py --json output."""
-    return {
-        "sequence": sequence,
-        "filters": {
-            "FusionCore": {"ate_rmse_xy": xy, "ate_rmse_3d": ate3d if ate3d else xy},
-            "RL-EKF": {"ate_rmse_xy": 9.8, "ate_rmse_3d": 10.5},
-        },
-    }
+def metrics(sequence, xy, ate3d=None, rl3d=10.5, rl=True):
+    """Shaped like a real tools/evaluate.py --json output.
+
+    rl3d is the CONTROL. It defaults to the same 10.5 the baseline fixture records,
+    so an unmodified call is a steady-control run and grades exactly as before.
+    rl=False drops the RL-EKF block entirely, for the no-control-to-check path.
+    """
+    filters = {"FusionCore": {"ate_rmse_xy": xy, "ate_rmse_3d": ate3d if ate3d else xy}}
+    if rl:
+        filters["RL-EKF"] = {"ate_rmse_xy": rl3d * 0.999, "ate_rmse_3d": rl3d}
+    return {"sequence": sequence, "filters": filters}
 
 
-def baseline(d, seq="2012-08-20", xy=121.669, threshold=10.0, verified=True):
+def baseline(d, seq="2012-08-20", xy=121.669, threshold=10.0, verified=True, rl3d=10.5):
     p = pathlib.Path(d) / "baseline.json"
     p.write_text(json.dumps({
         "baseline_commit": "abc1234",
         "recorded": "2026-09-14",
         "regression_threshold_pct": threshold,
-        "sequences": {seq: {"fusioncore_ate_rmse_xy": xy, "verified": verified}},
+        "sequences": {seq: {"fusioncore_ate_rmse_xy": xy, "verified": verified,
+                            **({"rl_ate_rmse_3d": rl3d} if rl3d is not None else {})}},
     }))
     return str(p)
 
@@ -150,6 +153,105 @@ class BenchmarkRegressionTest(unittest.TestCase):
         # 121.669 figures for the same run got confused on 2026-09-27.
         self.assertEqual(cbr.METRIC, "ate_rmse_xy")
         self.assertEqual(cbr.BASELINE_KEY, "fusioncore_ate_rmse_xy")
+
+
+class ControlVoidTest(unittest.TestCase):
+    """The control decides whether a row can be read at all.
+
+    robot_localization rides the same playback in the same launch, so its score is a
+    property of the harness and the machine, never of a FusionCore change. These lock
+    the behaviour that was missing on 2026-10-05, when this gate was handed a starved
+    2013-04-05 run and reported a 74.4% improvement.
+    """
+
+    def test_the_20261005_void_run_is_not_called_an_improvement(self):
+        # The real numbers. FusionCore 51.454 against a 200.910 baseline is -74.4%,
+        # which the gate used to print as "improved" and exit 0 on. The control had
+        # moved 266.700 -> 254.978, which is -4.40%, so the run measured the machine.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2013-04-05", 51.454, rl3d=254.978))
+            code, out = run([m, "--baseline",
+                             baseline(d, seq="2013-04-05", xy=200.910, rl3d=266.700)])
+        self.assertEqual(code, 1, "a void run must not exit 0")
+        self.assertIn("VOID", out)
+        self.assertNotIn("improved", out)
+        self.assertIn("-4.40%", out)
+
+    def test_a_steady_control_still_grades_normally(self):
+        # 2012-06-15 on 2026-10-05: control 18.487 -> 18.489 is +0.01%, well inside
+        # tolerance, so the FusionCore number is readable and must be graded.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-06-15", 71.998, rl3d=18.489))
+            code, out = run([m, "--baseline",
+                             baseline(d, seq="2012-06-15", xy=69.425, rl3d=18.487)])
+        self.assertEqual(code, 0)
+        self.assertNotIn("VOID", out)
+        self.assertIn("ok", out)
+
+    def test_a_regression_with_a_steady_control_still_fails(self):
+        # 2012-08-20 on 2026-10-05: control -0.11%, so the +18.3% IS real and must
+        # still be reported. Voiding must not become a way to swallow regressions.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 143.976, rl3d=10.507))
+            code, out = run([m, "--baseline",
+                             baseline(d, seq="2012-08-20", xy=121.669, rl3d=10.519)])
+        self.assertEqual(code, 1)
+        self.assertIn("REGRESSION", out)
+        self.assertNotIn("VOID", out)
+
+    def test_a_void_run_fails_even_when_fusioncore_regressed_too(self):
+        # Both things wrong at once: do not let a void row be quietly dropped.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 999.0, rl3d=20.0))
+            code, out = run([m, "--baseline", baseline(d)])
+        self.assertEqual(code, 1)
+        self.assertIn("VOID", out)
+
+    def test_tolerance_boundary_just_inside_is_graded(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7, rl3d=10.5 * 1.009))
+            code, out = run([m, "--baseline", baseline(d)])
+        self.assertEqual(code, 0)
+        self.assertNotIn("VOID", out)
+
+    def test_tolerance_boundary_just_outside_is_void(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7, rl3d=10.5 * 1.011))
+            code, out = run([m, "--baseline", baseline(d)])
+        self.assertEqual(code, 1)
+        self.assertIn("VOID", out)
+
+    def test_control_moving_the_other_way_is_also_void(self):
+        # A control that got BETTER is just as much a changed machine.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7, rl3d=10.5 * 0.95))
+            code, out = run([m, "--baseline", baseline(d)])
+        self.assertEqual(code, 1)
+        self.assertIn("VOID", out)
+
+    def test_tolerance_is_overridable(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7, rl3d=10.5 * 1.03))
+            code, out = run([m, "--baseline", baseline(d), "--control-tolerance", "5"])
+        self.assertEqual(code, 0)
+        self.assertNotIn("VOID", out)
+
+    def test_a_baseline_with_no_control_still_grades_but_says_so(self):
+        # Back-compat: older baseline entries have no rl_ate_rmse_3d. Grade them,
+        # but never silently, or a starved run looks identical to a clean one.
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7))
+            code, out = run([m, "--baseline", baseline(d, rl3d=None)])
+        self.assertEqual(code, 0)
+        self.assertIn("UNCHECKED", out)
+        self.assertIn("starved", out)
+
+    def test_metrics_with_no_rl_block_is_also_flagged(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.7, rl=False))
+            code, out = run([m, "--baseline", baseline(d)])
+        self.assertEqual(code, 0)
+        self.assertIn("UNCHECKED", out)
 
 
 if __name__ == "__main__":
