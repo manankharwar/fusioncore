@@ -1,3 +1,4 @@
+#include <tuple>
 #include "fusioncore/fusioncore.hpp"
 #include "fusioncore/motion_model.hpp"
 #include "fusioncore/sensors/gnss.hpp"
@@ -2655,6 +2656,7 @@ private:
 
     auto fc_status = fc_->get_status();
     announce_heading_validated(fc_status);
+    announce_observability(fc_status);
     if (!fc_status.heading_validated) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
         "Heading not yet validated: lever arm inactive. "
@@ -2682,6 +2684,50 @@ private:
   // so it is roughly (GNSS sigma / distance travelled). At a 6 m sigma, 5 m of
   // travel is more than a radian. The number was always available; it was just
   // never surfaced at the one moment a user would look.
+  // Say what the filter cannot currently see, and what to drive to fix it.
+  //
+  // The failure this exists for: heading_validated_ can be true while carrying 100
+  // degrees of uncertainty, the lever arm can be configured and never applied, and
+  // the yaw rate and its bias can slide against each other all run. None of that
+  // looks like an error from outside, so a user concludes the filter is bad when the
+  // robot was never driven in a way that made the quantity observable.
+  //
+  // Logged on CHANGE, not on a timer, so it is quiet once things are observable and
+  // it never floods. The instruction text lives in the core next to the thresholds
+  // that choose it, so this cannot drift from what the filter actually requires.
+  void announce_observability(const fusioncore::FusionCoreStatus& st)
+  {
+    const auto& o = st.observability;
+    if (o.heading == fusioncore::Observability::UNKNOWN) return;   // nothing to say
+
+    const auto key = std::make_tuple(o.heading, o.gyro_bias_z, o.lever_arm, o.next);
+    if (obs_announced_ && key == obs_last_) return;
+    obs_announced_ = true;
+    obs_last_ = key;
+
+    if (o.next == fusioncore::ExcitationManoeuvre::NONE) {
+      RCLCPP_INFO(get_logger(),
+        "Observability: heading %s (%.1f deg), yaw gyro bias %s, GNSS lever arm %s. "
+        "Nothing further needed.",
+        fusioncore::observability_name(o.heading), o.heading_sigma_deg,
+        fusioncore::observability_name(o.gyro_bias_z),
+        fusioncore::observability_name(o.lever_arm));
+      return;
+    }
+
+    RCLCPP_WARN(get_logger(),
+      "Observability: heading %s (%.1f deg), yaw gyro bias %s "
+      "(sigma %.4f rad/s, r(WZ,B_GZ) %+.3f), GNSS lever arm %s.\n"
+      "  TO FIX: %s\n"
+      "  Until then those quantities are not constrained by anything, and waiting "
+      "does not change that. See docs/observability.md.",
+      fusioncore::observability_name(o.heading), o.heading_sigma_deg,
+      fusioncore::observability_name(o.gyro_bias_z),
+      o.gyro_bias_z_sigma, o.wz_bgz_correlation,
+      fusioncore::observability_name(o.lever_arm),
+      fusioncore::excitation_instruction(o.next));
+  }
+
   void announce_heading_validated(const fusioncore::FusionCoreStatus& st)
   {
     // Same place, same once-only shape: the IMU and the encoders disagreeing about
@@ -2938,6 +2984,7 @@ private:
 
     auto fc_status = fc_->get_status();
     announce_heading_validated(fc_status);
+    announce_observability(fc_status);
     if (!fc_status.heading_validated) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
         "Heading not yet validated: lever arm inactive. "
@@ -3389,6 +3436,9 @@ private:
   // Extracts heading 1-sigma in degrees from the filter covariance via quaternion Jacobian.
   bool heading_announced_ = false;
   bool yaw_sign_announced_ = false;
+  bool obs_announced_ = false;
+  std::tuple<fusioncore::Observability, fusioncore::Observability,
+             fusioncore::Observability, fusioncore::ExcitationManoeuvre> obs_last_{};
 
   double compute_heading_sigma_deg(const fusioncore::State& s) const
   {

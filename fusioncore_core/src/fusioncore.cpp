@@ -432,6 +432,133 @@ bool FusionCore::apply_delayed_measurement(
   return true;
 }
 
+const char* excitation_instruction(ExcitationManoeuvre m) {
+  switch (m) {
+    case ExcitationManoeuvre::NONE:
+      return "nothing needed: heading, gyro bias and lever arm are all observable";
+    case ExcitationManoeuvre::DRIVE_STRAIGHT:
+      return "drive straight for 10 m or more at over 0.2 m/s without turning. GNSS "
+             "track heading is the bearing between two fixes, so its uncertainty is "
+             "roughly (GNSS sigma / distance travelled): at a 3 m sigma, 5 m of "
+             "travel is more than a radian and 7.5 m is where it first becomes usable";
+    case ExcitationManoeuvre::TURN_IN_PLACE_FAST:
+      return "turn in place through at least 60 degrees at 1 rad/s or more, without "
+             "translating. It must be BRISK: yaw 1-sigma grows about 0.2 rad/s while "
+             "turning with an IMU feeding and 0.3 rad/s on encoder alone, so a slow "
+             "turn loses track of its own rotation before it has swept enough arc, "
+             "and the bootstrap correctly declines. Needs a non-zero GNSS lever arm "
+             "and an RTK-grade receiver";
+    case ExcitationManoeuvre::FIGURE_EIGHT:
+      return "drive two figure-eights, each loop 5 m or wider, at 0.5 m/s or more. "
+             "The straight segments give GNSS track heading, the turns separate the "
+             "yaw rate from its bias, and reversing the turn direction is what stops "
+             "a constant bias from looking like a constant rate";
+    case ExcitationManoeuvre::STOP_AND_WAIT:
+      return "stop completely for 10 s or more with the wheels still. ZUPT then "
+             "fuses a zero-velocity pseudo-measurement, which is what lets the accel "
+             "and gyro biases settle instead of integrating into drift";
+  }
+  return "unknown manoeuvre";
+}
+
+const char* observability_name(Observability o) {
+  switch (o) {
+    case Observability::UNKNOWN:      return "UNKNOWN";
+    case Observability::UNOBSERVABLE: return "UNOBSERVABLE";
+    case Observability::MARGINAL:     return "MARGINAL";
+    case Observability::OBSERVABLE:   return "OBSERVABLE";
+  }
+  return "?";
+}
+
+ObservabilityReport FusionCore::observability() const {
+  ObservabilityReport r;
+  if (!initialized_) return r;             // everything stays UNKNOWN
+
+  const State& s = ukf_.state();
+
+  // ---- heading ----
+  r.heading_sigma_deg = compute_heading_sigma_rad() * 180.0 / M_PI;
+  if (!heading_validated_) {
+    // Not "uncertain" but "nothing has ever constrained it". Worth separating,
+    // because waiting does not fix this one and driving does.
+    r.heading = Observability::UNOBSERVABLE;
+  } else if (r.heading_sigma_deg <= kHeadingObservableDeg) {
+    r.heading = Observability::OBSERVABLE;
+  } else if (r.heading_sigma_deg <= kHeadingMarginalDeg) {
+    r.heading = Observability::MARGINAL;
+  } else {
+    // heading_validated_ flips on distance travelled alone, so it can be true while
+    // carrying 100 degrees of uncertainty. Measured on the rover 2026-09-06.
+    r.heading = Observability::UNOBSERVABLE;
+  }
+
+  // ---- yaw gyro bias: the #150 pair ----
+  //
+  // A gyro alone cannot separate a rate from a bias on that rate. The two enter the
+  // measurement identically, so the pair can slide along WZ + B_GZ = const at zero
+  // measurement cost, and yaw integrates WZ alone and inherits the error. Measured
+  // on a 1.8 s in-place spin at a true 0.6 rad/s: WZ = 0.4800 and B_GZ = 0.1200,
+  // summing to exactly 0.6000 while neither half is right, and yaw reaching 81.6%
+  // of truth. Correlation is the right indicator because it is near 1 exactly when
+  // the pair is free.
+  const double var_wz  = std::max(s.P(WZ, WZ), 0.0);
+  const double var_bgz = std::max(s.P(B_GZ, B_GZ), 0.0);
+  r.gyro_bias_z_sigma = std::sqrt(var_bgz);
+  if (var_wz > 1e-18 && var_bgz > 1e-18) {
+    r.wz_bgz_correlation = s.P(WZ, B_GZ) / std::sqrt(var_wz * var_bgz);
+  }
+  // Two independent ways for this to be unobservable, and they need separating.
+  // A high correlation means the pair is structurally free and no amount of driving
+  // in a straight line will fix it. A large sigma with LOW correlation just means
+  // nothing has constrained it yet, which is the state at init where P is diagonal.
+  // Reporting the second as OBSERVABLE because the correlation happened to be zero
+  // would be worse than saying nothing.
+  const double abs_r = std::abs(r.wz_bgz_correlation);
+  if (var_bgz <= 1e-18) {
+    r.gyro_bias_z = Observability::UNKNOWN;     // no prior at all
+  } else if (abs_r >= kWzBgzCorrelationLimit ||
+             r.gyro_bias_z_sigma > kGyroBiasMarginalSigma) {
+    r.gyro_bias_z = Observability::UNOBSERVABLE;
+  } else if (abs_r >= 0.8 || r.gyro_bias_z_sigma > kGyroBiasObservableSigma) {
+    r.gyro_bias_z = Observability::MARGINAL;
+  } else {
+    r.gyro_bias_z = Observability::OBSERVABLE;
+  }
+
+  // ---- GNSS lever arm ----
+  // It is not estimated, it is configured; what varies is whether the filter is
+  // allowed to USE it, which is gated on heading uncertainty. Rotating a lever arm
+  // by a heading you do not know adds more position error than it removes.
+  if (r.heading == Observability::UNKNOWN) {
+    r.lever_arm = Observability::UNKNOWN;
+  } else if (config_.gnss.apply_lever_arm_pre_heading) {
+    r.lever_arm = Observability::OBSERVABLE;    // user opted in deliberately
+  } else if (r.heading_sigma_deg <= config_.gnss_lever_arm_max_heading_sigma_deg) {
+    r.lever_arm = Observability::OBSERVABLE;
+  } else {
+    r.lever_arm = Observability::UNOBSERVABLE;
+  }
+
+  // ---- what to drive ----
+  //
+  // Ordered by what unblocks the most. Heading first, because the lever arm gate and
+  // every bearing-derived quantity hang off it. A figure-eight is the general answer
+  // when the bias is the problem, because reversing the turn direction is what stops
+  // a constant bias from looking like a constant rate.
+  if (r.gyro_bias_z == Observability::UNOBSERVABLE) {
+    r.next = ExcitationManoeuvre::FIGURE_EIGHT;
+  } else if (r.heading == Observability::UNOBSERVABLE ||
+             r.heading == Observability::MARGINAL) {
+    r.next = config_.gps_rotation_heading_enabled
+               ? ExcitationManoeuvre::TURN_IN_PLACE_FAST
+               : ExcitationManoeuvre::DRIVE_STRAIGHT;
+  } else {
+    r.next = ExcitationManoeuvre::NONE;
+  }
+  return r;
+}
+
 double FusionCore::compute_heading_sigma_rad() const {
   const State& s = ukf_.state();
   const double qw = s.x[QW], qx = s.x[QX], qy = s.x[QY], qz = s.x[QZ];
@@ -2405,6 +2532,7 @@ FusionCoreStatus FusionCore::get_status() const {
   status.heading_validated = heading_validated_;
   status.heading_source     = heading_source_;
   status.last_heading_sigma = last_heading_sigma_;
+  status.observability      = observability();
   status.yaw_rate_sign_conflict = yaw_sign_conflict_;
   status.yaw_rate_turn_samples = yaw_sign_votes_;
   if (yaw_sign_votes_ > 0)

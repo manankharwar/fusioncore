@@ -596,6 +596,76 @@ enum class HeadingSource {
   GPS_ROTATION    = 5,  // GNSS antenna lever-arm arc swept during rotation
 };
 
+// ---------------------------------------------------------------------------
+// Observability: what the filter can currently SEE, and what to drive to fix it.
+//
+// Most of this project's hardest open problems are observability problems wearing
+// a filter problem's clothes. #150 is WZ + B_GZ sliding along a direction nothing
+// measures. "Heading never fuses" was 0 bearings in 298 fixes. The GNSS lever arm
+// sits inert until heading uncertainty drops under a threshold. The #67 rotation
+// bootstrap declines unless the turn is brisk enough that the filter still knows
+// the rotation it just made.
+//
+// In every one of those the filter was working as specified and the robot was never
+// driven in a way that made the quantity observable. A user has no way to tell those
+// two apart from the outside, so this says which it is, and names the manoeuvre.
+// ---------------------------------------------------------------------------
+
+enum class Observability {
+  UNKNOWN      = 0,  // not enough data yet to judge
+  UNOBSERVABLE = 1,  // nothing is constraining this; no amount of waiting fixes it
+  MARGINAL     = 2,  // constrained, but not tightly enough to rely on
+  OBSERVABLE   = 3,
+};
+
+// The motion that makes an unobservable quantity observable. Prescribing the motion
+// is the whole point: hoping the robot happens to move usefully is what produced
+// three open issues.
+enum class ExcitationManoeuvre {
+  NONE               = 0,  // nothing is missing
+  DRIVE_STRAIGHT     = 1,  // GNSS track heading needs a straight run
+  TURN_IN_PLACE_FAST = 2,  // rotation heading bootstrap, and it must be brisk
+  FIGURE_EIGHT       = 3,  // both of the above, which also separates the gyro bias
+  STOP_AND_WAIT      = 4,  // ZUPT, let the biases settle while stationary
+};
+
+struct ObservabilityReport {
+  Observability heading     = Observability::UNKNOWN;
+  Observability gyro_bias_z = Observability::UNKNOWN;
+  Observability lever_arm   = Observability::UNKNOWN;
+
+  double heading_sigma_deg  = 0.0;   // from P via the quaternion-to-yaw Jacobian
+  double gyro_bias_z_sigma  = 0.0;   // rad/s, from P
+  // Correlation between WZ and B_GZ. This is the #150 number. A gyro alone cannot
+  // separate a rate from a bias on that rate, so as |r| approaches 1 the pair is
+  // free to slide with no measurement cost, and anything integrating WZ alone
+  // inherits the error. Measured at 1.000 for the B_GZ/B_EWZ pair, which is
+  // structurally unidentifiable rather than merely poorly conditioned.
+  double wz_bgz_correlation = 0.0;
+
+  ExcitationManoeuvre next = ExcitationManoeuvre::NONE;
+};
+
+// Thresholds, in one place so the doc and the code cannot drift apart.
+// heading: 10 deg is where the GNSS lever arm becomes worth applying on a 0.3 m arm
+// against metre-scale GNSS noise; 30 deg is where a heading stops being a heading.
+constexpr double kHeadingObservableDeg   = 10.0;
+constexpr double kHeadingMarginalDeg     = 30.0;
+// correlation: above this the rate and its bias are not separable in practice.
+constexpr double kWzBgzCorrelationLimit  = 0.95;
+// A low correlation is not enough on its own. At init P is diagonal, so the
+// correlation is 0 while the bias sigma is sqrt(0.1) = 0.316 rad/s, which is 18 deg/s
+// and not observable in any useful sense: nothing has constrained it yet, it is
+// merely uncorrelated. A decent MEMS gyro bias is around 0.01 rad/s, so 0.02 is
+// "constrained" and 0.05 is "nothing has pinned this down".
+constexpr double kGyroBiasObservableSigma = 0.02;   // rad/s
+constexpr double kGyroBiasMarginalSigma   = 0.05;   // rad/s
+
+// Human-readable instruction for a manoeuvre. Defined in the cpp so the text lives
+// next to the thresholds that decide which one is returned.
+const char* excitation_instruction(ExcitationManoeuvre m);
+const char* observability_name(Observability o);
+
 // Why a GNSS fix was rejected (or ACCEPTED if it passed)
 enum class GnssRejectionReason {
   NOT_PROCESSED   = 0,  // update_gnss not yet called
@@ -778,6 +848,8 @@ struct FusionCoreStatus {
   HeadingSource heading_source      = HeadingSource::NONE;
   // 1-sigma of the last heading observation actually fused, radians. 0 if none.
   double        last_heading_sigma  = 0.0;
+  // What the filter can currently see, and what to drive to fix what it cannot.
+  ObservabilityReport observability;
   // Outcome of the most recent encoder update, and how surprising it was against
   // the gate that judged it. chi2 is -1 when no encoder update has been gated.
   EncoderRejectionReason encoder_reason = EncoderRejectionReason::NOT_PROCESSED;
@@ -995,6 +1067,10 @@ public:
   void               reset();
   bool               is_initialized()    const { return initialized_; }
   bool               is_heading_valid()  const { return heading_validated_; }
+
+  // What the filter can currently observe, and the manoeuvre that would fix the
+  // rest. Cheap: reads P and a few flags, no iteration.
+  ObservabilityReport observability() const;
   HeadingSource      heading_source()    const { return heading_source_; }
 
 private:
