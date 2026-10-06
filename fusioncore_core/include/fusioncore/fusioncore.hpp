@@ -129,6 +129,40 @@ struct FusionCoreConfig {
   // displacement that is the wrong size carries no heading information.
   double gps_rotation_heading_max_len_residual_sigma = 3.0;
 
+  // ---- initial bias uncertainty ----
+  //
+  // How well you know the gyro's zero-rate offset AT STARTUP, as a 1-sigma in rad/s.
+  // This is not a tuning knob in the usual sense: it sets how the filter divides a
+  // gyro reading between the true rate and the bias, and that division is otherwise
+  // arbitrary because the two are not separately observable from a gyro alone.
+  //
+  // With n rate sensors each carrying its own bias, all measuring the same rate, and
+  // r = P_wz / P_bias, the minimum-variance split is
+  //
+  //     WZ fraction = n*r / (1 + n*r)        each bias fraction = 1 / (1 + n*r)
+  //
+  // Measured on this filter, where r works out to 2 * P0_wz / P0_bias, confirmed to
+  // four decimals across four orders of magnitude of P0_bias:
+  //
+  //     P0_bias 0.1    -> WZ 0.8000     P0_bias 0.01   -> WZ 0.9756
+  //     P0_bias 0.05   -> WZ 0.8889     P0_bias 0.001  -> WZ 0.9975
+  //
+  // The node used to initialise EVERY state at 0.1, which is a bias sigma of 0.316
+  // rad/s, or 18 deg/s. No MEMS gyro is that bad, and claiming it is hands 20% of
+  // every yaw rate to the bias. Yaw integrates WZ alone, so yaw then advances at 80%
+  // of truth. That was the whole of the measured 81.6% in issue #150.
+  //
+  // 0.02 rad/s is about 1.1 deg/s, a defensible figure for a consumer MEMS gyro's
+  // zero-rate offset. RAISE IT if your gyro is poorly calibrated or runs hot: a prior
+  // that is tight and WRONG is worse than one that is loose, because the filter will
+  // not correct a bias it believes it already knows.
+  //
+  // This does NOT make the pair observable. The degeneracy is structural and only a
+  // zero-rate update or an absolute heading removes it. It puts the split somewhere
+  // defensible until one of those arrives.
+  double gyro_bias_initial_sigma  = 0.02;   // rad/s
+  double accel_bias_initial_sigma = 0.10;   // m/s^2, same class of prior, untested
+
   // ---- inter-sensor time offset ----
   //
   // The filter has always GUARDED against clock disagreement: reject_stale_from_skew
@@ -1528,6 +1562,17 @@ private:
     double          yaw_sigma          = 0.0;
     double          encoder_distance   = 0.0;
   };
+
+  // Has anything that CAN observe the yaw gyro bias actually fired?
+  //
+  // A tight prior is not an observation, and that distinction cost a wrong verdict
+  // once already on heading. With a tight bias prior the bias barely moves, so there
+  // is little covariance to correlate, and a correlation-only test reads that as
+  // observability: measured r = -0.37 at a 1e-5 prior while the pair was still
+  // structurally free. Only zupt_measurement_function (z = WZ, no bias term) and an
+  // absolute heading can actually separate the pair, so this records whether one of
+  // them has fused.
+  bool                     gyro_bias_observed_ = false;
 
   TimeOffsetEstimator      time_offset_est_;
   TimeOffsetEstimator::Result time_offset_last_{};

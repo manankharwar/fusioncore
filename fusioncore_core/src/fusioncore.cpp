@@ -514,15 +514,21 @@ ObservabilityReport FusionCore::observability() const {
   if (var_wz > 1e-18 && var_bgz > 1e-18) {
     r.wz_bgz_correlation = s.P(WZ, B_GZ) / std::sqrt(var_wz * var_bgz);
   }
-  // Two independent ways for this to be unobservable, and they need separating.
-  // A high correlation means the pair is structurally free and no amount of driving
-  // in a straight line will fix it. A large sigma with LOW correlation just means
-  // nothing has constrained it yet, which is the state at init where P is diagonal.
-  // Reporting the second as OBSERVABLE because the correlation happened to be zero
-  // would be worse than saying nothing.
+  // A TIGHT PRIOR IS NOT AN OBSERVATION. This is the same distinction heading needs,
+  // and getting it wrong here produced a false OK: with a 1e-5 bias prior the bias
+  // barely moves, so there is little covariance to correlate and r fell to -0.37
+  // while the pair was still structurally free. Correlation measures whether the
+  // bias is currently moving WITH WZ, not whether anything has pinned it down.
+  //
+  // Only two measurements can separate the pair: zupt_measurement_function, which
+  // observes z = WZ with no bias term, and an absolute heading, which anchors the
+  // yaw that WZ integrates. Until one of those has fused, the answer is
+  // UNOBSERVABLE whatever the covariance looks like.
   const double abs_r = std::abs(r.wz_bgz_correlation);
   if (var_bgz <= 1e-18) {
     r.gyro_bias_z = Observability::UNKNOWN;     // no prior at all
+  } else if (!gyro_bias_observed_) {
+    r.gyro_bias_z = Observability::UNOBSERVABLE;
   } else if (abs_r >= kWzBgzCorrelationLimit ||
              r.gyro_bias_z_sigma > kGyroBiasMarginalSigma) {
     r.gyro_bias_z = Observability::UNOBSERVABLE;
@@ -1477,6 +1483,10 @@ void FusionCore::update_zupt(double timestamp_seconds, double noise_sigma) {
   R(2,2) = var;
 
   ukf_.update<sensors::ENCODER_DIM>(z, sensors::zupt_measurement_function, R);
+  // zupt_measurement_function observes z = WZ with NO bias term, which pins the rate
+  // and turns the gyro reading into a direct measurement of the bias. This is the
+  // only thing besides an absolute heading that separates the pair. See #150.
+  gyro_bias_observed_ = true;
 
   // Hold the position covariance down while the robot is known to be still.
   // Deliberately NOT applied while coasting: coast inflation exists so the
@@ -2484,6 +2494,7 @@ bool FusionCore::update_gnss_heading(
   }
 
   heading_reason_ = HeadingRejectionReason::ACCEPTED;
+  gyro_bias_observed_ = true;   // an absolute heading anchors WZ, see fusioncore.hpp
   ukf_.update<sensors::GNSS_HDG_DIM>(
     z, sensors::gnss_hdg_measurement_function, R, HDG_ANGLE_DIMS);
 

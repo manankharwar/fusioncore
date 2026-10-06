@@ -997,3 +997,38 @@ When `gnss.use_gps_fix: true`, FusionCore picks the best available covariance so
     # was wrong, and the behaviour being replaced here was already too quiet.
     #
     # The reported offset is what to ADD to align the streams, so the signs match.
+
+    imu.gyro_bias_initial_sigma: 0.02
+    imu.accel_bias_initial_sigma: 0.10
+    # How well you know the sensor's zero offset AT STARTUP, as a 1-sigma
+    # (rad/s for the gyro, m/s^2 for the accelerometer).
+    #
+    # NOT an ordinary tuning knob. A gyro measures rate + bias, so the two are not
+    # separately observable from the gyro alone, and the filter divides a reading
+    # between them in proportion to their covariances. This sets that division.
+    #
+    # With n rate sensors each carrying its own bias, all measuring the same rate,
+    # and r = P_wz / P_bias, the minimum-variance split is
+    #
+    #     WZ fraction = n*r / (1 + n*r)       each bias fraction = 1 / (1 + n*r)
+    #
+    # Measured on this filter, where r works out to exactly 2 * P0_wz / P0_bias,
+    # confirmed across four orders of magnitude with a gyro and an encoder (n = 2):
+    #
+    #     P0(bias) 0.1    -> WZ gets 80.00%      P0(bias) 0.01   -> 97.56%
+    #     P0(bias) 0.05   -> WZ gets 88.89%      P0(bias) 0.001  -> 99.75%
+    #
+    # Until 2026-10-06 every state was initialised at 0.1, which is a gyro bias sigma
+    # of 0.316 rad/s, or 18 deg/s. No MEMS gyro is that bad. Claiming it handed 20%
+    # of every yaw rate to the bias, and since yaw integrates the rate alone, yaw
+    # advanced at 80% of truth. That was the measured 81.6% in issue #150.
+    #
+    # 0.02 rad/s is about 1.1 deg/s, defensible for a consumer MEMS gyro's zero-rate
+    # offset. RAISE IT if your gyro is poorly calibrated or runs hot. A prior that is
+    # tight and WRONG is worse than one that is loose, because the filter will not
+    # correct a bias it believes it already knows.
+    #
+    # This does NOT make the pair observable, and the filter will still report the
+    # gyro bias as UNOBSERVABLE until a zero-velocity update or an absolute heading
+    # actually fires. A better prior starts the split somewhere defensible; only a
+    # measurement separates the pair. See docs/observability.md.

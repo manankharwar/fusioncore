@@ -408,6 +408,14 @@ public:
     // Estimating is on by default because it only reports. APPLYING is manual: a
     // filter that silently shifted a sensor stream would be very hard to debug the
     // first time it was wrong.
+    // How well the gyro's zero-rate offset is known at STARTUP, 1-sigma. Not an
+    // ordinary tuning knob: it sets how a gyro reading is divided between the true
+    // rate and the bias, which is otherwise arbitrary because the two are not
+    // separately observable. 0.02 rad/s is about 1.1 deg/s. RAISE it for a poorly
+    // calibrated or hot-running gyro, because a tight prior that is WRONG is worse
+    // than a loose one. See docs/observability.md.
+    declare_parameter("imu.gyro_bias_initial_sigma",  0.02);
+    declare_parameter("imu.accel_bias_initial_sigma", 0.10);
     declare_parameter("time_offset.estimate_interval_s", 10.0);
     declare_parameter("encoder.time_offset", 0.0);
 
@@ -817,6 +825,12 @@ public:
         get_parameter("gnss.track_heading_cross_check_deg").as_double();
     heading_xcheck_deg_ = config.gps_track_heading_cross_check_deg;
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
+    config.gyro_bias_initial_sigma =
+      get_parameter("imu.gyro_bias_initial_sigma").as_double();
+    config.accel_bias_initial_sigma =
+      get_parameter("imu.accel_bias_initial_sigma").as_double();
+    cfg_bias_gyro_sigma_  = config.gyro_bias_initial_sigma;
+    cfg_bias_accel_sigma_ = config.accel_bias_initial_sigma;
     config.time_offset_estimate_interval_s =
       get_parameter("time_offset.estimate_interval_s").as_double();
     config.encoder_time_offset =
@@ -1269,6 +1283,7 @@ public:
         fusioncore::State initial;
         initial.x = fusioncore::StateVector::Zero();
         initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+        apply_bias_priors(initial.P);
         initial.P(0,0) = 1000.0;
         initial.P(1,1) = 1000.0;
         initial.P(2,2) = 1000.0;
@@ -1665,6 +1680,7 @@ private:
       if (init_window_duration_ <= 0.0) {
         fusioncore::State initial;
         initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+        apply_bias_priors(initial.P);
         initial.P(0,0) = 1000.0;
         initial.P(1,1) = 1000.0;
         initial.P(2,2) = 1000.0;
@@ -1734,6 +1750,7 @@ private:
         if (window_elapsed >= init_window_duration_) {
           fusioncore::State initial;
           initial.P = fusioncore::StateMatrix::Identity() * 0.1;
+        apply_bias_priors(initial.P);
           initial.P(0,0) = 1000.0;
           initial.P(1,1) = 1000.0;
           initial.P(2,2) = 1000.0;
@@ -2711,6 +2728,30 @@ private:
   // Logged on CHANGE, not on a timer, so it is quiet once things are observable and
   // it never floods. The instruction text lives in the core next to the thresholds
   // that choose it, so this cannot drift from what the filter actually requires.
+  // Apply the bias priors to a freshly built initial covariance.
+  //
+  // Every init site used to leave the bias blocks at the blanket 0.1, which is a gyro
+  // bias sigma of 0.316 rad/s (18 deg/s). No MEMS gyro is that bad, and the claim is
+  // not free: the gyro measures rate + bias, so the two are not separately
+  // observable, and the filter divides a reading between them in proportion to their
+  // covariances. A bias prior 100x looser than reality hands 20% of every yaw rate to
+  // the bias, and yaw integrates the rate alone. See fusioncore.hpp for the formula
+  // and the measured table.
+  void apply_bias_priors(fusioncore::StateMatrix& P) const
+  {
+    const double gs = cfg_bias_gyro_sigma_;
+    const double as = cfg_bias_accel_sigma_;
+    P(fusioncore::B_GX, fusioncore::B_GX) = gs * gs;
+    P(fusioncore::B_GY, fusioncore::B_GY) = gs * gs;
+    P(fusioncore::B_GZ, fusioncore::B_GZ) = gs * gs;
+    P(fusioncore::B_AX, fusioncore::B_AX) = as * as;
+    P(fusioncore::B_AY, fusioncore::B_AY) = as * as;
+    P(fusioncore::B_AZ, fusioncore::B_AZ) = as * as;
+    // The encoder yaw-rate bias is the same class of unknown as the gyro's and sits
+    // in the same unobservable direction, so it takes the same prior.
+    P(fusioncore::B_EWZ, fusioncore::B_EWZ) = gs * gs;
+  }
+
   void announce_observability(const fusioncore::FusionCoreStatus& st)
   {
     const auto& o = st.observability;
@@ -3453,6 +3494,8 @@ private:
   bool heading_announced_ = false;
   bool yaw_sign_announced_ = false;
   bool obs_announced_ = false;
+  double cfg_bias_gyro_sigma_  = 0.02;
+  double cfg_bias_accel_sigma_ = 0.10;
   std::tuple<fusioncore::Observability, fusioncore::Observability,
              fusioncore::Observability, fusioncore::ExcitationManoeuvre> obs_last_{};
 

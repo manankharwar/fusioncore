@@ -127,6 +127,31 @@ Two separate ways for this to read `UNOBSERVABLE`, and they need different respo
 Thresholds: correlation limit 0.95, bias sigma 0.02 rad/s for `OBSERVABLE` and 0.05
 for `MARGINAL`.
 
+**And a low correlation is not enough either.** The verdict requires that something
+which *can* observe the bias has actually fired: a zero-velocity update, or an
+absolute heading. Without one, the answer is `UNOBSERVABLE` whatever the covariance
+looks like.
+
+That guard exists because the opposite produced a false OK. The split between the
+rate and its bias is set by their covariance ratio, so a tight bias prior starts it
+somewhere much better:
+
+```
+  P0(bias)   WZ share   r(WZ,B_GZ)
+   0.10000     80.00%     -0.9982
+   0.00040     99.90%     -0.7686
+   0.00001    100.00%     -0.3727
+```
+
+A tight prior makes the bias barely move, so there is little covariance left to
+correlate, and a correlation-only test reads that as observability. **It is not.**
+Nothing has observed the bias; the prior merely started the split in a better place.
+This is the same distinction as "a tight prior is not an observation" for heading,
+and it was got wrong here first.
+
+`imu.gyro_bias_initial_sigma` is the knob, and the formula is in
+`docs/configuration.md`.
+
 ### GNSS lever arm
 
 Not estimated, configured. What varies is whether the filter is allowed to **use** it,
