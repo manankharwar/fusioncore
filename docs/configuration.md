@@ -961,3 +961,39 @@ When `gnss.use_gps_fix: true`, FusionCore picks the best available covariance so
 
 !!! warning "Upgrading from an older config"
     If your YAML has `ukf.q_orientation: 0.01`, change it to `1.0e-9` or delete the line. The old value corrupts quaternion math at typical IMU rates and causes yaw drift and Z-axis rise in simulation.
+
+    time_offset.estimate_interval_s: 10.0
+    # How often, in seconds of filter time, to recompute the measured offset between
+    # the IMU and encoder clocks. 0 disables the estimator entirely.
+    #
+    # The filter has always GUARDED against clock disagreement: a measurement whose
+    # stamp lags the filter clock by more than max_measurement_delay is dropped and
+    # counted as DELAY_TOO_LARGE. That is safe, and it throws the data away. This
+    # measures the offset so it can be corrected instead.
+    #
+    # It needs no extra hardware, because the gyro's z rate and a differential
+    # drive's encoder yaw rate are the same signal observed twice: the lag that
+    # maximises their agreement IS the offset between their clocks. Normalised
+    # cross-correlation over a grid of candidate lags, then a parabolic refinement
+    # through the peak, which gets below the 10 ms grid step.
+    #
+    # Measured accuracy on synthetic data with realistic gyro noise: 0.8 ms. The
+    # estimate is SCALE INVARIANT, so a 28.5% encoder scale error (the real ratio
+    # measured on NCLT in issue #169) does not move it.
+    #
+    # It refuses rather than guessing in three cases: nothing is turning, so every
+    # lag fits a constant equally well; the window is shorter than 10 s, because a
+    # short window finds a confident peak in noise; and the two streams are
+    # ANTI-correlated, which is not a timing problem at all but a sign convention
+    # problem, reported as anti_correlated so it is diagnosed rather than hidden.
+
+    encoder.time_offset: 0.0
+    # Seconds added to every encoder timestamp before use. Zero by default, so it is
+    # inert until you set it.
+    #
+    # APPLYING is deliberately a separate, manual decision from estimating. Read the
+    # reported estimate, decide whether you believe it, then set this. A filter that
+    # silently shifted a sensor stream would be very hard to debug the first time it
+    # was wrong, and the behaviour being replaced here was already too quiet.
+    #
+    # The reported offset is what to ADD to align the streams, so the signs match.

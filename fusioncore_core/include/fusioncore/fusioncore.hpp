@@ -1,5 +1,6 @@
 #pragma once
 #include "fusioncore/ukf.hpp"
+#include "fusioncore/time_offset.hpp"
 #include "fusioncore/state.hpp"
 #include "fusioncore/motion_model.hpp"
 #include "fusioncore/sensors/imu.hpp"
@@ -127,6 +128,26 @@ struct FusionCoreConfig {
   // rotation model predicts before the window is discarded. The angle of a
   // displacement that is the wrong size carries no heading information.
   double gps_rotation_heading_max_len_residual_sigma = 3.0;
+
+  // ---- inter-sensor time offset ----
+  //
+  // The filter has always GUARDED against clock disagreement: reject_stale_from_skew
+  // drops a measurement whose stamp lags the filter clock by more than
+  // max_measurement_delay, and DELAY_TOO_LARGE counts it. Safe, and it throws the
+  // data away. Nothing measured the offset so it could be corrected instead.
+  //
+  // It is measurable with no extra hardware, because the gyro's z rate and a
+  // differential drive's encoder yaw rate are the same signal observed twice, so the
+  // lag that maximises their agreement is the offset. See time_offset.hpp.
+  //
+  // Estimating is ON by default because it only reports. APPLYING is a separate,
+  // manual decision: a filter that silently shifted a sensor stream would be very
+  // hard to debug the first time it was wrong, and the behaviour being replaced here
+  // was already too quiet.
+  double time_offset_estimate_interval_s = 10.0;   // 0 disables the estimator
+  // Added to every encoder timestamp before use. Set it from the reported estimate
+  // once you believe it. Reported offset is what to ADD, so the sign matches.
+  double encoder_time_offset = 0.0;                // seconds
 
   // Lever arm correction is only applied when heading uncertainty is below this threshold.
   // When heading_sigma exceeds this value (e.g. during prolonged turns with no GPS track
@@ -850,6 +871,9 @@ struct FusionCoreStatus {
   double        last_heading_sigma  = 0.0;
   // What the filter can currently see, and what to drive to fix what it cannot.
   ObservabilityReport observability;
+  // Measured offset between the IMU and encoder clocks. Reported, never applied on
+  // its own: set encoder.time_offset from it when you believe it.
+  TimeOffsetEstimator::Result time_offset;
   // Outcome of the most recent encoder update, and how surprising it was against
   // the gate that judged it. chi2 is -1 when no encoder update has been gated.
   EncoderRejectionReason encoder_reason = EncoderRejectionReason::NOT_PROCESSED;
@@ -1504,6 +1528,10 @@ private:
     double          yaw_sigma          = 0.0;
     double          encoder_distance   = 0.0;
   };
+
+  TimeOffsetEstimator      time_offset_est_;
+  TimeOffsetEstimator::Result time_offset_last_{};
+  double                   time_offset_last_eval_ = -1.0;
 
   GpsRotationHeadingWindow gps_rotation_hdg_window_;
   bool   gps_rotation_hdg_fused_ = false;

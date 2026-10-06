@@ -399,6 +399,18 @@ public:
     declare_parameter("gnss.track_heading_cross_check_deg", 15.0);
     declare_parameter("gnss.track_heading_min_speed",    0.2);
 
+    // Inter-sensor time offset. The filter has always GUARDED against clock
+    // disagreement by dropping late measurements; this measures the offset so it can
+    // be corrected instead. The gyro z rate and a differential drive's encoder yaw
+    // rate are the same signal observed twice, so the lag that maximises their
+    // agreement is the offset.
+    //
+    // Estimating is on by default because it only reports. APPLYING is manual: a
+    // filter that silently shifted a sensor stream would be very hard to debug the
+    // first time it was wrong.
+    declare_parameter("time_offset.estimate_interval_s", 10.0);
+    declare_parameter("encoder.time_offset", 0.0);
+
     // GNSS rotation heading bootstrap (#67). RTK only in practice: the noise model
     // requires the lateral sigma of the displacement between the two fixes to be
     // under about 10 cm, so roughly 7 cm per fix, and consumer GNSS at 2 to 5 m is
@@ -805,6 +817,10 @@ public:
         get_parameter("gnss.track_heading_cross_check_deg").as_double();
     heading_xcheck_deg_ = config.gps_track_heading_cross_check_deg;
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
+    config.time_offset_estimate_interval_s =
+      get_parameter("time_offset.estimate_interval_s").as_double();
+    config.encoder_time_offset =
+      get_parameter("encoder.time_offset").as_double();
 
     config.gps_rotation_heading_enabled =
       get_parameter("gnss.rotation_heading_enabled").as_bool();

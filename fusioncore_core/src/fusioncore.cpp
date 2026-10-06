@@ -943,6 +943,11 @@ void FusionCore::update_imu(
   if (!initialized_)
     throw std::runtime_error("FusionCore: update_imu() called before init()");
 
+  // Feed the time-offset estimator with the RAW stamp, before any gate. A gate that
+  // drops late messages would bias the very offset that caused them to be late.
+  if (config_.time_offset_estimate_interval_s > 0.0 && std::isfinite(wz))
+    time_offset_est_.add_imu(timestamp_seconds, wz);
+
   // Observe the real arrival rate BEFORE the stale gate, because a wrong
   // nominal rate is exactly what makes the clock run away from the stamps and
   // start rejecting IMU messages. Measuring only survivors would bias the very
@@ -1252,6 +1257,24 @@ void FusionCore::update_encoder(
         std::isfinite(var_vx) && std::isfinite(var_vy) && std::isfinite(var_wz))) {
     encoder_reason_ = EncoderRejectionReason::NOT_FINITE;
     return;
+  }
+
+  // Apply a measured clock offset before anything else uses the stamp. Zero by
+  // default, so this is inert until someone sets it from the reported estimate.
+  timestamp_seconds += config_.encoder_time_offset;
+
+  if (config_.time_offset_estimate_interval_s > 0.0) {
+    time_offset_est_.add_encoder(timestamp_seconds, wz);
+    // Throttled here rather than in get_status(), which is const. Feeding the
+    // estimator is a deque push, but the correlation search is O(samples * lag
+    // steps) and has no business running on every status call. The encoder path is
+    // also the stream the offset is applied to, so this is where it is wanted.
+    if (time_offset_last_eval_ < 0.0 ||
+        timestamp_seconds - time_offset_last_eval_ >=
+          config_.time_offset_estimate_interval_s) {
+      time_offset_last_eval_ = timestamp_seconds;
+      time_offset_last_ = time_offset_est_.estimate();
+    }
   }
 
   if (last_enc_raw_stamp_ >= 0.0 && timestamp_seconds > last_enc_raw_stamp_) {
@@ -2533,6 +2556,7 @@ FusionCoreStatus FusionCore::get_status() const {
   status.heading_source     = heading_source_;
   status.last_heading_sigma = last_heading_sigma_;
   status.observability      = observability();
+  status.time_offset        = time_offset_last_;
   status.yaw_rate_sign_conflict = yaw_sign_conflict_;
   status.yaw_rate_turn_samples = yaw_sign_votes_;
   if (yaw_sign_votes_ > 0)
