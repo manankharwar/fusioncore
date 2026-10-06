@@ -833,14 +833,9 @@ public:
     config.gps_track_heading_min_speed     = get_parameter("gnss.track_heading_min_speed").as_double();
     config.encoder_yaw_scale_model =
       get_parameter("encoder.yaw_scale_model").as_bool();
-    config.encoder_wz_scale_initial_sigma =
-      get_parameter("encoder.wz_scale_initial_sigma").as_double();
-    config.gyro_bias_initial_sigma =
-      get_parameter("imu.gyro_bias_initial_sigma").as_double();
-    config.accel_bias_initial_sigma =
-      get_parameter("imu.accel_bias_initial_sigma").as_double();
-    cfg_bias_gyro_sigma_  = config.gyro_bias_initial_sigma;
-    cfg_bias_accel_sigma_ = config.accel_bias_initial_sigma;
+    bias_gyro_sigma_  = get_parameter("imu.gyro_bias_initial_sigma").as_double();
+    bias_accel_sigma_ = get_parameter("imu.accel_bias_initial_sigma").as_double();
+    bias_enc_scale_sigma_ = get_parameter("encoder.wz_scale_initial_sigma").as_double();
     config.time_offset_estimate_interval_s =
       get_parameter("time_offset.estimate_interval_s").as_double();
     config.encoder_time_offset =
@@ -2738,28 +2733,24 @@ private:
   // Logged on CHANGE, not on a timer, so it is quiet once things are observable and
   // it never floods. The instruction text lives in the core next to the thresholds
   // that choose it, so this cannot drift from what the filter actually requires.
-  // Apply the bias priors to a freshly built initial covariance.
+  // Build the bias blocks of the initial covariance from the node's parameters.
   //
-  // Every init site used to leave the bias blocks at the blanket 0.1, which is a gyro
-  // bias sigma of 0.316 rad/s (18 deg/s). No MEMS gyro is that bad, and the claim is
-  // not free: the gyro measures rate + bias, so the two are not separately
-  // observable, and the filter divides a reading between them in proportion to their
-  // covariances. A bias prior 100x looser than reality hands 20% of every yaw rate to
-  // the bias, and yaw integrates the rate alone. See fusioncore.hpp for the formula
-  // and the measured table.
+  // This lives in the node on purpose. Initial covariance is not filter config, it is
+  // the State handed to init(), and check_config_wiring.py rejected the version that
+  // put it in FusionCoreConfig because the core never read it. A library user sets P
+  // directly and needs no parameter.
   void apply_bias_priors(fusioncore::StateMatrix& P) const
   {
-    const double gs = cfg_bias_gyro_sigma_;
-    const double as = cfg_bias_accel_sigma_;
-    P(fusioncore::B_GX, fusioncore::B_GX) = gs * gs;
-    P(fusioncore::B_GY, fusioncore::B_GY) = gs * gs;
-    P(fusioncore::B_GZ, fusioncore::B_GZ) = gs * gs;
-    P(fusioncore::B_AX, fusioncore::B_AX) = as * as;
-    P(fusioncore::B_AY, fusioncore::B_AY) = as * as;
-    P(fusioncore::B_AZ, fusioncore::B_AZ) = as * as;
-    // The encoder yaw-rate bias is the same class of unknown as the gyro's and sits
-    // in the same unobservable direction, so it takes the same prior.
-    P(fusioncore::B_EWZ, fusioncore::B_EWZ) = gs * gs;
+    const double g = bias_gyro_sigma_, a = bias_accel_sigma_;
+    P(fusioncore::B_GX, fusioncore::B_GX) = g * g;
+    P(fusioncore::B_GY, fusioncore::B_GY) = g * g;
+    P(fusioncore::B_GZ, fusioncore::B_GZ) = g * g;
+    P(fusioncore::B_AX, fusioncore::B_AX) = a * a;
+    P(fusioncore::B_AY, fusioncore::B_AY) = a * a;
+    P(fusioncore::B_AZ, fusioncore::B_AZ) = a * a;
+    const double e = get_parameter("encoder.yaw_scale_model").as_bool()
+                   ? bias_enc_scale_sigma_ : g;
+    P(fusioncore::B_EWZ, fusioncore::B_EWZ) = e * e;
   }
 
   void announce_observability(const fusioncore::FusionCoreStatus& st)
@@ -3504,8 +3495,9 @@ private:
   bool heading_announced_ = false;
   bool yaw_sign_announced_ = false;
   bool obs_announced_ = false;
-  double cfg_bias_gyro_sigma_  = 0.175;
-  double cfg_bias_accel_sigma_ = 0.30;
+  double bias_gyro_sigma_      = 0.175;
+  double bias_accel_sigma_     = 0.30;
+  double bias_enc_scale_sigma_ = 0.30;
   std::tuple<fusioncore::Observability, fusioncore::Observability,
              fusioncore::Observability, fusioncore::ExcitationManoeuvre> obs_last_{};
 

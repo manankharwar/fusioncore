@@ -1052,6 +1052,10 @@ When `gnss.use_gps_fix: true`, FusionCore picks the best available covariance so
     # gyro bias as UNOBSERVABLE until a zero-velocity update or an absolute heading
     # actually fires. A better prior starts the split somewhere defensible; only a
     # measurement separates the pair. See docs/observability.md.
+    #
+    # These are NODE-LEVEL parameters. Initial covariance is not filter config, it is
+    # the State handed to init(), so fusioncore_core has no field for it by design. A
+    # library user sets State::P directly and needs no parameter at all.
 
     encoder.yaw_scale_model: false
     encoder.wz_scale_initial_sigma: 0.30
