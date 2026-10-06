@@ -402,3 +402,125 @@ TEST(AttitudeObservability, CharacteriseThatTheEncoderOnlyArmOvershootsInstead)
   EXPECT_NEAR(without.wz + without.b_gz, 0.4, 0.05)
       << "and on encoder alone even the SUM is wrong, 0.40 against a true 0.60";
 }
+
+// ─── Is it a bias error or a scale error? Both, and that is the point ────────
+//
+// The 81.6% was challenged on good grounds: a constant bias produces an error that
+// GROWS with time, while "yaw integrates at 81.6% of truth" is proportional, which is
+// a scale-factor signature. Real MEMS scale errors are low single-digit percent, so
+// 18% points at the pipeline rather than the physics.
+//
+// The challenge was right about the signature and it rules out the obvious causes.
+// Measured across rate, direction and sample rate:
+//
+//   rate 0.15  WZ 0.1200  B_GZ 0.0300     B_GZ / rate = 0.200
+//   rate 0.30  WZ 0.2400  B_GZ 0.0600     B_GZ / rate = 0.200
+//   rate 0.60  WZ 0.4800  B_GZ 0.1200     B_GZ / rate = 0.200
+//   rate 1.20  WZ 0.9600  B_GZ 0.2400     B_GZ / rate = 0.200
+//   rate -0.60                            same ratio, no flip
+//   50/100/200 Hz                         identical, so not dropped samples
+//
+// A constant bias would hold B_GZ FIXED as the rate changes. It does not: B_GZ is
+// exactly 20% of whatever the rate is. Reversing direction does not flip the ratio
+// past 1, which an additive offset would. Changing the IMU rate changes nothing,
+// which rules out a fixed-dt integration or dropped samples.
+//
+// The resolution is that these are the same finding. An unobservable ADDITIVE pair
+// splits any signal into fixed fractions, so when the true bias is zero the whole
+// reading is signal and a proportional split looks exactly like a scale error. The
+// fractions are clean rationals set by the covariance, not by physics:
+//
+//   IMU + encoder   WZ 0.800  B_GZ 0.200  B_EWZ 0.200
+//   IMU only        WZ 0.667  B_GZ 0.333  B_EWZ 0.000
+//   encoder only    WZ 0.667  B_GZ 0.000  B_EWZ 0.333
+//
+// Every measured sum is exactly 0.6000. Both measurements are satisfied perfectly
+// and the split between them is free, which is the definition of the unobservable
+// direction. Three unknowns and two equations leave one.
+
+TEST(AttitudeObservability, CharacteriseThatTheSplitIsAFixedFractionNotAFixedBias)
+{
+  auto split = [](double rate) {
+    FusionCoreConfig cfg;
+    cfg.outlier_rejection = false;
+    cfg.adaptive_gnss = false;
+    cfg.gps_track_heading_enabled = false;
+    FusionCore fc(cfg);
+    State s;
+    s.P = StateMatrix::Identity() * 0.1;
+    for (int i : {QW, QX, QY, QZ})
+      for (int j : {QW, QX, QY, QZ})
+        s.P(i, j) = (i == j) ? 1e-6 : 0.0;
+    fc.init(s, 0.0);
+    for (int i = 1; i <= 180; ++i) {
+      const double t = i * 0.01;
+      fc.update_imu(t, 0.0, 0.0, rate, 0.0, 0.0, kG);
+      fc.update_encoder(t, 0.0, 0.0, rate, 1e-4, 1e-4, 1e-4);
+    }
+    return fc.get_state().x;
+  };
+
+  for (double rate : {0.15, 0.30, 0.60, 1.20}) {
+    const auto x = split(rate);
+    EXPECT_NEAR(x[B_GZ] / rate, 0.200, 0.01)
+        << "at rate " << rate << " the bias share must be a FRACTION, not a constant";
+    EXPECT_NEAR(x[WZ] / rate, 0.800, 0.01) << "at rate " << rate;
+    EXPECT_NEAR(x[WZ] + x[B_GZ], rate, 1e-3)
+        << "the SUM is observable and must be exact at rate " << rate;
+  }
+}
+
+TEST(AttitudeObservability, CharacteriseThatReversingDirectionDoesNotFlipTheRatio)
+{
+  // An additive offset would push the ratio past 1 when the rate reverses. A
+  // proportional split does not. This is what rules out "it is just a bias".
+  auto wz_fraction = [](double rate) {
+    FusionCoreConfig cfg;
+    cfg.outlier_rejection = false;
+    cfg.adaptive_gnss = false;
+    cfg.gps_track_heading_enabled = false;
+    FusionCore fc(cfg);
+    State s;
+    s.P = StateMatrix::Identity() * 0.1;
+    for (int i : {QW, QX, QY, QZ})
+      for (int j : {QW, QX, QY, QZ})
+        s.P(i, j) = (i == j) ? 1e-6 : 0.0;
+    fc.init(s, 0.0);
+    for (int i = 1; i <= 180; ++i) {
+      const double t = i * 0.01;
+      fc.update_imu(t, 0.0, 0.0, rate, 0.0, 0.0, kG);
+      fc.update_encoder(t, 0.0, 0.0, rate, 1e-4, 1e-4, 1e-4);
+    }
+    return fc.get_state().x[WZ] / rate;
+  };
+  EXPECT_NEAR(wz_fraction(0.6), wz_fraction(-0.6), 0.01)
+      << "the fraction must be direction independent; an offset would not be";
+}
+
+TEST(AttitudeObservability, CharacteriseThatBothMeasurementsAreSatisfiedExactly)
+{
+  // The clearest statement that nothing is "wrong" in the fit. Three unknowns, two
+  // equations, both satisfied to four decimals, and the remaining freedom is what
+  // yaw inherits because it integrates WZ alone.
+  FusionCoreConfig cfg;
+  cfg.outlier_rejection = false;
+  cfg.adaptive_gnss = false;
+  cfg.gps_track_heading_enabled = false;
+  FusionCore fc(cfg);
+  State s;
+  s.P = StateMatrix::Identity() * 0.1;
+  for (int i : {QW, QX, QY, QZ})
+    for (int j : {QW, QX, QY, QZ})
+      s.P(i, j) = (i == j) ? 1e-6 : 0.0;
+  fc.init(s, 0.0);
+  const double rate = 0.6;
+  for (int i = 1; i <= 180; ++i) {
+    const double t = i * 0.01;
+    fc.update_imu(t, 0.0, 0.0, rate, 0.0, 0.0, kG);
+    fc.update_encoder(t, 0.0, 0.0, rate, 1e-4, 1e-4, 1e-4);
+  }
+  const auto& x = fc.get_state().x;
+  EXPECT_NEAR(x[WZ] + x[B_GZ],  rate, 1e-3) << "gyro equation";
+  EXPECT_NEAR(x[WZ] + x[B_EWZ], rate, 1e-3) << "encoder equation";
+  EXPECT_LT(x[WZ], rate * 0.9) << "and yet WZ alone, which drives yaw, is short";
+}
