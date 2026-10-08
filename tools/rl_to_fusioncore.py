@@ -46,6 +46,8 @@ def cfg_of(block, key):
 
 def find_params(doc):
     """ekf_node configs nest under <node_name>/ros__parameters, name varies."""
+    if not isinstance(doc, dict):
+        raise SystemExit("input is empty or not a YAML mapping: is this an ekf_node config?")
     for k, v in doc.items():
         if isinstance(v, dict) and "ros__parameters" in v:
             return k, v["ros__parameters"]
@@ -62,7 +64,10 @@ def main():
     a = ap.parse_args()
 
     with open(a.ekf_yaml) as f:
-        node_name, p = find_params(yaml.safe_load(f))
+        try:
+            node_name, p = find_params(yaml.safe_load(f))
+        except yaml.YAMLError as e:
+            raise SystemExit(f"{a.ekf_yaml} is not valid YAML: {e}")
 
     notes, todos = [], []
     out = {}
