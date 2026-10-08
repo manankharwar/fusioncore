@@ -226,19 +226,34 @@ source install/setup.bash
 bash benchmarks/check_prereqs.sh
 ```
 
-All seven checks must pass before proceeding.
+Every check must pass before proceeding. A `[FAIL]` on evo is the common
+one: `pip install evo --break-system-packages`, or put it in a venv at
+`~/.venv-evo`, which `tools/run_nclt.sh` prefers when it exists.
 
 ### 4. Download NCLT data
 
 ```bash
-# One sequence (~250 MB compressed)
-bash benchmarks/nclt_download.sh 2012-01-08
+# The three sequences the baseline gates on (250 MB compressed, 681 MB on disk)
+bash benchmarks/nclt_download.sh baseline
 
-# All 12 sequences (~3 GB total)
+# One sequence (66 to 114 MB compressed)
+bash benchmarks/nclt_download.sh 2012-06-15
+
+# All 12 sequences (1.12 GB compressed)
 bash benchmarks/nclt_download.sh all
 ```
 
-Files land in `benchmarks/nclt/<date>/raw files/` and are extracted automatically.
+The dataset is served from S3 as one tarball per sequence. Sizes above were
+read from the server on 2026-10-08, not estimated.
+
+Data lands in `$NCLT_DATA` (default `~/nclt/<date>/`), which is outside the
+repo, and the script symlinks `benchmarks/nclt/<date>/raw files` to it so both
+harnesses find it: `tools/run_nclt.sh` reads the data root directly and
+`benchmarks/run_one.sh` reads the `raw files` path.
+
+The data root is kept out of the repo deliberately. It is not ours to
+redistribute, and the hourly local backup excludes it because it is
+re-downloadable from the address above.
 
 ### 5. Run one sequence (full length, auto-stops)
 
@@ -278,7 +293,7 @@ benchmarks/
   run_all.sh              <- run all sequences sequentially
   nclt/
     2012-01-08/
-      raw files/          <- NCLT CSV data (not committed, download separately)
+      raw files/          <- symlink to $NCLT_DATA/<date> (not committed)
         ms25.csv          <- IMU (100 Hz)
         ms25_euler.csv    <- IMU Euler angles
         odometry_mu_100hz.csv  <- wheel encoder (100 Hz)

@@ -75,14 +75,14 @@ else
     info "Fix: pip install matplotlib --break-system-packages"
 fi
 
-# 6. wget (for download script)
+# 6. curl (for download script)
 echo ""
-echo "wget (for nclt_download.sh)"
-if command -v wget &>/dev/null; then
-    ok "wget found"
+echo "curl (for nclt_download.sh)"
+if command -v curl &>/dev/null; then
+    ok "curl found"
 else
-    fail "wget not found"
-    info "Fix: sudo apt install wget"
+    fail "curl not found"
+    info "Fix: sudo apt install curl"
 fi
 
 # 7. NCLT data check (at least one sequence)
