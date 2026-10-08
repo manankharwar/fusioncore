@@ -57,3 +57,46 @@ Why this exists: the published benchmark snapshot predated weeks of filter
 changes, some of which improved the long-blackout sequences while regressing
 another, and nothing caught it because scores were never tracked per commit.
 This closes that gap.
+
+## Working on the machine during a playback voids the control (2026-10-08)
+
+Measured, not suspected. A baseline re-measurement was started at 15:18 and
+2012-06-15 came back at 78.112 m against a recorded 73.525 m, which looks like
+a 6.24% regression worth investigating. It is not a result at all, because the
+robot_localization control moved from 18.487 m to 45.772 m, **+147.59%**. A
+control that moves 148% cannot certify that the input was the same, so the
+FusionCore delta beside it is not attributable to FusionCore.
+
+FusionCore's own achieved rate was fine, 97.9 Hz. The control's was not: 65325
+poses over 3311 s is 19.7 Hz against FusionCore's 324063. So the starvation was
+specific to robot_localization, which is the process whose health the ATE
+comparison depends on.
+
+What starved it was this session doing other work on the same machine while the
+playback ran: fetching URLs, running `ros2 pkg list` through check_prereqs.sh,
+rewriting a script, and committing. Mapping each "Failed to meet update rate"
+to wall-clock minute shows it directly:
+
+  2012-06-15, worked on during playback   54 events in the first 31 min
+                                          (10 in one minute, 19 across three)
+  2012-06-15, left alone after 15:50       7 events in the next 29 min
+  2012-08-20, left alone from the start    1 event in 19 min
+
+Three orders of difference in event rate between working and not working, on the
+same machine, in the same hour, on the same harness.
+
+**THIS IS THE SAME MISTAKE AS 2026-10-05**, when polling a run with pgrep and
+`ros2 topic hz` moved the control 4.40% and voided 75 minutes. The lesson was
+recorded as "do not poll it", and the header of rerun_baseline.sh says so. The
+lesson is actually larger and this is the corrected form:
+
+  A playback owns the machine. Not just no polling: no builds, no package
+  queries, no downloads, no test runs, nothing. Start it and go and do something
+  that is not on this computer.
+
+Historical starvation counts are in the old logs and were never read until now:
+36 on 2012-06-15, 215 on 2013-04-05, 280 on 2012-08-20. So some past runs were
+starved too, and every number measured beside a high count deserves the same
+suspicion as this one. `rerun_baseline.sh` now records the count per sequence
+beside the ATE for exactly this reason. Read it before the ATE, along with the
+achieved Hz, and read the control delta before either.
