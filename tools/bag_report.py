@@ -60,6 +60,12 @@ ODOM_TYPE = "nav_msgs/msg/Odometry"
 NAVSAT_TYPE = "sensor_msgs/msg/NavSatFix"
 TWIST_TYPES = ("geometry_msgs/msg/TwistStamped",
                "geometry_msgs/msg/TwistWithCovarianceStamped")
+JOINT_TYPE = "sensor_msgs/msg/JointState"
+
+# Joint-name fragments that identify a left or a right wheel. Matched on the NAME
+# rather than the index, because index order is a convention and names are a contract.
+LEFT_HINTS  = ("left", "_l_", "_l0", "port")
+RIGHT_HINTS = ("right", "_r_", "_r0", "starboard")
 
 # Both sources must agree the robot is turning before their signs mean anything.
 TURNING_RAD_S = 0.08
@@ -192,6 +198,36 @@ def check_clock_skew(series):
     return out
 
 
+def wheel_wz_proxy(msg_names, velocities):
+    """A SIGN-CORRECT, scale-free stand-in for yaw rate from wheel joint velocities.
+
+    JointState gives per-wheel angular velocity in rad/s. Turning it into a real yaw
+    rate needs wheel radii and track width:
+
+        wz = (w_right * r_right - w_left * r_left) / track_width
+
+    Those are calibration values a bag does not carry, and guessing them is exactly
+    how a 1.297x scale error gets introduced. So this does NOT return a yaw rate.
+
+    It returns (w_right_mean - w_left_mean), which has the SAME SIGN as the true yaw
+    rate for any positive radii and track width. That is enough for the one check
+    that matters most here, whether two rotation sources agree about which way the
+    robot turned, and it needs no calibration at all. The magnitude is in
+    rad/s-of-wheel-difference and is NOT comparable to a gyro, so the scale check is
+    skipped rather than computed from an invented geometry.
+    """
+    left, right = [], []
+    for name, v in zip(msg_names, velocities):
+        low = name.lower()
+        if any(h in low for h in LEFT_HINTS):
+            left.append(v)
+        elif any(h in low for h in RIGHT_HINTS):
+            right.append(v)
+    if not left or not right:
+        return None
+    return sum(right) / len(right) - sum(left) / len(left)
+
+
 def check_yaw_rate_signs(series):
     """The issue #169 class: two rotation sources disagreeing about which way.
 
@@ -221,6 +257,7 @@ def check_yaw_rate_signs(series):
                         "Drive a figure-eight so both sources see real rotation.")]
     dis = sum(1 for a, b in both if (a > 0) != (b > 0)) / len(both)
     ratio = statistics.median(abs(a) / abs(b) for a, b in both if abs(b) > 1e-6)
+    proxy = bool(series.get("odom_is_wheel_proxy"))
     out = []
     if dis > 0.8:
         out.append(finding(
@@ -245,7 +282,19 @@ def check_yaw_rate_signs(series):
                            f"{100 * (1 - dis):.0f}% agreement over {len(both)} "
                            f"turning samples."))
     # Magnitude is a separate question from sign, and the sign fix does not close it.
-    if ratio > 1.15 or ratio < 0.87:
+    # It is only askable when the wheel source is a real yaw rate. A JointState proxy
+    # is in rad/s-of-wheel-difference, so a ratio against a gyro is meaningless and
+    # saying so beats printing a number nobody can act on.
+    if proxy:
+        out.append(finding(
+            "INFO", "Wheel yaw-rate SCALE not checked: no calibration in the bag",
+            "The wheel source is sensor_msgs/JointState, which gives per-wheel "
+            "angular velocity. Converting that to a yaw rate needs wheel radii and "
+            "track width, which a bag does not carry.",
+            "The SIGN check above is still valid and needs no calibration, because "
+            "sign(right - left) gives turn direction for any positive geometry. To "
+            "get the scale too, supply the wheel radii and track width."))
+    elif ratio > 1.15 or ratio < 0.87:
         out.append(finding(
             "WARNING", f"Wheel yaw rate is {ratio:.2f}x the gyro's",
             f"Median |wheel| / |IMU| over {len(both)} turning samples is {ratio:.3f}.",
@@ -261,6 +310,13 @@ def check_stationary_bias(series):
     odom = series.get("odom") or []
     if len(imu) < 100:
         return []
+    if odom and all(o.get("v") is None for o in odom):
+        return [finding(
+            "INFO", "Stationary gyro bias not checked: forward speed is unknown",
+            "The wheel source gives per-wheel angular velocity, and forward speed "
+            "needs the wheel radius, which a bag does not carry. Without speed there "
+            "is no reliable way to say when the platform was still.",
+            "Supply the wheel radius, or record a nav_msgs/Odometry with a twist.")]
     # The LONGEST CONTIGUOUS still interval, not min-to-max of every still sample.
     # Taking min and max spans the whole bag whenever the robot happens to be still
     # at both the start and the end, which made the first version of this average
@@ -365,15 +421,23 @@ def check_observability(series):
         return []
     wz = [o["wz"] for o in odom if o.get("wz") is not None]
     v = [o["v"] for o in odom if o.get("v") is not None]
-    if not wz or not v:
+    if not wz:
         return []
+    speed_unknown = not v
     left = sum(1 for w in wz if w > TURNING_RAD_S)
     right = sum(1 for w in wz if w < -TURNING_RAD_S)
     straight = sum(1 for o in odom
                    if o.get("v") and o["v"] > 0.2
                    and o.get("wz") is not None and abs(o["wz"]) < TURNING_RAD_S)
     out = []
-    if straight < 0.05 * len(odom):
+    if speed_unknown:
+        out.append(finding(
+            "INFO", "Straight-line content not checked: forward speed is unknown",
+            "Turn direction is available from the wheels, but 'driving straight' "
+            "needs a speed, and that needs the wheel radius.",
+            "The turn-direction and stop findings below rest only on yaw rate and "
+            "remain valid."))
+    elif straight < 0.05 * len(odom):
         out.append(finding(
             "WARNING", "Almost no straight-line driving",
             f"{straight} of {len(odom)} samples were above 0.2 m/s and turning less "
@@ -394,6 +458,15 @@ def check_observability(series):
     # check above measures. A constant gyro bias and a constant yaw rate are in the
     # null space of the gyro's own measurement, so no trajectory separates them.
     # ZUPT is a different measurement, z = WZ with no bias term.
+    if speed_unknown:
+        out.append(finding(
+            "INFO", "Cannot tell whether the robot ever stopped",
+            "A stop needs forward speed below a threshold, and speed needs the wheel "
+            "radius. Yaw rate alone cannot distinguish stopped from driving straight.",
+            "This matters: the gyro bias is only observable while stopped or under an "
+            "absolute heading, so whether this bag can constrain it is UNKNOWN rather "
+            "than yes or no. Supply the wheel radius to settle it."))
+        return out
     still = sum(1 for o in odom
                 if o.get("v") is not None and o.get("wz") is not None
                 and abs(o["v"]) < STILL_SPEED and abs(o["wz"]) < STILL_RATE)
@@ -548,14 +621,16 @@ def read_bag(bag):
     types = {t.name: t.type for t in reader.get_all_topics_and_types()}
     # By TYPE, not by name: someone else's topics are named whatever.
     wanted = {n: ty for n, ty in types.items()
-              if ty in (IMU_TYPE, ODOM_TYPE, NAVSAT_TYPE) or ty in TWIST_TYPES}
+              if ty in (IMU_TYPE, ODOM_TYPE, NAVSAT_TYPE, JOINT_TYPE)
+              or ty in TWIST_TYPES}
     if not wanted:
         sys.exit(f"no IMU, odometry or NavSatFix topics in {bag}. "
                  f"Found: {sorted(set(types.values()))}")
     reader.set_filter(rosbag2_py.StorageFilter(topics=list(wanted)))
 
-    series = {"imu": [], "odom": [], "gnss": [], "twist": [],
-              "odom_by_topic": {}, "topics": wanted, "notes": []}
+    series = {"imu": [], "odom": [], "gnss": [], "twist": [], "joint": [],
+              "odom_by_topic": {}, "topics": wanted, "notes": [],
+              "odom_is_wheel_proxy": False}
     while reader.has_next():
         topic, data, recv_ns = reader.read_next()
         ty = wanted[topic]
@@ -582,6 +657,15 @@ def read_bag(bag):
             tw = msg.twist.twist if hasattr(msg.twist, "twist") else msg.twist
             series["twist"].append({"t": t, "recv": recv, "wz": tw.angular.z,
                                     "v": math.hypot(tw.linear.x, tw.linear.y)})
+        elif ty == JOINT_TYPE:
+            wz = wheel_wz_proxy(list(msg.name), list(msg.velocity))
+            if wz is not None:
+                # v is UNKNOWN, not zero. Forward speed from JointState needs the
+                # wheel radius, which a bag does not carry. Setting it to 0.0 made
+                # this report state that the robot never moved, that the whole 101 s
+                # run was a stationary interval, and that the gyro bias was therefore
+                # observable. Three confident falsehoods from one stub.
+                series["joint"].append({"t": t, "recv": recv, "wz": wz, "v": None})
         elif ty == NAVSAT_TYPE:
             c = list(msg.position_covariance)
             series["gnss"].append({"t": t, "recv": recv,
@@ -593,6 +677,19 @@ def read_bag(bag):
         series["notes"].append(note)
     if not series["odom"] and series["twist"]:
         series["odom"] = series["twist"]      # a TwistStamped is wheel odometry too
+    if not series["odom"] and series["joint"]:
+        # Last resort: a JointState wheel proxy. Sign-correct, scale-free, and the
+        # report says so rather than letting a reader assume a yaw rate.
+        series["odom"] = series["joint"]
+        series["odom_is_wheel_proxy"] = True
+        series["notes"].append(finding(
+            "INFO", "Wheel data came from sensor_msgs/JointState",
+            f"{len(series['joint'])} messages, using "
+            f"(right - left) wheel angular velocity as a sign-correct stand-in for "
+            f"yaw rate.",
+            "Sign and motion-content checks are valid. Anything about MAGNITUDE is "
+            "not, because converting per-wheel rad/s to a yaw rate needs wheel radii "
+            "and track width that a bag does not carry."))
     return series
 
 
