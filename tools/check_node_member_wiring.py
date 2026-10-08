@@ -7,6 +7,7 @@ FusionCoreConfig. The other parameters land in a member of the node instead
 never read fails the same silent way a dead config field does: the parameter is
 accepted, `ros2 param get` echoes it, and nothing happens.
 """
+import argparse
 import pathlib
 import re
 import sys
@@ -48,7 +49,12 @@ def dead_members(mappings, node_source):
     return sorted(dead)
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     node_source = NODE.read_text()
     mappings = member_mappings(node_source)
     if not mappings:

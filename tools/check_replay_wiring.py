@@ -22,6 +22,7 @@ answers confidently. This check makes that drift fail instead of pass.
 hardware/ is gitignored, so replay.cpp is absent from a fresh clone. This SKIPS cleanly
 in that case rather than failing CI on a file that was never meant to be there.
 """
+import argparse
 import os
 import re
 import sys
@@ -57,7 +58,12 @@ def replay_wired(path):
     return wired, node_level
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     if not os.path.isfile(REPLAY):
         print("hardware/replay.cpp not present (it is gitignored), skipping.")
         return 0

@@ -29,6 +29,7 @@ Usage:
     python3 tools/check_docs_params.py
 """
 
+import argparse
 import pathlib
 import re
 import subprocess
@@ -58,7 +59,12 @@ def tracked_docs():
             if d not in SKIP_EXACT and not d.startswith(SKIP_PREFIX)]
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     declared = set(DECLARE.findall(NODE.read_text()))
     if not declared:
         print(f"{NODE}: found no declare_parameter calls, the regex is wrong")
