@@ -77,6 +77,9 @@ jobs:
             python3 -m unittest "$t"
           done
 
+      - name: Test robot_localization converter
+        run: python3 -m unittest tools/test_rl_to_fusioncore.py
+
       - name: Test benchmark regression checker
         run: python3 -m unittest tools/test_check_benchmark_regression.py
 
