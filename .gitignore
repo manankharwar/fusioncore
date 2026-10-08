@@ -79,6 +79,12 @@ demo_result.png
 # Benchmark runtime artifacts: logs and raw bags are generated, not source
 benchmarks/**/launch.log
 benchmarks/**/bag/
+benchmarks/**/bag_full/
+
+# NCLT sensor CSVs: 677 MB for the three baseline sequences, fetched with
+# benchmarks/nclt_download.sh. These paths are symlinks to a directory outside
+# the repo, so committing them would commit a path that exists on one machine.
+benchmarks/nclt/*/raw files
 
 # Generated video files: reproducible from TUM files via benchmarks/make_video.py
 benchmarks/*.mp4
