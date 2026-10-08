@@ -54,57 +54,28 @@ jobs:
         with:
           required-ros-distributions: ${{ matrix.ros_distro }}
 
-      # Before anything is built: ROS 2 silently ignores a parameter a node never
-      # declared, so a typo in a shipped config has no effect and no error, and
-      # the user drives believing the gate is tuned. Needs no ROS, so it runs
-      # first and fails fast.
-      - name: Check shipped configs against declared parameters
-        run: python3 tools/check_config_params.py --quiet
-
-      - name: Test config checker rules
-        run: python3 -m unittest tools/test_check_config_params.py
-
-      - name: Check ROS parameter mappings reach FusionCore
-        run: python3 tools/check_config_wiring.py
-
-      - name: Test config wiring checker
-        run: python3 -m unittest tools/test_check_config_wiring.py
-
-      - name: Check ROS parameters read into node members are used
-        run: python3 tools/check_node_member_wiring.py
-
-      - name: Test node member wiring checker
-        run: python3 -m unittest tools/test_check_node_member_wiring.py
-
-      - name: Check every parameter named in the docs exists
-        run: python3 tools/check_docs_params.py
-
-      - name: Test docs parameter checker
-        run: python3 -m unittest tools/test_check_docs_params.py
-
-      # The test tally in docs/reference/architecture.md was corrected by hand four
-      # times and was stale again within weeks each time (#136, #140, #154). Counted
-      # from source, so it needs no build and fails before one.
-      - name: Check the documented test tally matches the source
-        run: python3 tools/check_docs_test_count.py
-
-      - name: Test docs test tally checker
-        run: python3 -m unittest tools/test_check_docs_test_count.py
-
-      # The benchmark gate itself. It cannot run a sequence here (8.4 GB of NCLT data
-      # and 55 to 115 minutes per playback), so CI verifies the CHECKER and gates any
-      # results that happen to be committed. The real run stays a pre-tag step, and
-      # tools/benchmark_regression.md says so.
+      # ONE entry point, and CI calls the same script a developer does.
       #
-      # This exists because on 2026-09-27 NCLT 2012-08-20 was found to have gone
-      # 121.669 m to 192.923 m XY ATE across ten commits. The gate was present, worked,
-      # and exited 1. Nobody had run it.
-      # hardware/ is gitignored so replay.cpp is absent from a fresh clone and this
-      # skips cleanly. It runs for anyone with the working tree, which is where config
-      # sweeps and bisects actually happen. It found 12 unwired core parameters the day
-      # it was written, including gnss.outlier_sigma_xy, which sets the chi2 gate's own R.
-      - name: Check every core parameter also reaches the offline replay
-        run: python3 tools/check_replay_wiring.py
+      # These used to be six separate steps, and a local sweep that grepped stdout
+      # instead of reading exit codes reported everything ok for three commits while
+      # CI was red on check_config_wiring.py, whose failure message contains none of
+      # the words that sweep looked for. Two verification paths, and the weaker one
+      # won. check_all.sh reads exit codes and nothing else, so a grep cannot drift
+      # from the contract again.
+      #
+      # Needs no ROS, so it runs before the build and fails fast.
+      - name: Run every repo checker
+        run: bash tools/check_all.sh
+
+      # The checkers' own tests. A checker that cannot fail is worse than no checker,
+      # which is why each one has a test that breaks its input and asserts exit 1.
+      - name: Test the checkers
+        run: |
+          set -e
+          for t in tools/test_check_*.py; do
+            echo "== $t"
+            python3 -m unittest "$t"
+          done
 
       - name: Test benchmark regression checker
         run: python3 -m unittest tools/test_check_benchmark_regression.py

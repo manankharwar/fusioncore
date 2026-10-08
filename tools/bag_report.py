@@ -25,6 +25,21 @@ is what makes it work on a bag from a stranger:
 Topics are matched BY MESSAGE TYPE, not by name, because someone else's topics are
 named whatever they are named.
 
+THE RULE FOR EVERY FINDING IN THIS FILE, learned the hard way on 2026-10-06:
+
+    A disagreement between your reader and someone's data is YOUR READER'S BUG
+    until you have checked both sides.
+
+The IMU and wheel encoder in this project's own NCLT harness disagreed in sign on
+100% of turns. The first description of that was "a bug in a dataset many papers rely
+on", and it was wrong: the raw files agreed perfectly, and the conversion was applied
+to one sensor and not the other by the READER. Reporting it to the dataset maintainers
+would have been telling them their data was broken when it was not.
+
+So findings here describe the PIPELINE, never the data. "Your IMU and your wheels
+disagree" is a statement about a robot's configuration. "Your data is wrong" is a
+claim about someone else's work, and it needs both sides checked before it is made.
+
     python3 tools/bag_report.py /path/to/bag                  # markdown to stdout
     python3 tools/bag_report.py /path/to/bag --out report.md
     python3 tools/bag_report.py /path/to/bag --json           # machine-readable
@@ -213,11 +228,18 @@ def check_yaw_rate_signs(series):
             f"{100 * dis:.0f}% of turns",
             f"{len(both)} samples where both exceeded {TURNING_RAD_S} rad/s. "
             f"Median magnitude ratio wheel/IMU {ratio:.3f}.",
-            "One of them has a frame convention wrong. Under REP-103, turning the "
-            "robot LEFT by hand must give a POSITIVE angular_velocity.z. A BNO085 in "
-            "UART-RVC mode reports yaw increasing CLOCKWISE and needs its sign "
-            "flipped in the driver. Until this is fixed, every turn costs the filter "
-            "gain to reject one of its two rotation sources."))
+            "Something in the pipeline has a frame convention wrong: a driver, a "
+            "URDF, or a conversion applied to one sensor and not the other. Check "
+            "BOTH sides before concluding which. Under REP-103, turning the robot "
+            "LEFT by hand must give a POSITIVE angular_velocity.z, so that is the "
+            "test. A BNO085 in UART-RVC mode reports yaw increasing CLOCKWISE and "
+            "needs its sign flipped in the driver.\n"
+            "  This exact finding appeared in FusionCore's own benchmark harness and "
+            "the first diagnosis blamed the dataset. It was the reader: the NED to "
+            "ENU conversion was applied to the IMU and not to the wheel odometry. "
+            "The raw files agreed perfectly.\n"
+            "  Until it is fixed, every turn costs the filter gain to reject one of "
+            "its two rotation sources. It will not crash, which is why it survives."))
     else:
         out.append(finding("OK", "IMU and wheel yaw rates agree in sign",
                            f"{100 * (1 - dis):.0f}% agreement over {len(both)} "

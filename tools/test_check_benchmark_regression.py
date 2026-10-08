@@ -306,5 +306,59 @@ class BaselineIntegrityTest(unittest.TestCase):
         self.assertNotIn("improved", out)
 
 
+class CouldNotRunTest(unittest.TestCase):
+    """"Could not run" must never read as "passed".
+
+    The previous version printed PASS and exited 0 when every file handed to it
+    failed to parse, because nothing was added to the regressions list. The absence
+    of a failure is not evidence of success, which is the same shape as "a tight
+    prior is not an observation" elsewhere in this project.
+    """
+
+    def _baseline(self, d):
+        p = pathlib.Path(d) / "baseline.json"
+        p.write_text(json.dumps({
+            "baseline_commit": "abc", "recorded": "2026-01-01",
+            "regression_threshold_pct": 10.0,
+            "sequences": {"2012-08-20": {"fusioncore_ate_rmse_3d": 130.0,
+                                         "fusioncore_ate_rmse_xy": 121.669,
+                                         "rl_ate_rmse_3d": 10.5, "verified": True}},
+        }))
+        return str(p)
+
+    def test_an_unreadable_metrics_file_is_not_a_pass(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, {"sequence": "2012-08-20", "filters": {}})
+            code, out = run([m, "--baseline", self._baseline(d)])
+        self.assertEqual(code, 2, "0 sequences graded must not exit 0")
+        self.assertIn("COULD NOT RUN", out)
+        self.assertNotIn("PASS:", out)
+
+    def test_a_sequence_with_no_baseline_entry_is_not_a_pass_on_its_own(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2099-01-01", 50.0))
+            code, out = run([m, "--baseline", self._baseline(d)])
+        self.assertEqual(code, 2)
+        self.assertIn("COULD NOT RUN", out)
+
+    def test_a_real_comparison_still_passes_and_says_how_many(self):
+        with tempfile.TemporaryDirectory() as d:
+            m = write_json(d, metrics("2012-08-20", 121.0))
+            code, out = run([m, "--baseline", self._baseline(d)])
+        self.assertEqual(code, 0)
+        self.assertIn("1 sequence(s) graded", out)
+
+    def test_one_good_and_one_bad_passes_but_warns(self):
+        with tempfile.TemporaryDirectory() as d:
+            good = pathlib.Path(d) / "good.json"
+            good.write_text(json.dumps(metrics("2012-08-20", 121.0)))
+            bad = pathlib.Path(d) / "bad.json"
+            bad.write_text(json.dumps({"sequence": "2012-08-20", "filters": {}}))
+            code, out = run([str(good), str(bad), "--baseline", self._baseline(d)])
+        self.assertEqual(code, 0, "something was graded, so it is a pass")
+        self.assertIn("WARNING", out)
+        self.assertIn("could not be read", out)
+
+
 if __name__ == "__main__":
     unittest.main()

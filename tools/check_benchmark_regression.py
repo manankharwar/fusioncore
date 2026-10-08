@@ -113,12 +113,19 @@ def main():
     print(f'{"sequence":<14}{"baseline":>10}{"current":>10}{"change":>10}   status')
     print('-' * 58)
 
+    # "Could not run" is not "passed". A file that fails to parse, or a sequence with
+    # no baseline, produces no comparison, and the previous version printed PASS and
+    # exited 0 when EVERY file was like that. Same shape as "a tight prior is not an
+    # observation": the absence of a failure is not evidence of success.
+    graded = 0
+    unreadable = 0
     regressions, unknown, voids, unchecked = [], [], [], []
     for p in paths:
         try:
             seq, cur, ctrl = load_metrics(p)
-        except ValueError as e:
+        except (ValueError, OSError, json.JSONDecodeError) as e:
             print(f'  skip: {e}', file=sys.stderr)
+            unreadable += 1
             continue
         if seq not in seqs:
             print(f'{seq:<14}{"-":>10}{cur:>10.3f}{"-":>10}   NEW (no baseline)')
@@ -147,6 +154,7 @@ def main():
             status = 'improved'
         else:
             status = 'ok'
+        graded += 1
         verified = '' if seqs[seq].get('verified') else '  (baseline provisional)'
         if seq in unchecked:
             verified += '  (control UNCHECKED)'
@@ -165,7 +173,20 @@ def main():
             print(f'  {seq}: {b:.3f} m -> {cur:.3f} m ({pct:+.1f}%)')
     if voids or regressions:
         return 1
-    print('PASS: no FusionCore XY ATE regressions beyond threshold.')
+
+    # Nothing was actually compared. Do not call that a pass.
+    if graded == 0:
+        print(f'COULD NOT RUN: {len(paths)} file(s) given and 0 sequence(s) graded '
+              f'({unreadable} unreadable, {len(unknown)} with no baseline entry, '
+              f'{len(voids)} void).')
+        print('  This is not a pass. A gate that reports success when it compared '
+              'nothing is the failure mode it exists to prevent.')
+        return 2
+
+    print(f'PASS: no FusionCore XY ATE regressions beyond threshold '
+          f'({graded} sequence(s) graded).')
+    if unreadable:
+        print(f'WARNING: {unreadable} file(s) could not be read and were not graded.')
     if unchecked:
         print(f'Note: {len(unchecked)} sequence(s) had no control to check '
               f'(needs RL-EKF/{CONTROL_METRIC} in metrics.json and '
