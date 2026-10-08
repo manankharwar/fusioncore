@@ -67,12 +67,19 @@ jobs:
       - name: Run every repo checker
         run: bash tools/check_all.sh
 
-      # The checkers' own tests. A checker that cannot fail is worse than no checker,
-      # which is why each one has a test that breaks its input and asserts exit 1.
-      - name: Test the checkers
+      # Every test under tools/, not just the checkers' own. A checker that cannot
+      # fail is worse than no checker, which is why each one has a test that breaks
+      # its input and asserts exit 1.
+      #
+      # This glob was tools/test_check_*.py until 2026-10-08, which silently skipped
+      # six files and 61 cases: the bag reader, the wheel-geometry fit, the NCLT
+      # frame guard for #169, the NIS reader, the spike injector and the turn gate.
+      # They all passed, so nothing was broken, but nothing was being guarded either.
+      # A test CI does not run is decoration. Keep this glob wide.
+      - name: Test the tools
         run: |
           set -e
-          for t in tools/test_check_*.py; do
+          for t in tools/test_*.py; do
             echo "== $t"
             python3 -m unittest "$t"
           done
