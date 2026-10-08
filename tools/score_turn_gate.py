@@ -22,43 +22,51 @@ Usage:
 
 Needs only /imu/data and /odom/wheels, both present in any record.sh bag.
 """
-import rosbag2_py, sys, math, bisect
-from rclpy.serialization import deserialize_message
-from rosidl_runtime_py.utilities import get_message
-for bag in sys.argv[1:]:
-    r=rosbag2_py.SequentialReader()
-    r.open(rosbag2_py.StorageOptions(uri=bag,storage_id='mcap'),rosbag2_py.ConverterOptions('',''))
-    types={t.name:t.type for t in r.get_all_topics_and_types()}
-    enc=[]; gyr=[]
-    while r.has_next():
-        topic,data,t=r.read_next()
-        if topic=='/odom/wheels':
-            m=deserialize_message(data,get_message(types[topic]))
-            enc.append((t/1e9, abs(m.twist.twist.linear.x)))
-        elif topic=='/imu/data':
-            m=deserialize_message(data,get_message(types[topic]))
-            gyr.append((t/1e9, m.angular_velocity.z))
-    et=[e[0] for e in enc]
-    def speed_at(t):
-        i=bisect.bisect_left(et,t)
-        if i>=len(enc): i=len(enc)-1
-        return enc[i][1]
-    def sim(gate,param):
-        best=0.0;dist=0.0;ang=0.0;lat=0;prev=gyr[0][0]
-        for (t,wz) in gyr[1:]:
-            dt=t-prev; prev=t
-            if dt<=0 or dt>1.0: continue
-            dist += speed_at(t)*dt
-            ang  += wz*dt
-            trip=(abs(wz)>param) if gate=='rate' else (abs(math.degrees(ang))>param)
-            if trip:
-                best=max(best,dist); dist=0.0; ang=0.0; lat+=1
-        return max(best,dist),lat
-    print(f"  {bag.split('/')[-1]}  (GYRO-based, {len(gyr)} samples)")
-    b,l=sim('rate',0.3)
-    print(f"    CURRENT rate > 0.30 rad/s     longest baseline {b:6.1f} m   latched {l:5d}x")
-    for d in (5.0,10.0,15.0,20.0,30.0):
-        b,l=sim('angle',d)
-        mk="  <- clears 25 m" if b>=25.0 else ""
-        print(f"    angle > {d:4.0f} deg                 longest baseline {b:6.1f} m   latched {l:5d}x{mk}")
-    print()
+
+import sys, math, bisect
+
+def sim(gyr,speed_at,gate,param):
+    best=0.0;dist=0.0;ang=0.0;lat=0;prev=gyr[0][0]
+    for (t,wz) in gyr[1:]:
+        dt=t-prev; prev=t
+        if dt<=0 or dt>1.0: continue
+        dist += speed_at(t)*dt
+        ang  += wz*dt
+        trip=(abs(wz)>param) if gate=='rate' else (abs(math.degrees(ang))>param)
+        if trip:
+            best=max(best,dist); dist=0.0; ang=0.0; lat+=1
+    return max(best,dist),lat
+
+def main():
+    import rosbag2_py
+    from rclpy.serialization import deserialize_message
+    from rosidl_runtime_py.utilities import get_message
+    for bag in sys.argv[1:]:
+        r=rosbag2_py.SequentialReader()
+        r.open(rosbag2_py.StorageOptions(uri=bag,storage_id='mcap'),rosbag2_py.ConverterOptions('',''))
+        types={t.name:t.type for t in r.get_all_topics_and_types()}
+        enc=[]; gyr=[]
+        while r.has_next():
+            topic,data,t=r.read_next()
+            if topic=='/odom/wheels':
+                m=deserialize_message(data,get_message(types[topic]))
+                enc.append((t/1e9, abs(m.twist.twist.linear.x)))
+            elif topic=='/imu/data':
+                m=deserialize_message(data,get_message(types[topic]))
+                gyr.append((t/1e9, m.angular_velocity.z))
+        et=[e[0] for e in enc]
+        def speed_at(t):
+            i=bisect.bisect_left(et,t)
+            if i>=len(enc): i=len(enc)-1
+            return enc[i][1]
+        print(f"  {bag.split('/')[-1]}  (GYRO-based, {len(gyr)} samples)")
+        b,l=sim(gyr,speed_at,'rate',0.3)
+        print(f"    CURRENT rate > 0.30 rad/s     longest baseline {b:6.1f} m   latched {l:5d}x")
+        for d in (5.0,10.0,15.0,20.0,30.0):
+            b,l=sim(gyr,speed_at,'angle',d)
+            mk="  <- clears 25 m" if b>=25.0 else ""
+            print(f"    angle > {d:4.0f} deg                 longest baseline {b:6.1f} m   latched {l:5d}x{mk}")
+        print()
+
+if __name__ == "__main__":
+    main()
