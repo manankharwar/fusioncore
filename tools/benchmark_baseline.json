@@ -1,6 +1,6 @@
 {
  "_note": "Per-sequence reference for the NCLT regression checker (tools/check_benchmark_regression.py). NOT the published table. FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth, regenerated from a run's results/metrics.json via tools/evaluate.py --json.",
- "_status": "MEASURED 2026-10-08/09 on a4aae82, the first measurements after the #169 frame fix. FIVE of the twelve published rows now have a run record, up from three. Every run: sequential at 1x, machine left alone, 0 robot_localization starvation events, 99.9 to 103.2 Hz, and all 3D-vs-XY pairs internally consistent. HEADLINE: the README claims FusionCore beats robot_localization on 10 of 12. Of the five rows that have actually been measured, FUSIONCORE WINS 2 (2012-09-28, 2013-04-05) AND LOSES 3 (2012-02-04, 2012-06-15, 2012-08-20). 2012-02-04 flips outright from a published 81% win to a measured 20% loss, CONFIRMED at n=2 (153.883 and 153.097, 0.51% apart, control 123.131 and 123.149, 0.01% apart). 2012-09-28 is the one row where FusionCore measures better than published. The remaining seven rows have no run record and nothing should be claimed about them. REPEATABILITY INVERTED across the frame fix: 2013-04-05 went from 0.17% to 12.88% spread and 2012-08-20 from 4.57% to 0.13%. The 12.88% exceeds the 10% gate threshold, so the gate cannot grade 2013-04-05 meaningfully yet. The control is not comparable to any pre-fix entry, by design: #169 changed the player's wheel-odometry yaw rate and both filters consume it. Old values are under superseded_pre_frame_fix. A withdrawn 2026-10-08 claim about machine load is covered in the 2026-10-08/09 section of tools/benchmark_regression.md.",
+ "_status": "MEASURED 2026-10-08/09 on a4aae82, the first measurements after the #169 frame fix. FIVE of the twelve published rows now have a run record, up from three. Every run: sequential at 1x, machine left alone, 0 robot_localization starvation events, 99.9 to 103.2 Hz, and all 3D-vs-XY pairs internally consistent. HEADLINE: the README claims FusionCore beats robot_localization on 10 of 12. Of the five rows that have actually been measured, FUSIONCORE WINS 2 (2012-09-28, 2013-04-05) AND LOSES 3 (2012-02-04, 2012-06-15, 2012-08-20). 2012-02-04 flips outright from a published 81% win to a measured 20% loss, CONFIRMED at n=2 (153.883 and 153.097, 0.51% apart, control 123.131 and 123.149, 0.01% apart). 2012-09-28 is the one row where FusionCore measures better than published, CONFIRMED at n=2 (18.594 and 18.596, 0.01% apart) though its CONTROL moved 11.05%, which is the first case where the control is the noisier filter. The remaining seven rows have no run record and nothing should be claimed about them. REPEATABILITY INVERTED across the frame fix: 2013-04-05 went from 0.17% to 12.88% spread and 2012-08-20 from 4.57% to 0.13%. The 12.88% exceeds the 10% gate threshold, so the gate cannot grade 2013-04-05 meaningfully yet. The control is not comparable to any pre-fix entry, by design: #169 changed the player's wheel-odometry yaw rate and both filters consume it. Old values are under superseded_pre_frame_fix. A withdrawn 2026-10-08 claim about machine load is covered in the 2026-10-08/09 section of tools/benchmark_regression.md.",
  "baseline_commit": "a4aae82",
  "recorded": "2026-10-09",
  "regression_threshold_pct": 10.0,
@@ -110,15 +110,26 @@
    "verified": true,
    "measured": "2026-10-09",
    "commit": "a4aae82",
-   "n": 1,
-   "achieved_hz": 102.7,
-   "rl_starvation_events": 0,
-   "wall_clock_min": 82,
+   "n": 2,
+   "achieved_hz": 102.2,
+   "rl_starvation_events": 24,
+   "wall_clock_min": 83,
    "published_readme": {
     "fusioncore_m": 22.4,
     "rl_m": 53.8
    },
-   "note": "FIRST EVER measurement of this row. FusionCore 18.594 against the control's 82.598, a 77% win, and the only row so far where FusionCore measures BETTER than its published figure (22.4 m published, 18.594 measured) while the control measures worse (53.8 published, 82.598 measured). n=1."
+   "note": "WIN CONFIRMED at n=2 on 2026-10-09. FusionCore 18.594 then 18.596, 0.01% apart, the tightest repeat this project has recorded. Published at 22.4 m, so FusionCore measures BETTER than published here, the only row that does. It beats the control by 77% or 80% depending on which control run you use, so the verdict does not depend on resolving the control's spread. THE CONTROL IS THE NOISY ONE HERE: 82.598 then 91.724, 11.05% apart, while its pose count changed only 0.14% so it was not starved in output. 24 starvation events were logged in the second run against 0 in the first, clustered at two moments that do NOT correspond to any work done on this machine, so the cause is external load rather than this session. No prior repeat of this sequence exists, so 11% may simply be robot_localization's own spread here.",
+   "repeats_post_frame_fix": [
+    18.594,
+    18.596
+   ],
+   "repeats_post_frame_fix_control": [
+    82.598,
+    91.724
+   ],
+   "measured_spread_pct": 0.01,
+   "control_spread_pct": 11.05,
+   "spread_warning": "FusionCore 0.01% at n=2, control 11.05%. THE CONTROL IS NOT THE STABLE FILTER ON THIS SEQUENCE. Do not use a control move alone to void a run here until its own spread is known at higher n."
   },
   "2012-02-04": {
    "fusioncore_ate_rmse_3d": 153.097,
