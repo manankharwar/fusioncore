@@ -204,30 +204,89 @@ FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.
 >
 > The two rows re-measured on 2026-10-05 are load-bearing because their controls held: the RL-EKF figure moved **+0.01%** on 2012-06-15 and **-0.11%** on 2012-08-20, against an established band of under 1%. 2012-06-15 is now confirmed three independent times and sits inside its own n=8 spread. 2012-08-20 is worse than previously recorded and is a genuine regression, outside its 4.57% spread, so the baseline has deliberately not been moved to match it. The 2013-04-05 arm of that re-run is **void**: its control moved -4.40% after 20 `rl_ekf` update-rate misses, so it was CPU-starved and says nothing. It is being re-run.
 >
-> **Worth flagging rather than explaining:** both confirmed rows overstate FusionCore by almost exactly the same factor, **1.490x** and **1.477x**. Two independent sequences landing on one ratio suggests something systematic rather than drift, and that should be understood before any published figure is rewritten.
+> **CORRECTED 2026-10-09.** Five of these twelve rows have now been re-measured at n=2
+> after fixing #169, a frame error in the NCLT player that fed a wrong wheel-odometry yaw
+> rate to BOTH filters. **On those five, FusionCore wins two and loses three.** The other
+> seven were measured in May 2026 through the faulty player and have never been re-run, so
+> nothing should be claimed about them. The earlier note here, that the overstatement was
+> systematic at about 1.48x, is withdrawn: across five rows the ratio runs 0.83x to 3.08x
+> and the control swings 0.24x to 2.52x despite sharing no code. See the table and the
+> explanation in the repository README.
 >
 > `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
 
-| Sequence | Season | Duration | FC ATE RMSE | RL-EKF ATE RMSE | Winner |
-|---|---|---|---|---|---|
-| 2012-01-08 | Winter | 92 min | **18.6 m** | 41.2 m | FC +55% |
-| 2012-02-04 | Winter | 77 min | **49.7 m** | 265.5 m | FC +81% |
-| 2012-03-31 | Spring | 87 min | **22.0 m** | 156.5 m | FC +86% |
-| 2012-05-11 | Spring | 84 min | **9.7 m** | 11.5 m | FC +16% |
-| 2012-06-15 | Summer | 55 min | 49.2 m † | **18.2 m** | RL +63% |
-| 2012-08-20 | Summer | 83 min | 98.3 m † | **10.6 m** | RL +89% |
-| 2012-09-28 | Fall | 77 min | **22.4 m** | 53.8 m | FC +58% |
-| 2012-10-28 | Fall | 85 min | **15.6 m** | 56.4 m | FC +72% |
-| 2012-11-04 | Fall | 79 min | **60.1 m** | 122.0 m | FC +51% |
-| 2012-12-01 | Winter | 75 min | **21.0 m** | 90.7 m | FC +77% |
-| 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
-| 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
+| Sequence | Season | Duration | FC ATE RMSE | RL-EKF ATE RMSE | Winner | Status |
+|---|---|---|---|---|---|---|
+| 2012-01-08 | Winter | 92 min | 18.6 m | 41.2 m | FC +55% | ‡ never verified |
+| 2012-02-04 | Winter | 77 min | **153.5 m** | **123.1 m** | **RL +20%** | re-measured, n=2 |
+| 2012-03-31 | Spring | 87 min | 22.0 m | 156.5 m | FC +86% | ‡ never verified |
+| 2012-05-11 | Spring | 84 min | 9.7 m | 11.5 m | FC +16% | ‡ never verified |
+| 2012-06-15 | Summer | 55 min | **82.0 m** | **45.9 m** | **RL +44%** | re-measured, n=2 |
+| 2012-08-20 | Summer | 83 min | **155.6 m** | **10.4 m** | **RL +93%** | re-measured, n=2 |
+| 2012-09-28 | Fall | 77 min | **18.6 m** | **87.2 m** | **FC +77%** | re-measured, n=2 |
+| 2012-10-28 | Fall | 85 min | 15.6 m | 56.4 m | FC +72% | ‡ never verified |
+| 2012-11-04 | Fall | 79 min | 60.1 m | 122.0 m | FC +51% | ‡ never verified |
+| 2012-12-01 | Winter | 75 min | 21.0 m | 90.7 m | FC +77% | ‡ never verified |
+| 2013-02-23 | Winter | 78 min | 59.4 m | 82.2 m | FC +28% | ‡ never verified |
+| 2013-04-05 | Spring | 68 min | **14.1 m** | **65.5 m** | **FC +79%** | re-measured, n=2 |
+
+**Read the five bold rows and ignore the rest.** Those five were re-measured on 2026-10-09
+at n=2 each, after a bug fix described below. The seven rows marked ‡ were measured in May
+2026 through a dataset player that is now known to have been wrong, and they have not been
+re-run. They are left in the table only so the correction is visible; **no claim should be
+built on them in either direction.**
+
+**On the five rows that have been measured, FusionCore wins two and loses three.** This
+page previously claimed FusionCore beat robot_localization on ten of twelve. That claim
+was never supported by a verifiable run.
+
+### What went wrong with the original table
+
+`fusioncore_datasets`' NCLT player never converted the wheel-odometry yaw rate from NED to
+ENU, so it fought the gyro on every turn (#169). **Both** filters consume that signal, so
+every number in the May 2026 table, in both columns, describes an input that no longer
+exists. Fixing it moved the robot_localization control by +148%, -1.2% and -75% on three
+sequences, which is how a bug that affects neither filter's code can still invalidate a
+comparison between them.
+
+So this is not a case of FusionCore's results drifting. It is a case of the whole table
+having been measured through a faulty lens, and the corrected measurements being less
+favourable than the faulty ones.
+
+### Two explanations this page used to give, both now withdrawn
+
+**"The overstatement is systematic at ~1.48x."** Across five rows the ratio of measured to
+published runs 0.83x to 3.08x for FusionCore, and the control, which shares no code,
+swings 0.24x to 2.52x. Nothing systematic, and the direction is not even consistent:
+2012-09-28 measures *better* than published.
+
+**"Both FusionCore losses are multi-minute GPS blackouts."** Measured from the fix data,
+2013-04-05 is blind for 355 s and FusionCore wins by 79%, while 2012-02-04 is blind for
+281 s and loses. Blackout duration does not separate the wins from the losses. The real
+pattern is that FusionCore is bimodal here, landing either around 15 m or above 80 m, and
+**the cause of the bad mode is not yet established.** Two known open defects sit inside
+every one of these numbers: #150, where position advances at 80.7% of a perfect velocity,
+and #148, an unexplained regression on 2012-08-20.
+
+### Run-to-run spread, and why the control is not a free integrity check
+
+Measured n=2 on every re-run row:
+
+| Sequence | FusionCore spread | Control spread |
+|---|---|---|
+| 2012-02-04 | 0.51% | 0.01% |
+| 2012-08-20 | 0.13% | 0.06% |
+| 2012-09-28 | 0.01% | **11.05%** |
+| 2013-04-05 | **12.88%** | 0.40% |
+
+Spread is specific to the sequence and to the filter, and the control is not reliably the
+steady one. On 2012-09-28 it is noisier than FusionCore by three orders of magnitude.
 
 <img width="1422" height="1245" alt="fig_trajectory" src="https://github.com/user-attachments/assets/7f78474b-e70b-4b38-95ef-c759e1fcea02" />
 
 RL-UKF diverges with NaN on all twelve. Where RL-EKF loses, the cause is consistent: the GPS driver reports 3 m sigma, but measured against RTK ground truth the actual p95 noise is 9.7 to 53.1 m depending on the day. RL's gate is calibrated to the stated 3 m and rejects valid fixes on bad-GPS days, while `adaptive.gnss` keeps FusionCore's chi2 statistics calibrated at runtime.
 
-**Both FusionCore losses are the same problem**, and it is the honest limit of the design: multi-minute GPS blackouts, where heading has no absolute reference and robot_localization's simpler 2D model drifts less. 2012-06-15 is a 462-second blackout. That is what an absolute heading source fixes, and it is why the magnetometer support exists.
+**The three FusionCore losses do not share an explanation yet.** The long-blackout story this page used to tell is measurably wrong, see above. What is true is that FusionCore's errors here are bimodal, roughly 15 m or above 80 m with nothing between, and that two identified defects (#150, #148) are present in every one of these runs. Until those are closed, these numbers measure the implementation and its known bugs, not the design.
 
 <img width="1485" height="1035" alt="fig_adaptive_noise" src="https://github.com/user-attachments/assets/97c7b12d-8b93-48d1-bab1-3e03d21ea02f" />
 

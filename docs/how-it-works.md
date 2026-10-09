@@ -14,7 +14,7 @@ Each robustness claim below has a corresponding test with a hard pass threshold.
 | Position stable while stationary | [Gazebo integration test 1](simulation.md#automated-integration-tests): 10 s IMU-only with GPS active | Drift < 2 m (typically < 0.1 m) |
 | GPS correction after motion | [Gazebo integration test 3](simulation.md#automated-integration-tests): drive then stop, measure stability with GPS active | Drift < 2 m in 3 s |
 | Dead reckoning stays coherent | [Gazebo integration test 4](simulation.md#automated-integration-tests): full circle return error | < 3 m (typically < 0.5 m) |
-| Accuracy on real outdoor data | [NCLT benchmark](https://manankharwar.github.io/fusioncore/): 12 full-length sequences, IMU + wheels + GPS | ATE 10–60 m (10/12 FC wins over RL-EKF) |
+| Accuracy on real outdoor data | [NCLT benchmark](https://manankharwar.github.io/fusioncore/): 12 full-length sequences, IMU + wheels + GPS | ATE 14–156 m on the 5 rows verified at n=2; FC wins 2 of those 5. The other 7 rows are unverified |
 | Spike visible in real data | [Zero-dependency demo](index.md#see-it-before-you-install): pre-baked NCLT spike test | FC +1 m vs RL-EKF +50 m on 707 m fake fix |
 
 The Gazebo tests run against the live simulation (`python3 integration_test.py`) and are reproducible on any machine with Gazebo Harmonic installed. The NCLT benchmark runs against real rosbag data. Both are described with reproduction steps.

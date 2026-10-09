@@ -4,7 +4,9 @@ FusionCore vs robot_localization EKF on the [NCLT dataset](http://robots.engin.u
 
 ---
 
-## Results: 10/12 FC wins
+## Results: 2 of the 5 verified rows are FusionCore wins
+
+**The "10/12 FC wins" headline that stood here is withdrawn.** It came from May 2026 runs through a dataset player with a frame bug (#169) that fed a wrong wheel-odometry yaw rate to both filters. Five rows have since been re-measured at n=2; FusionCore wins two. The other seven have never been re-run.
 
 | Sequence | Season | Duration | GPS Fixes | Max Blackout | FC ATE 3D | RL-EKF ATE 3D | Winner |
 |---|---|---|---|---|---|---|---|
@@ -33,7 +35,14 @@ FusionCore vs robot_localization EKF on the [NCLT dataset](http://robots.engin.u
 >
 > The two rows re-measured on 2026-10-05 are load-bearing because their controls held: the RL-EKF figure moved **+0.01%** on 2012-06-15 and **-0.11%** on 2012-08-20, against an established band of under 1%. 2012-06-15 is now confirmed three independent times and sits inside its own n=8 spread. 2012-08-20 is worse than previously recorded and is a genuine regression, outside its 4.57% spread, so the baseline has deliberately not been moved to match it. The 2013-04-05 arm of that re-run is **void**: its control moved -4.40% after 20 `rl_ekf` update-rate misses, so it was CPU-starved and says nothing. It is being re-run.
 >
-> **Worth flagging rather than explaining:** both confirmed rows overstate FusionCore by almost exactly the same factor, **1.490x** and **1.477x**. Two independent sequences landing on one ratio suggests something systematic rather than drift, and that should be understood before any published figure is rewritten.
+> **CORRECTED 2026-10-09.** Five of these twelve rows have now been re-measured at n=2
+> after fixing #169, a frame error in the NCLT player that fed a wrong wheel-odometry yaw
+> rate to BOTH filters. **On those five, FusionCore wins two and loses three.** The other
+> seven were measured in May 2026 through the faulty player and have never been re-run, so
+> nothing should be claimed about them. The earlier note here, that the overstatement was
+> systematic at about 1.48x, is withdrawn: across five rows the ratio runs 0.83x to 3.08x
+> and the control swings 0.24x to 2.52x despite sharing no code. See the table and the
+> explanation in the repository README.
 >
 > `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
 

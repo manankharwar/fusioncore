@@ -63,7 +63,7 @@ where `Ĉ` is the empirical innovation covariance and `α = 0.01`. A floor preve
 | 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
 | 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
 
-RL-UKF diverged with NaN on all twelve sequences. FusionCore wins 10 of 12.
+RL-UKF diverged with NaN on all twelve sequences. **The "FusionCore wins 10 of 12" claim that stood here is withdrawn:** of the five rows re-measured at n=2 after the #169 frame fix, FusionCore wins two and loses three, and the remaining seven have never been verified.
 
 > **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
 >
@@ -79,7 +79,14 @@ RL-UKF diverged with NaN on all twelve sequences. FusionCore wins 10 of 12.
 >
 > **2012-08-20 is a live regression, not only a stale figure.** 145.2 m against 116.4 m on `bcc0e09` and repeats of 116.97 and 122.32 is outside its 4.57% spread, and `tools/check_benchmark_regression.py` puts it at +18.3% on XY. The baseline has deliberately not been moved to match it.
 >
-> **Worth flagging rather than explaining:** both confirmed rows overstate FusionCore by almost exactly the same factor, **1.490x** and **1.477x**. Two independent sequences landing on one ratio suggests something systematic rather than drift, and it should be understood before any published figure is rewritten.
+> **CORRECTED 2026-10-09.** Five of these twelve rows have now been re-measured at n=2
+> after fixing #169, a frame error in the NCLT player that fed a wrong wheel-odometry yaw
+> rate to BOTH filters. **On those five, FusionCore wins two and loses three.** The other
+> seven were measured in May 2026 through the faulty player and have never been re-run, so
+> nothing should be claimed about them. The earlier note here, that the overstatement was
+> systematic at about 1.48x, is withdrawn: across five rows the ratio runs 0.83x to 3.08x
+> and the control swings 0.24x to 2.52x despite sharing no code. See the table and the
+> explanation in the repository README.
 >
 > Harness and baseline: `tools/benchmark_regression.md` and `tools/benchmark_baseline.json`. Rows this note affects are marked † below.
 
