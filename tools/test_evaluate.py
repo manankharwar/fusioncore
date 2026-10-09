@@ -23,12 +23,20 @@ import numpy as np
 os.environ.setdefault("MPLBACKEND", "Agg")
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-import evaluate
 import check_benchmark_regression
-from evo.core import sync
-from evo.core.geometry import GeometryException
-from evo.core.sync import SyncException
-from evo.core.trajectory import PoseTrajectory3D
+
+# evo is a hard requirement of evaluate.py, and CI installs it and fails loudly if
+# that install does not work, so this never silently skips there. The guard is for a
+# developer who has not installed evo yet: a clear skip beats an import error that
+# looks like a broken test. It must not become the normal path.
+try:
+    import evaluate
+    from evo.core.geometry import GeometryException
+    from evo.core.sync import SyncException
+    from evo.core.trajectory import PoseTrajectory3D
+    EVO = None
+except ImportError as exc:  # pragma: no cover
+    EVO = f"evo is not installed ({exc}). pip install evo --break-system-packages"
 
 TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "evaluate.py")
 
@@ -65,6 +73,7 @@ def write_tum(path, xyz, timestamps=None):
             f.write(f"{t:.6f} {x:.6f} {y:.6f} {z:.6f} 0.0 0.0 0.0 1.0\n")
 
 
+@unittest.skipIf(EVO, EVO or "")
 class AlignmentContract(unittest.TestCase):
     """What SE(3) alignment absorbs, and what it must not."""
 
@@ -117,6 +126,7 @@ class AlignmentContract(unittest.TestCase):
             evaluate.compute_ate(traj(line), traj(line + np.array([0.5, 0.0, 0.0])))
 
 
+@unittest.skipIf(EVO, EVO or "")
 class XyNeverExceedsThreeD(unittest.TestCase):
     """The invariant that would have caught the corrupt baseline entries.
 
@@ -156,6 +166,7 @@ class XyNeverExceedsThreeD(unittest.TestCase):
         self.assertGreater(r["rmse"], r["xy_rmse"])
 
 
+@unittest.skipIf(EVO, EVO or "")
 class TimestampAssociation(unittest.TestCase):
     """Association is exercised THROUGH compute_ate, deliberately.
 
@@ -201,6 +212,7 @@ class TimestampAssociation(unittest.TestCase):
             evaluate.compute_ate(traj(g), traj(g, np.arange(len(g)) + 500.0))
 
 
+@unittest.skipIf(EVO, EVO or "")
 class MetricsJsonContract(unittest.TestCase):
     """metrics.json is the interface to check_benchmark_regression.py.
 

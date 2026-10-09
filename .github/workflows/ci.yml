@@ -76,6 +76,17 @@ jobs:
       # frame guard for #169, the NIS reader, the spike injector and the turn gate.
       # They all passed, so nothing was broken, but nothing was being guarded either.
       # A test CI does not run is decoration. Keep this glob wide.
+      # evo is what evaluate.py computes ATE with, and evaluate.py produces the
+      # numbers the regression gate reads, so CI has to be able to run it. Plain
+      # pip first because 22.04 ships a pip that does not know the flag, then the
+      # PEP 668 override that 24.04 needs. The import check is deliberate: a failed
+      # install has to be red HERE, otherwise test_evaluate.py degrades to a skip
+      # and a tool nothing exercised would look tested.
+      - name: Install evo (trajectory evaluation)
+        run: |
+          python3 -m pip install evo || python3 -m pip install evo --break-system-packages
+          python3 -c "import evo; print('evo', evo.__version__)"
+
       - name: Test the tools
         run: |
           set -e
