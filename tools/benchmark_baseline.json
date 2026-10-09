@@ -1,6 +1,6 @@
 {
  "_note": "Per-sequence reference for the NCLT regression checker (tools/check_benchmark_regression.py). NOT the published table. FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth, regenerated from a run's results/metrics.json via tools/evaluate.py --json.",
- "_status": "MEASURED 2026-10-08/09 on a4aae82, the first measurements after the #169 frame fix. FIVE of the twelve published rows now have a run record, up from three. Every run: sequential at 1x, machine left alone, 0 robot_localization starvation events, 99.9 to 103.2 Hz, and all 3D-vs-XY pairs internally consistent. HEADLINE: the README claims FusionCore beats robot_localization on 10 of 12. Of the five rows that have actually been measured, FUSIONCORE WINS 2 (2012-09-28, 2013-04-05) AND LOSES 3 (2012-02-04, 2012-06-15, 2012-08-20). 2012-02-04 flips outright from a published 81% win to a measured 20% loss. 2012-09-28 is the one row where FusionCore measures better than published. The remaining seven rows have no run record and nothing should be claimed about them. REPEATABILITY INVERTED across the frame fix: 2013-04-05 went from 0.17% to 12.88% spread and 2012-08-20 from 4.57% to 0.13%. The 12.88% exceeds the 10% gate threshold, so the gate cannot grade 2013-04-05 meaningfully yet. The control is not comparable to any pre-fix entry, by design: #169 changed the player's wheel-odometry yaw rate and both filters consume it. Old values are under superseded_pre_frame_fix. A withdrawn 2026-10-08 claim about machine load is covered in the 2026-10-08/09 section of tools/benchmark_regression.md.",
+ "_status": "MEASURED 2026-10-08/09 on a4aae82, the first measurements after the #169 frame fix. FIVE of the twelve published rows now have a run record, up from three. Every run: sequential at 1x, machine left alone, 0 robot_localization starvation events, 99.9 to 103.2 Hz, and all 3D-vs-XY pairs internally consistent. HEADLINE: the README claims FusionCore beats robot_localization on 10 of 12. Of the five rows that have actually been measured, FUSIONCORE WINS 2 (2012-09-28, 2013-04-05) AND LOSES 3 (2012-02-04, 2012-06-15, 2012-08-20). 2012-02-04 flips outright from a published 81% win to a measured 20% loss, CONFIRMED at n=2 (153.883 and 153.097, 0.51% apart, control 123.131 and 123.149, 0.01% apart). 2012-09-28 is the one row where FusionCore measures better than published. The remaining seven rows have no run record and nothing should be claimed about them. REPEATABILITY INVERTED across the frame fix: 2013-04-05 went from 0.17% to 12.88% spread and 2012-08-20 from 4.57% to 0.13%. The 12.88% exceeds the 10% gate threshold, so the gate cannot grade 2013-04-05 meaningfully yet. The control is not comparable to any pre-fix entry, by design: #169 changed the player's wheel-odometry yaw rate and both filters consume it. Old values are under superseded_pre_frame_fix. A withdrawn 2026-10-08 claim about machine load is covered in the 2026-10-08/09 section of tools/benchmark_regression.md.",
  "baseline_commit": "a4aae82",
  "recorded": "2026-10-09",
  "regression_threshold_pct": 10.0,
@@ -121,25 +121,35 @@
    "note": "FIRST EVER measurement of this row. FusionCore 18.594 against the control's 82.598, a 77% win, and the only row so far where FusionCore measures BETTER than its published figure (22.4 m published, 18.594 measured) while the control measures worse (53.8 published, 82.598 measured). n=1."
   },
   "2012-02-04": {
-   "fusioncore_ate_rmse_3d": 153.883,
-   "fusioncore_ate_rmse_xy": 105.312,
-   "fusioncore_rpe10_rmse": 38.389,
-   "fusioncore_drift_m_per_km": 18.45,
-   "rl_ate_rmse_3d": 123.131,
-   "rl_rpe10_rmse": 37.64,
+   "fusioncore_ate_rmse_3d": 153.097,
+   "fusioncore_ate_rmse_xy": 103.141,
+   "fusioncore_rpe10_rmse": 38.408,
+   "fusioncore_drift_m_per_km": 18.36,
+   "rl_ate_rmse_3d": 123.149,
+   "rl_rpe10_rmse": 37.792,
    "rl_drift_m_per_km": 14.77,
    "verified": true,
    "measured": "2026-10-09",
    "commit": "a4aae82",
-   "n": 1,
-   "achieved_hz": 103.2,
+   "n": 2,
+   "achieved_hz": 103.1,
    "rl_starvation_events": 0,
-   "wall_clock_min": 83,
+   "wall_clock_min": 84,
    "published_readme": {
     "fusioncore_m": 49.7,
     "rl_m": 265.5
    },
-   "note": "FIRST EVER measurement of this row, and it FLIPS the published verdict. Published as a FusionCore win by 81% (49.7 m against 265.5 m). Measured, FusionCore loses by 20%: 153.883 m against the control's 123.131 m. FusionCore is 3.1x worse than published and the control is 2.2x better. n=1, so repeat before citing, but a flip of this size is not a spread artefact."
+   "note": "CONFIRMED FLIP at n=2 on 2026-10-09. Published as a FusionCore win by 81% (49.7 m against 265.5 m). Measured, FusionCore LOSES by 20%: 153.883 then 153.097, 0.51% apart, against a control of 123.131 then 123.149, 0.01% apart. That control is as clean as this harness gets, so the input was identical across both runs and the FusionCore figure is FusionCore's. FusionCore is 3.1x worse than published and the control is 2.2x better. This is the first published WIN shown to be a LOSS.",
+   "repeats_post_frame_fix": [
+    153.883,
+    153.097
+   ],
+   "repeats_post_frame_fix_control": [
+    123.131,
+    123.149
+   ],
+   "measured_spread_pct": 0.51,
+   "spread_warning": "0.51% at n=2, so this sequence repeats tightly and a few percent is meaningful here. Control reproduced to 0.01%."
   }
  },
  "_read_this_before_judging_any_regression": "The 9x run-to-run spread is NOT universal, which an earlier note here implied. Measured over six unattended runs on 2026-09-12: 2012-06-15 repeats to 2.8%, 2012-08-20 to 4.6%, 2013-04-05 to 1.2%. The historical 32 m to 345 m range was all one sequence, 2013-04-05, and got generalised. So on these sequences a 5 to 10 percent change IS measurable and two runs are enough to see it. Keep the caution for a sequence whose spread has not been measured, and re-check it when adding one. robot_localization remains the control: if it moves more than about a percent between runs, the comparison is void whatever FusionCore did, and that check has already caught one wrong diagnosis (see issue #119).",
