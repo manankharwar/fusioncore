@@ -29,10 +29,18 @@ OUT_ROOT="${1:-$HOME/nclt/rerun_$(date +%Y%m%d_%H%M)}"
 RATE="${RATE:-1.0}"
 
 # The sequences come from the baseline itself, so this cannot drift from what
-# the regression checker gates on.
-SEQUENCES=$(python3 -c "
+# the regression checker gates on. SEQUENCES overrides it for a deliberate run:
+# a repeat of one sequence, or a sequence with no baseline entry yet. Repeats are
+# fine, each gets its own numbered output directory.
+#
+#   SEQUENCES="2013-04-05 2012-08-20" bash tools/rerun_baseline.sh
+if [ -n "${SEQUENCES:-}" ]; then
+  echo "SEQUENCES overridden: $SEQUENCES"
+else
+  SEQUENCES=$(python3 -c "
 import json
 print(' '.join(json.load(open('$REPO/tools/benchmark_baseline.json'))['sequences']))")
+fi
 
 mkdir -p "$OUT_ROOT"
 SUMMARY="$OUT_ROOT/summary.txt"
@@ -48,11 +56,17 @@ SUMMARY="$OUT_ROOT/summary.txt"
   echo
 } | tee "$SUMMARY"
 
+IDX=0
 for SEQ in $SEQUENCES; do
-  echo "=== $SEQ  starting $(date -Is) ===" | tee -a "$SUMMARY"
+  IDX=$((IDX + 1))
+  # Numbered so the same sequence can appear twice in one night without the
+  # second run overwriting the first. n=1 is not a measurement on the two
+  # sequences whose spread is several percent.
+  SLOT=$(printf "%02d_%s" "$IDX" "$SEQ")
+  echo "=== $SLOT  starting $(date -Is) ===" | tee -a "$SUMMARY"
   START=$(date +%s)
-  if bash "$REPO/tools/run_nclt.sh" "$SEQ" "$OUT_ROOT/$SEQ" "$RATE" \
-       > "$OUT_ROOT/$SEQ.stdout" 2>&1; then
+  if bash "$REPO/tools/run_nclt.sh" "$SEQ" "$OUT_ROOT/$SLOT" "$RATE" \
+       > "$OUT_ROOT/$SLOT.stdout" 2>&1; then
     STATUS=ok
   else
     STATUS="FAILED(exit $?)"
@@ -62,36 +76,45 @@ for SEQ in $SEQUENCES; do
   # robot_localization prints "Failed to meet update rate!" when it is starved.
   # Past runs logged 36 on 2012-06-15 and 280 on 2012-08-20, so this is not a
   # pass or fail gate, it is a number to carry beside the ATE and compare.
-  STARVED=$(grep -ciE "failed to meet update rate" "$OUT_ROOT/$SEQ/launch.log" 2>/dev/null || echo 0)
-  HZ=$(grep -oP 'achieved Hz\s+\K[0-9.]+' "$OUT_ROOT/$SEQ/manifest.txt" 2>/dev/null || echo "?")
+  STARVED=$(grep -ciE "failed to meet update rate" "$OUT_ROOT/$SLOT/launch.log" 2>/dev/null || echo 0)
+  HZ=$(grep -oP 'achieved Hz\s+\K[0-9.]+' "$OUT_ROOT/$SLOT/manifest.txt" 2>/dev/null || echo "?")
 
-  echo "  $SEQ  $STATUS  ${MINS} min  achieved ${HZ} Hz  rl_starvation_events ${STARVED}" \
+  echo "  $SLOT  $STATUS  ${MINS} min  achieved ${HZ} Hz  rl_starvation_events ${STARVED}" \
     | tee -a "$SUMMARY"
 done
 
 echo | tee -a "$SUMMARY"
 echo "=== results against baseline ===" | tee -a "$SUMMARY"
 
-python3 - "$REPO/tools/benchmark_baseline.json" "$OUT_ROOT" $SEQUENCES <<'PY' | tee -a "$SUMMARY"
+python3 - "$REPO/tools/benchmark_baseline.json" "$OUT_ROOT" <<'PY' | tee -a "$SUMMARY"
 import json, os, sys
 base = json.load(open(sys.argv[1]))["sequences"]
 root = sys.argv[2]
-print("  %-12s %9s %9s %8s   %9s %9s %8s   %s" % (
-    "sequence", "FC base", "FC now", "delta", "RL base", "RL now", "delta", "integrity"))
-for seq in sys.argv[3:]:
-    p = os.path.join(root, seq, "res", "metrics.json")
+slots = sorted(d for d in os.listdir(root) if os.path.isdir(os.path.join(root, d)))
+print("  %-16s %9s %9s %8s   %9s %9s %8s   %s" % (
+    "slot", "FC base", "FC now", "delta", "RL base", "RL now", "delta", "integrity"))
+for slot in slots:
+    seq = slot.split("_", 1)[1] if "_" in slot else slot
+    p = os.path.join(root, slot, "res", "metrics.json")
     if not os.path.exists(p):
-        print("  %-12s %s" % (seq, "NO METRICS, run did not reach evaluation"))
+        print("  %-16s %s" % (slot, "NO METRICS, run did not reach evaluation"))
         continue
     m = json.load(open(p))["filters"]
     fc, rl = m["FusionCore"]["ate_rmse_3d"], m["RL-EKF"]["ate_rmse_3d"]
+    if seq not in base:
+        # No baseline entry: this row has never been benchmarked, so there is
+        # nothing to compare against and saying so is the honest output.
+        print("  %-16s %9s %9.3f %8s   %9s %9.3f %8s   NEW, no baseline entry" % (
+            slot, "-", fc, "-", "-", rl, "-"))
+        continue
     fb, rb = base[seq]["fusioncore_ate_rmse_3d"], base[seq]["rl_ate_rmse_3d"]
-    # The control is the integrity check. If RL moved, the input or the machine
-    # changed and the FusionCore delta is not attributable to FusionCore.
+    # The control only validates a comparison when the INPUT is unchanged. It is
+    # not a contamination detector: 2026-10-09 measured 62 starvation events
+    # against 0 moving it 0.20%, while a change to the player moved it 148%.
     rd = 100.0 * (rl - rb) / rb
-    flag = "ok" if abs(rd) < 1.0 else "CONTROL MOVED %.2f%%, FC DELTA NOT ATTRIBUTABLE" % rd
-    print("  %-12s %9.3f %9.3f %+7.2f%%   %9.3f %9.3f %+7.2f%%   %s" % (
-        seq, fb, fc, 100.0 * (fc - fb) / fb, rb, rl, rd, flag))
+    flag = "ok" if abs(rd) < 1.0 else "CONTROL MOVED %.2f%%, CHECK WHETHER THE INPUT CHANGED" % rd
+    print("  %-16s %9.3f %9.3f %+7.2f%%   %9.3f %9.3f %+7.2f%%   %s" % (
+        slot, fb, fc, 100.0 * (fc - fb) / fb, rb, rl, rd, flag))
 PY
 
 echo | tee -a "$SUMMARY"
