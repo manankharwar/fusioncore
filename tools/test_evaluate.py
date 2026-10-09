@@ -25,10 +25,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 import check_benchmark_regression
 
-# evo is a hard requirement of evaluate.py, and CI installs it and fails loudly if
-# that install does not work, so this never silently skips there. The guard is for a
-# developer who has not installed evo yet: a clear skip beats an import error that
-# looks like a broken test. It must not become the normal path.
+# evo is a hard requirement of evaluate.py, and CI installs it and asserts the exact
+# import chain below, so this never silently skips there. The guard is for a developer
+# who has not installed evo yet: a clear skip beats an import error that looks like a
+# broken test. It must not become the normal path.
+#
+# Deliberately ImportError only. An evo that is ABSENT is skippable. An evo that is
+# INSTALLED BUT BROKEN is not, and should fail here where it is visible. The real case:
+# on Ubuntu 22.04 pip pulling numpy 2 shadows the system numpy that scipy was built
+# against, and the first scipy import raises ValueError("numpy.dtype size changed"),
+# not ImportError. That is a broken environment, not a missing package, and silently
+# skipping it would hide a tool that nothing had exercised.
 try:
     import evaluate
     from evo.core.geometry import GeometryException

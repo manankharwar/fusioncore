@@ -84,8 +84,21 @@ jobs:
       # and a tool nothing exercised would look tested.
       - name: Install evo (trajectory evaluation)
         run: |
-          python3 -m pip install evo || python3 -m pip install evo --break-system-packages
-          python3 -c "import evo; print('evo', evo.__version__)"
+          # 22.04's system scipy is compiled against numpy 1.x. Letting pip pull
+          # numpy 2 into ~/.local shadows it, and the first scipy import then dies
+          # with "numpy.dtype size changed ... Expected 96 from C header, got 88",
+          # which is a ValueError rather than an ImportError, so nothing in the test
+          # can guard against it. Pinning numpy keeps the system scipy usable.
+          if [ "${{ matrix.ros_distro }}" = "humble" ]; then
+            python3 -m pip install "numpy<2" evo
+          else
+            python3 -m pip install evo || python3 -m pip install evo --break-system-packages
+          fi
+          # Assert the chain evaluate.py actually imports, not just the package.
+          # `import evo` on its own never reaches scipy, so it passed on humble while
+          # the real chain was broken, and the failure surfaced in the test step
+          # instead of here where it belongs.
+          python3 -c "from evo.core import metrics, sync; import evo; print('evo', evo.__version__)"
 
       - name: Test the tools
         run: |
