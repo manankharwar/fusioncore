@@ -58,45 +58,64 @@ changes, some of which improved the long-blackout sequences while regressing
 another, and nothing caught it because scores were never tracked per commit.
 This closes that gap.
 
-## Working on the machine during a playback voids the control (2026-10-08)
+## Working on the machine during a playback: what it does and does not do (2026-10-08/09)
 
-Measured, not suspected. A baseline re-measurement was started at 15:18 and
-2012-06-15 came back at 78.112 m against a recorded 73.525 m, which looks like
-a 6.24% regression worth investigating. It is not a result at all, because the
-robot_localization control moved from 18.487 m to 45.772 m, **+147.59%**. A
-control that moves 148% cannot certify that the input was the same, so the
-FusionCore delta beside it is not attributable to FusionCore.
+**The claim first written here on 2026-10-08 was WRONG and is withdrawn.** It said that
+working on this machine during a playback starved robot_localization and moved the control
+by 148%, voiding the run. The first half is real. The second is not, and a clean re-run
+disproved it the same night.
 
-FusionCore's own achieved rate was fine, 97.9 Hz. The control's was not: 65325
-poses over 3311 s is 19.7 Hz against FusionCore's 324063. So the starvation was
-specific to robot_localization, which is the process whose health the ATE
-comparison depends on.
+2012-06-15 was run twice, hours apart, with nothing changed but whether this session was
+using the machine:
 
-What starved it was this session doing other work on the same machine while the
-playback ran: fetching URLs, running `ros2 pkg list` through check_prereqs.sh,
-rewriting a script, and committing. Mapping each "Failed to meet update rate"
-to wall-clock minute shows it directly:
+```
+                        starvation   RL control ATE   FusionCore ATE   achieved Hz
+  afternoon, machine in use     62         45.772           78.112          97.9
+  night, machine left alone      0         45.864           82.011          99.9
+                                          +0.20%           +4.99%
+```
 
-  2012-06-15, worked on during playback   54 events in the first 31 min
-                                          (10 in one minute, 19 across three)
-  2012-06-15, left alone after 15:50       7 events in the next 29 min
-  2012-08-20, left alone from the start    1 event in 19 min
+The control reproduced to **0.20%** across a 62 versus 0 difference in starvation events.
+Whatever those events are, they did not move the measurement. FusionCore's 4.99% sits
+inside its documented 5.8% spread on this sequence, so it moved no more than it moves
+anyway.
 
-Three orders of difference in event rate between working and not working, on the
-same machine, in the same hour, on the same harness.
+**A second error in the same note:** robot_localization was described as starved down to
+19.7 Hz against FusionCore's 97.9. It was not. 20 Hz is simply the rate it runs at here,
+and it logged 65325 poses in the first run against 66158 in the second, 1.28% apart. Two
+different configured rates were read as a shortfall.
 
-**THIS IS THE SAME MISTAKE AS 2026-10-05**, when polling a run with pgrep and
-`ros2 topic hz` moved the control 4.40% and voided 75 minutes. The lesson was
-recorded as "do not poll it", and the header of rerun_baseline.sh says so. The
-lesson is actually larger and this is the corrected form:
+**What actually moved the control, and it is far more important.** robot_localization runs
+no FusionCore code, so the only thing that can change its score is its INPUT. The input did
+change: #169 corrected the frame of the wheel-odometry yaw rate the player publishes, and
+both filters consume it. Every entry in benchmark_baseline.json is marked `pre_frame_fix`
+for exactly this reason. Measured on the three baseline sequences:
 
-  A playback owns the machine. Not just no polling: no builds, no package
-  queries, no downloads, no test runs, nothing. Start it and go and do something
-  that is not on this computer.
+```
+  sequence      RL before   RL after    change
+  2012-06-15      18.487     45.864    +148.1%
+  2012-08-20      10.519     10.395      -1.2%
+  2013-04-05     266.700     65.776     -75.3%
+```
 
-Historical starvation counts are in the old logs and were never read until now:
-36 on 2012-06-15, 215 on 2013-04-05, 280 on 2012-08-20. So some past runs were
-starved too, and every number measured beside a high count deserves the same
-suspicion as this one. `rerun_baseline.sh` now records the count per sequence
-beside the ATE for exactly this reason. Read it before the ATE, along with the
-achieved Hz, and read the control delta before either.
+So the control is only an integrity check WHEN THE INPUT IS UNCHANGED. Comparing across a
+deliberate change to the data the player emits, a moving control is the expected result and
+not a fault. rerun_baseline.sh prints "CONTROL MOVED, FC DELTA NOT ATTRIBUTABLE" on two of
+these three, and on this particular comparison that warning is correct about attribution
+and misleading about cause. Read it as "the baseline predates a change to the input", not
+as "the run was contaminated".
+
+**What still stands, and is still worth doing.** 54 starvation events in 31 worked minutes
+against 1 in 19 idle minutes is real and timestamped. Leaving the machine alone produced 0
+events across all three sequences. Starvation is a cost worth avoiding and a signal worth
+recording, and the 2026-10-05 incident where a run was voided after polling with
+`ros2 topic hz` is a different and heavier kind of load than reading a log file. But the
+rule is now stated at its measured strength rather than above it: **keep off the machine,
+and do not attribute a moved control to it without a paired run.**
+
+**The method lesson, which is the one to keep.** The afternoon's conclusion came from a
+single run plus a plausible mechanism, and the repo already had a rule against exactly
+that: "when a repeat disagrees with the first run, the next move is another repeat, not a
+theory." A theory was published instead, into this file and into the project memory, within
+an hour of the observation. The repeat cost nothing and settled it.
+
