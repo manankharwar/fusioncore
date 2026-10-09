@@ -1,6 +1,6 @@
 {
  "_note": "Per-sequence reference for the NCLT regression checker (tools/check_benchmark_regression.py). NOT the published table. FusionCore ATE RMSE in metres, SE3-aligned to RTK ground truth, regenerated from a run's results/metrics.json via tools/evaluate.py --json.",
- "_status": "MEASURED 2026-10-09 on a4aae82, the FIRST measurement after the #169 frame fix. All three sequences run sequentially by tools/rerun_baseline.sh at 1x with the machine left alone: 0 robot_localization starvation events on all three, achieved filter rate 99.9 to 103.1 Hz, and all six 3D-vs-XY pairs internally consistent, which the previous file was not. THE CONTROL IS NOT COMPARABLE TO THE PRE-FIX ENTRIES and that is expected, not a fault: #169 changed the wheel-odometry yaw rate the player publishes and BOTH filters consume it, so the control moved +148.1%, -1.2% and -75.3% on the three sequences. The old values are kept per sequence under superseded_pre_frame_fix. n=1 on two of the three, n=2 on 2012-06-15 (78.112 and 82.011, 5.0% apart, inside its documented 5.8% spread; control 45.772 and 45.864, 0.20% apart). Treat a move under ~6% on 2012-06-15 or 2012-08-20 as noise and ~1% as meaningful on 2013-04-05, as before. A 2026-10-08 note claiming that working on the machine during a playback moved the control 148% is WITHDRAWN: the paired runs above differ by 62 starvation events and 0.20% of control. See the 2026-10-08/09 section of tools/benchmark_regression.md.",
+ "_status": "MEASURED 2026-10-08/09 on a4aae82, the first measurements after the #169 frame fix. FIVE of the twelve published rows now have a run record, up from three. Every run: sequential at 1x, machine left alone, 0 robot_localization starvation events, 99.9 to 103.2 Hz, and all 3D-vs-XY pairs internally consistent. HEADLINE: the README claims FusionCore beats robot_localization on 10 of 12. Of the five rows that have actually been measured, FUSIONCORE WINS 2 (2012-09-28, 2013-04-05) AND LOSES 3 (2012-02-04, 2012-06-15, 2012-08-20). 2012-02-04 flips outright from a published 81% win to a measured 20% loss. 2012-09-28 is the one row where FusionCore measures better than published. The remaining seven rows have no run record and nothing should be claimed about them. REPEATABILITY INVERTED across the frame fix: 2013-04-05 went from 0.17% to 12.88% spread and 2012-08-20 from 4.57% to 0.13%. The 12.88% exceeds the 10% gate threshold, so the gate cannot grade 2013-04-05 meaningfully yet. The control is not comparable to any pre-fix entry, by design: #169 changed the player's wheel-odometry yaw rate and both filters consume it. Old values are under superseded_pre_frame_fix. A withdrawn 2026-10-08 claim about machine load is covered in the 2026-10-08/09 section of tools/benchmark_regression.md.",
  "baseline_commit": "a4aae82",
  "recorded": "2026-10-09",
  "regression_threshold_pct": 10.0,
@@ -36,48 +36,110 @@
    ]
   },
   "2012-08-20": {
-   "fusioncore_ate_rmse_3d": 155.415,
-   "fusioncore_ate_rmse_xy": 154.294,
-   "fusioncore_rpe10_rmse": 54.966,
-   "fusioncore_drift_m_per_km": 20.67,
-   "rl_ate_rmse_3d": 10.395,
-   "rl_rpe10_rmse": 19.104,
+   "fusioncore_ate_rmse_3d": 155.618,
+   "fusioncore_ate_rmse_xy": 154.397,
+   "fusioncore_rpe10_rmse": 52.795,
+   "fusioncore_drift_m_per_km": 20.7,
+   "rl_ate_rmse_3d": 10.389,
+   "rl_rpe10_rmse": 19.007,
    "rl_drift_m_per_km": 1.38,
    "verified": true,
    "measured": "2026-10-09",
    "commit": "a4aae82",
-   "n": 1,
-   "achieved_hz": 102.0,
+   "n": 2,
+   "achieved_hz": 102.1,
    "rl_starvation_events": 0,
    "wall_clock_min": 89,
-   "note": "Issue #64, seven GNSS gaps. The only sequence where the frame fix barely touched the control (-1.18%), so the FusionCore move here is close to attributable and it is bad: 116.444 to 155.415, +33.5%. This is [[#148]] confirmed and worse than the 145.192 seen on 2026-10-05. Ratio against the control went 11.07x to 14.95x.",
+   "note": "Issue #64, seven GNSS gaps. The only sequence where the frame fix barely touched the control (-1.18%), so the FusionCore move here is close to attributable and it is bad: 116.444 to 155.415, +33.5%. This is [[#148]] confirmed and worse than the 145.192 seen on 2026-10-05. Ratio against the control went 11.07x to 14.95x. CONFIRMED at n=2 on 2026-10-09: 155.618 against 155.415, 0.13% apart.",
    "superseded_pre_frame_fix": {
     "fusioncore_ate_rmse_3d": 116.444,
     "fusioncore_ate_rmse_xy": 121.669,
     "rl_ate_rmse_3d": 10.519
-   }
+   },
+   "repeats_post_frame_fix": [
+    155.415,
+    155.618
+   ],
+   "repeats_post_frame_fix_control": [
+    10.395,
+    10.389
+   ],
+   "measured_spread_pct": 0.13,
+   "spread_warning": "POST-FIX SPREAD IS 0.13%, n=2 on a4aae82: 155.415 then 155.618, control 10.395 and 10.389. Pre-fix this was the NOISIEST sequence at 4.57%. It is now the tightest, which is what makes the +33.5% regression against the pre-fix 116.444 credible rather than noise. See #148."
   },
   "2013-04-05": {
-   "fusioncore_ate_rmse_3d": 16.137,
-   "fusioncore_ate_rmse_xy": 14.673,
-   "fusioncore_rpe10_rmse": 28.182,
-   "fusioncore_drift_m_per_km": 3.01,
-   "rl_ate_rmse_3d": 65.776,
-   "rl_rpe10_rmse": 39.456,
-   "rl_drift_m_per_km": 12.26,
+   "fusioncore_ate_rmse_3d": 14.058,
+   "fusioncore_ate_rmse_xy": 12.348,
+   "fusioncore_rpe10_rmse": 28.149,
+   "fusioncore_drift_m_per_km": 2.62,
+   "rl_ate_rmse_3d": 65.51,
+   "rl_rpe10_rmse": 38.983,
+   "rl_drift_m_per_km": 12.21,
    "verified": true,
    "measured": "2026-10-09",
    "commit": "a4aae82",
-   "n": 1,
+   "n": 2,
    "achieved_hz": 103.1,
    "rl_starvation_events": 0,
    "wall_clock_min": 74,
-   "note": "The frame fix is vindicated here. FusionCore 189.700 to 16.137, a 91.5% improvement, which lands near the 12.1 m of the May 2026 published snapshot and says the 189.7 was the frame bug rather than the filter. The control improved too, 266.700 to 65.776, so the win margin narrowed from 95% to 75.5%. FusionCore wins this one clearly.",
+   "note": "The frame fix is vindicated here. FusionCore 189.700 to 16.137, a 91.5% improvement, which lands near the 12.1 m of the May 2026 published snapshot and says the 189.7 was the frame bug rather than the filter. The control improved too, 266.700 to 65.776, so the win margin narrowed from 95% to 75.5%. FusionCore wins this one clearly. Re-run 2026-10-09 gave 14.058 against 16.137, 12.88% apart on a clean control, so the headline figure is a range of roughly 14 to 16 m rather than a point.",
    "superseded_pre_frame_fix": {
     "fusioncore_ate_rmse_3d": 189.7,
     "fusioncore_ate_rmse_xy": 200.91,
     "rl_ate_rmse_3d": 266.7
-   }
+   },
+   "repeats_post_frame_fix": [
+    16.137,
+    14.058
+   ],
+   "repeats_post_frame_fix_control": [
+    65.776,
+    65.51
+   ],
+   "measured_spread_pct": 12.88,
+   "spread_warning": "POST-FIX SPREAD IS 12.88%, AND THAT EXCEEDS THE 10% GATE THRESHOLD. n=2 on a4aae82, 16.137 then 14.058, with the control steady at 65.776 and 65.510 (0.40%), so the input was identical and this is FusionCore's own run-to-run variance. The gate cannot tell noise from regression on this row until n is bigger or the threshold is set per sequence. Pre-fix this was the TIGHTEST sequence at 0.17%, so the frame fix inverted its repeatability."
+  },
+  "2012-09-28": {
+   "fusioncore_ate_rmse_3d": 18.594,
+   "fusioncore_ate_rmse_xy": 15.624,
+   "fusioncore_rpe10_rmse": 20.426,
+   "fusioncore_drift_m_per_km": 2.58,
+   "rl_ate_rmse_3d": 82.598,
+   "rl_rpe10_rmse": 35.307,
+   "rl_drift_m_per_km": 11.45,
+   "verified": true,
+   "measured": "2026-10-09",
+   "commit": "a4aae82",
+   "n": 1,
+   "achieved_hz": 102.7,
+   "rl_starvation_events": 0,
+   "wall_clock_min": 82,
+   "published_readme": {
+    "fusioncore_m": 22.4,
+    "rl_m": 53.8
+   },
+   "note": "FIRST EVER measurement of this row. FusionCore 18.594 against the control's 82.598, a 77% win, and the only row so far where FusionCore measures BETTER than its published figure (22.4 m published, 18.594 measured) while the control measures worse (53.8 published, 82.598 measured). n=1."
+  },
+  "2012-02-04": {
+   "fusioncore_ate_rmse_3d": 153.883,
+   "fusioncore_ate_rmse_xy": 105.312,
+   "fusioncore_rpe10_rmse": 38.389,
+   "fusioncore_drift_m_per_km": 18.45,
+   "rl_ate_rmse_3d": 123.131,
+   "rl_rpe10_rmse": 37.64,
+   "rl_drift_m_per_km": 14.77,
+   "verified": true,
+   "measured": "2026-10-09",
+   "commit": "a4aae82",
+   "n": 1,
+   "achieved_hz": 103.2,
+   "rl_starvation_events": 0,
+   "wall_clock_min": 83,
+   "published_readme": {
+    "fusioncore_m": 49.7,
+    "rl_m": 265.5
+   },
+   "note": "FIRST EVER measurement of this row, and it FLIPS the published verdict. Published as a FusionCore win by 81% (49.7 m against 265.5 m). Measured, FusionCore loses by 20%: 153.883 m against the control's 123.131 m. FusionCore is 3.1x worse than published and the control is 2.2x better. n=1, so repeat before citing, but a flip of this size is not a spread artefact."
   }
  },
  "_read_this_before_judging_any_regression": "The 9x run-to-run spread is NOT universal, which an earlier note here implied. Measured over six unattended runs on 2026-09-12: 2012-06-15 repeats to 2.8%, 2012-08-20 to 4.6%, 2013-04-05 to 1.2%. The historical 32 m to 345 m range was all one sequence, 2013-04-05, and got generalised. So on these sequences a 5 to 10 percent change IS measurable and two runs are enough to see it. Keep the caution for a sequence whose spread has not been measured, and re-check it when adding one. robot_localization remains the control: if it moves more than about a percent between runs, the comparison is void whatever FusionCore did, and that check has already caught one wrong diagnosis (see issue #119).",
