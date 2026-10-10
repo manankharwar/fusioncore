@@ -43,7 +43,11 @@ from lifecycle_msgs.msg import Transition
 
 def generate_launch_description():
     pkg = get_package_share_directory('fusioncore_datasets')
-    fc_config  = os.path.join(pkg, 'config', 'nclt_fusioncore.yaml')
+    # Default FusionCore config. Overridable with fusioncore_config:=<path> so one
+    # parameter can be A/B tested across otherwise identical runs. Without this the
+    # path was hardcoded and the only way to vary a setting was to edit the installed
+    # YAML between runs, which leaves no record of what each run actually used.
+    default_fc_config = os.path.join(pkg, 'config', 'nclt_fusioncore.yaml')
     rl_config  = os.path.join(pkg, 'config', 'rl_ekf.yaml')
     nav_config = os.path.join(pkg, 'config', 'navsat_transform.yaml')
 
@@ -60,6 +64,8 @@ def generate_launch_description():
 
     # ── args ──────────────────────────────────────────────────────────────────
     args = [
+        DeclareLaunchArgument('fusioncore_config', default_value=default_fc_config,
+                              description='FusionCore params YAML, for A/B testing one setting'),
         DeclareLaunchArgument('data_dir',      description='Path to NCLT sequence directory'),
         DeclareLaunchArgument('output_bag',     default_value='./benchmarks/nclt/2012-01-08/bag',
                               description='Output bag path'),
@@ -125,7 +131,7 @@ def generate_launch_description():
         name='fusioncore',
         namespace='',
         output='screen',
-        parameters=[fc_config, {'use_sim_time': True}],
+        parameters=[LaunchConfiguration('fusioncore_config'), {'use_sim_time': True}],
     )
 
     configure_fc = TimerAction(

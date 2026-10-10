@@ -57,20 +57,27 @@ source "$WS/install/setup.bash"
   echo "branch       $(git -C "$WS/src/fusioncore" rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
   echo "dirty        $(git -C "$WS/src/fusioncore" status --short 2>/dev/null | wc -l) tracked file(s) modified"
   echo "alpha        $(grep -oP 'double alpha = \K[0-9.]+' "$WS/src/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp")"
-  echo "config       $WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml"
-  echo "config md5   $(md5sum "$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml" 2>/dev/null | cut -d" " -f1)"
+  echo "config       ${FC_CONFIG:-$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml}"
+  echo "config md5   $(md5sum "${FC_CONFIG:-$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml}" 2>/dev/null | cut -d" " -f1)"
   echo "data         $DATA"
   echo "host         $(hostname)"
 } > "$OUT/manifest.txt"
-cp "$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml" "$OUT/config.yaml" 2>/dev/null
+cp "${FC_CONFIG:-$WS/src/fusioncore/fusioncore_datasets/config/nclt_fusioncore.yaml}" "$OUT/config.yaml" 2>/dev/null
 echo "  provenance written to $OUT/manifest.txt"
 
 echo "sequence $SEQ   rate ${RATE}x   out $OUT"
 echo "alpha compiled in: $(grep -oP 'double alpha = \K[0-9.]+' "$WS/src/fusioncore/fusioncore_core/include/fusioncore/ukf.hpp")"
 START=$(date +%s)
 
-ros2 launch fusioncore_datasets nclt_benchmark.launch.py \
-  data_dir:="$DATA" output_bag:="$OUT/bag" playback_rate:="$RATE" \
+# FC_CONFIG overrides the FusionCore params YAML, so one setting can be A/B tested
+# across otherwise identical runs. The resolved path and its md5 go in the manifest.
+LAUNCH_ARGS=(data_dir:="$DATA" output_bag:="$OUT/bag" playback_rate:="$RATE")
+if [ -n "${FC_CONFIG:-}" ]; then
+  [ -f "$FC_CONFIG" ] || { echo "FC_CONFIG does not exist: $FC_CONFIG"; exit 1; }
+  LAUNCH_ARGS+=(fusioncore_config:="$FC_CONFIG")
+fi
+
+ros2 launch fusioncore_datasets nclt_benchmark.launch.py "${LAUNCH_ARGS[@]}" \
   > "$OUT/launch.log" 2>&1 || true
 
 echo "playback finished in $(( ($(date +%s) - START) / 60 )) min"
