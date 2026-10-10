@@ -32,7 +32,7 @@ class ReplayWiringTest(unittest.TestCase):
             with mock.patch.object(check_replay_wiring, "NODE", node_path), \
                     mock.patch.object(check_replay_wiring, "REPLAY", replay_path), \
                     contextlib.redirect_stdout(out):
-                code = check_replay_wiring.main()
+                code = check_replay_wiring.main([])
         return code, out.getvalue()
 
     def test_unwired_core_parameter_is_reported(self):
