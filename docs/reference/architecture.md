@@ -59,10 +59,10 @@ The core library (`fusioncore_core`) has zero ROS dependency. It can be used in 
 
 **Working and tested:**
 
-- 348 individual test cases (279 in fusioncore_core, 45 in fusioncore_ros,
+- 352 individual test cases (283 in fusioncore_core, 45 in fusioncore_ros,
   24 in fusioncore_ublox). Of these, 7 are disabled on purpose: they encode the
   acceptance criteria for issue #150 and report as skipped until it lands.
-  `colcon test-result --all` reports 384, which adds the 36 per-package CTest
+  `colcon test-result --all` reports 389, which adds the 37 per-package CTest
   wrapper entries. `tools/check_docs_test_count.py` fails CI if these figures drift
   from the source.
 - IMU + encoder + GPS fusion

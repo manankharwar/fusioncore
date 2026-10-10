@@ -71,6 +71,9 @@ if(BUILD_TESTING)
   ament_add_gtest(test_gnss_coast tests/test_gnss_coast.cpp TIMEOUT 600)
   target_link_libraries(test_gnss_coast fusioncore_core Eigen3::Eigen)
 
+  ament_add_gtest(test_sigma_rotation_relax tests/test_sigma_rotation_relax.cpp TIMEOUT 600)
+  target_link_libraries(test_sigma_rotation_relax fusioncore_core Eigen3::Eigen)
+
   ament_add_gtest(test_gnss_reacquire tests/test_gnss_reacquire.cpp TIMEOUT 600)
   target_link_libraries(test_gnss_reacquire fusioncore_core Eigen3::Eigen)
 

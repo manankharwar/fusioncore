@@ -867,6 +867,20 @@ void FusionCore::predict_to(double timestamp_seconds) {
     ukf_.set_gyro_bias_noise_scale(config_.gnss_coast_q_bias_factor);
   }
 
+  // Relax the sigma-point rotation bound as GNSS stays silent. FusionCore owns this
+  // rather than the UKF because the UKF has no idea what a GNSS fix is. See
+  // UKFParams::max_sigma_rotation_relax_s for the mechanism and the prediction it
+  // makes. With relax_s at 0 the scale is always 1.0 and behaviour is unchanged.
+  if (config_.ukf.max_sigma_rotation_deg > 0.0 &&
+      config_.ukf.max_sigma_rotation_relax_s > 0.0)
+  {
+    // Before the first fix there is nothing to be silent about, so hold the bound.
+    const double silent_s = (last_gnss_time_ >= 0.0)
+                              ? std::max(0.0, timestamp_seconds - last_gnss_time_)
+                              : 0.0;
+    ukf_.set_sigma_rotation_scale(1.0 + silent_s / config_.ukf.max_sigma_rotation_relax_s);
+  }
+
   double dt = timestamp_seconds - last_timestamp_;
   // Large backward time jump (clock reset, badly out-of-order timestamps,
   // bag-replay clock corruption on WSL2): re-sync the clock to the new time

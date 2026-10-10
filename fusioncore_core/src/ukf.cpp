@@ -146,8 +146,11 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
   // Keep each sigma point's attitude a physically meaningful sample. See
   // UKFParams::max_sigma_rotation_deg for why, and for why this bounds the POINTS and
   // deliberately leaves P alone.
-  if (params_.max_sigma_rotation_deg > 0.0) {
-    const double max_rad = params_.max_sigma_rotation_deg * M_PI / 180.0;
+  // A bound at or past 180 degrees cannot bind, because a shortest-path rotation
+  // never exceeds it, so the relaxed case costs nothing rather than doing busy work.
+  const double scaled_rot_deg = params_.max_sigma_rotation_deg * sigma_rot_scale_;
+  if (params_.max_sigma_rotation_deg > 0.0 && scaled_rot_deg < 180.0) {
+    const double max_rad = scaled_rot_deg * M_PI / 180.0;
     Eigen::Vector4d q0 = state_.x.segment<4>(QW);
     const double n0 = q0.norm();
     if (n0 > 1e-9) {

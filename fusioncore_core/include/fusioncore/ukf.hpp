@@ -111,6 +111,27 @@ struct UKFParams {
   // sample is a rotation by construction. That is the direction #150 should take.
   double max_sigma_rotation_deg = 0.0;
 
+  // Seconds of GNSS silence over which max_sigma_rotation_deg is relaxed back to
+  // inert. 0.0 keeps the bound constant, which is the behaviour measured above.
+  //
+  // WHY: the 2026-10-10 A/B showed the bound is a tradeoff, not a fix. It helps where
+  // blackouts are short (-7.9% and -7.2%) and hurts the one sequence with a 416 s gap
+  // (+15.0%), which is the overconfidence the bound was always predicted to cause. The
+  // two effects are separable in time: the cancellation it fixes happens continuously,
+  // while the overconfidence only costs anything once GNSS has been gone long enough
+  // that the filter needs a wide attitude prior to accept the returning fix.
+  //
+  // So the bound is scaled by (1 + t_since_gnss / relax_s). It holds while fixes are
+  // arriving and widens as they stop, passing 180 degrees (where it is inert, since no
+  // shortest-path rotation exceeds that) after relax_s * (180/max_sigma_rotation_deg - 1)
+  // seconds of silence. At 45 degrees and relax_s 100 that is 300 s.
+  //
+  // PREDICTION THIS MAKES, which is how it should be judged: 2012-06-15 recovers toward
+  // its unbounded figure while 2012-08-20 and 2013-04-05 keep their gains. If instead
+  // every sequence reverts to the unbounded numbers, the bound is doing nothing useful
+  // once it is time-varying and the error-state migration is the remaining route.
+  double max_sigma_rotation_relax_s = 0.0;
+
   // Average the sigma points' attitudes in the TANGENT SPACE instead of summing the
   // 4-vectors and renormalising.
   //
@@ -243,6 +264,10 @@ public:
   // encoder WZ measurements can drive fast bias correction during GPS outages.
   // 1.0 = normal (tight); 100.0 = fast adaptation.
   void set_gyro_bias_noise_scale(double s) { gyro_bias_noise_scale_ = s; }
+
+  // Multiplier on max_sigma_rotation_deg for the next predict, set from FusionCore
+  // which is what knows how long GNSS has been silent. 1.0 is the unscaled bound.
+  void set_sigma_rotation_scale(double s) { sigma_rot_scale_ = (s >= 1.0 ? s : 1.0); }
   double gyro_bias_noise_scale() const     { return gyro_bias_noise_scale_; }
 
   // Inflate P[X,X] and P[Y,Y] to at least sigma_xy_sq using max().
@@ -269,6 +294,7 @@ public:
 
 private:
   UKFParams params_;
+  double sigma_rot_scale_ = 1.0;
   double last_pos_correction_ = 0.0;
   State state_;
   bool   initialized_           = false;

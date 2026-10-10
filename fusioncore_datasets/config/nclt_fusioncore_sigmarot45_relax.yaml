@@ -1,0 +1,139 @@
+# NCLT config with the #150 sigma-point rotation limit ENABLED **and relaxed over
+# GNSS silence**. At 45 deg and relax 100 s the bound passes 180 deg (inert) after
+# 300 s without a fix.
+#
+# Identical to nclt_fusioncore.yaml except for ukf.max_sigma_rotation_deg below.
+# Exists so that setting can be A/B tested on identical input rather than by
+# editing the shipped config between runs.
+#
+# WHY RE-TEST IT. Bounding the sampled rotations fixes the dead-reckoning
+# cancellation outright: the synthetic repro goes from 80.7% of a perfect
+# velocity to 98.6% at 45 degrees and 100% at 2. It was measured on NCLT on
+# 2026-09-28 (a05704a) and REJECTED, because 2012-08-20 went 135.3 m with the
+# limit off to 233.8 m at 45 degrees.
+#
+# That rejection is being revisited because it predates #169 by eight days. The
+# frame fix landed 2026-10-06 and changed the wheel-odometry YAW RATE fed to the
+# filter, and the entire mechanism here is about how attitude covariance grows.
+# So the measurement that killed this fix was taken through a player now known
+# to be wrong on exactly the signal that matters.
+#
+# If 2012-08-20 is still worse with the limit on, the rejection stands on valid
+# data and the error-state migration is the only way forward. If it is better,
+# a two-month-old defect has a one-line fix.
+fusioncore:
+  ros__parameters:
+    base_frame: base_link
+    odom_frame: odom
+    publish_rate: 100.0
+
+    # Microstrain 3DM-GX3-45 (the NCLT IMU)
+    # Angular random walk: 0.07°/√hr → noise density ≈ 0.003 rad/s
+    # Velocity random walk: 0.03 m/s/√hr → noise density ≈ 0.001 m/s²
+    imu.gyro_noise: 0.003
+    imu.accel_noise: 0.1
+    imu.has_magnetometer: false         # 6-axis mode: yaw from GPS track only
+    imu.remove_gravitational_acceleration: false  # NCLT IMU includes gravity (raw specific force)
+
+    # Segway RMP wheel encoders via odometry_mu_100hz.csv (differentiated)
+    encoder.vel_noise: 0.05
+    encoder.yaw_noise: 0.02
+
+    # Novatel SPAN-CPT standard GPS: ~3m CEP in urban Michigan campus
+    # position_covariance published by nclt_player: var_xy=9, var_z=25
+    # base_noise_xy=1.0: FC reads cov from message and uses sqrt(var_xy) * base_noise_xy
+    gnss.base_noise_xy: 1.0
+    gnss.base_noise_z: 1.0
+    # The player stamps a covariance on every fix, so the SIGMA gate is what runs
+    # here and max_hdop below never fires. Pinned explicitly, like sigma_k, so a
+    # change to a product default cannot silently move benchmark numbers.
+    # Player values are a fixed 3.0 m horizontal / 5.0 m vertical sigma.
+    gnss.max_sigma_xy: 25.0
+    gnss.max_sigma_z: 50.0
+    gnss.max_hdop: 10.0        # DOP path only; unused with the player's covariance
+    gnss.min_satellites: 0     # NCLT doesn't publish satellite count
+    gnss.min_fix_type: 1       # accept any valid fix (mode >= 2 already filtered in player)
+    gnss.heading_topic: ""     # no dual-antenna in NCLT
+    gnss.azimuth_topic: ""
+
+    # Lever arm: zero: disables heading-validation gate so GNSS is fused immediately.
+    # The 30cm vertical offset has negligible horizontal effect on a flat-terrain vehicle.
+    # #144: discard the bearing window on the ANGLE turned across it rather than on
+    # one instantaneous yaw-rate sample. Left at the 0.0 default here, deliberately,
+    # until all three staged sequences have been measured. What one sequence says so
+    # far, 2012-08-20 at 1x with the RL control reading 10.51 both times:
+    #     gate off (rate check)   ATE 193.86 m   drift 25.79 m/km
+    #     gate on at 5 deg        ATE 136.74 m   drift 18.19 m/km   29.5% better
+    # That is far outside this sequence's documented 4.57% spread, but it is n=1 on
+    # one sequence and it does not close the gap to RL, so it is not a default yet.
+    # gnss.track_heading_max_window_turn_deg: 5.0
+
+    gnss.lever_arm_x: 0.0
+    gnss.lever_arm_y: 0.0
+    gnss.lever_arm_z: 0.0
+
+    # Flat-terrain Z position constraint: beats GPS altitude noise (5m std dev
+    # on NCLT) and prevents Z oscillations from lifting ATE. 0.3m sigma keeps
+    # the filter at ground level without fighting gentle real-world slopes.
+    ground_constraint.z_position_sigma: 0.0
+
+    outlier_rejection: true
+    outlier_threshold_gnss: 16.27   # chi2(3, 0.999)
+    outlier_threshold_enc: 11.34    # chi2(3, 0.999)
+    outlier_threshold_imu: 15.09    # chi2(6, 0.999)
+    gnss.max_speed: 3.0             # NCLT Segway cruises ~1.5 m/s; reject fixes implying
+                                    # more drift than max_speed*dt (catches the 2012-08-20
+                                    # 727m outlier cluster at the blackout boundary that a
+                                    # coast-relaxed chi2 gate admits). 2x cruise is safe.
+    gnss.max_speed_margin: 5.0      # slack for GPS noise + prediction uncertainty (m)
+    # Pinned explicitly rather than inherited, so a change to the product default
+    # cannot silently move benchmark numbers. Set to 5.0 to MATCH the current
+    # default, because the benchmark should measure the configuration users
+    # actually get.
+    #
+    # Do not set this to 0.0, which is what the gate effectively did before the
+    # sigma term existed. Measured on 1200 s of 2013-04-05, everything else
+    # identical:
+    #     k=0.0   125 IMPLAUSIBLE_JUMP rejections   ATE 915.0 m
+    #     k=5.0     3 IMPLAUSIBLE_JUMP rejections   ATE   5.5 m
+    # The player stamps a fixed 3 m sigma and GPS arrives at ~4.5 Hz, so the old
+    # bound came to 3.0*0.22 + 5.0 = 5.7 m against 3 m of noise. It sat inside
+    # the noise distribution, rejected fixes, drifted, and the drift made the
+    # next fix look even more implausible.
+    gnss.max_speed_sigma_k: 5.0
+    gnss.coast_n: 3                 # consecutive rejections before coast mode
+    gnss.coast_q_factor: 10.0       # Q_position multiplier during coast: enough for chi2 to accept genuine drift, small enough to reject extreme outliers
+    gnss.coast_timeout_s: 30.0      # also coast if GPS silent for 30s (covers mode=2 outages)
+    gnss.coast_q_bias_factor: 100.0 # Q_gyro_bias multiplier during coast: fast bias estimation from encoder WZ
+    gnss.coast_imu_wz_scale: 500.0  # inflate R_imu[WZ] during coast: encoder WZ dominates heading, not the gyro whose Q_bias is inflated 100x
+    gnss.recovery_rejection_n: 15   # re-admit GNSS after a blackout. The old 0 here was
+                                    # wrong: measured on this sequence, FusionCore is still
+                                    # 277 m out 300 s after fixes return at 5 Hz, because the
+                                    # chi2 gate rejects every one of them. Gap-gated, so the
+                                    # outlier cluster on 2012-08-20 still cannot trigger it.
+    gnss.p_inflate_sigma: 50.0      # floor only; the inflation is sized from the innovation
+    gnss.recovery_timeout_s: 0.0    # declared for compatibility only; the filter never reads it
+
+    adaptive.imu: true
+    adaptive.encoder: true
+    adaptive.gnss: true
+    adaptive.window: 50
+    adaptive.alpha: 0.01
+
+    # UKF process noise: tuned for Segway RMP driving on campus
+    ukf.max_sigma_rotation_deg: 45.0       # 0.0 in the shipped config
+    ukf.max_sigma_rotation_relax_s: 100.0  # widen the bound as GNSS goes silent
+    ukf.q_position:    0.01
+    ukf.q_orientation: 1.0e-9
+    ukf.q_velocity:    0.1
+    ukf.q_angular_vel: 0.1
+    ukf.q_acceleration: 1.0
+    ukf.q_gyro_bias:        1.0e-5
+    ukf.q_accel_bias:       1.0e-5
+    ukf.q_encoder_wz_bias:  1.0e-7  # encoder WZ bias changes very slowly (mechanical)
+
+    # PROJ: WGS84 lat/lon in, ECEF out (globally valid)
+    input.gnss_crs: "EPSG:4326"
+    output.crs: "EPSG:4978"
+    output.convert_to_enu_at_reference: true
+    reference.use_first_fix: true
