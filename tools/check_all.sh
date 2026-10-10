@@ -32,6 +32,7 @@ CHECKS=(
   "check_docs_params.py"
   "check_docs_test_count.py"
   "check_replay_wiring.py"
+  "check_links.py"
 )
 
 pass=0; fail=0; skip=0
