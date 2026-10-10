@@ -75,14 +75,34 @@ struct UKFParams {
   //
   // and P(QZ,QZ) comes back inside its constraint, 177.3 to 0.0047.
   //
-  // On NCLT 2012-08-20 replayed through the core it is much WORSE: 135.3 m with the
-  // limit off against 233.8 m at 90, 45 or 20 degrees, and 273.1 m at 10.
+  // A 2026-09-28 NCLT measurement recorded here read 135.3 m with the limit off against
+  // 233.8 m at 90, 45 or 20 degrees, and concluded the limit was uniformly harmful.
+  // THAT MEASUREMENT IS WITHDRAWN: it predates #169 by eight days. The frame fix landed
+  // 2026-10-06 and corrected the wheel-odometry yaw rate feeding the filter, and this
+  // whole mechanism is about how attitude covariance grows.
   //
-  // The two results together are the useful part. Bounding the sampled rotations does
-  // fix the cancellation, so the mechanism is confirmed. But yaw genuinely IS
-  // unobservable, and a filter whose attitude covariance can no longer grow becomes
-  // overconfident and under-weights the corrections it needs. The synthetic has no GPS,
-  // so the overconfidence costs nothing there and the benefit shows pure.
+  // Re-measured 2026-10-10 on corrected input, four sequences at 45 degrees against the
+  // post-fix n=2 baseline, every control holding inside 0.31% so each delta is
+  // attributable:
+  //
+  //     sequence     longest GPS gap   limit off   at 45 deg    change
+  //     2013-04-05            266 s      14.058      12.944     -7.92%
+  //     2012-08-20            194 s     155.618     144.430     -7.19%
+  //     2012-09-28            143 s      18.596      18.577     -0.10%
+  //     2012-06-15            416 s      82.011      94.299    +14.98%
+  //
+  // So it is a TRADEOFF, not a fix, and the original reasoning was right without being
+  // uniform. Bounding the sampled rotations does fix the cancellation. But yaw genuinely
+  // IS unobservable, and a filter whose attitude covariance can no longer grow becomes
+  // overconfident and under-weights the corrections it needs when GPS returns. The one
+  // sequence it harms is the one with the longest single blackout, which is where that
+  // overconfidence costs most, and the synthetic has no GPS at all so the benefit shows
+  // pure there.
+  //
+  // DEFAULT STAYS 0.0. A knob that helps two sequences by 7% and harms another by 15% is
+  // not shippable as an unconditional default. The obvious next experiment, untried, is
+  // to RELAX the bound as the time since the last GPS fix grows, which would take the
+  // cancellation fix where it helps and restore the covariance growth where it is needed.
   //
   // So the requirement is sharper than "bound the spread": the representation must let
   // yaw uncertainty be LARGE while every sampled attitude stays a valid rotation. A
