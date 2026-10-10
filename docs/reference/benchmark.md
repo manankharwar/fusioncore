@@ -21,7 +21,19 @@ FusionCore vs robot_localization EKF on the [NCLT dataset](http://robots.engin.u
 | 2013-02-23 | Winter | 78 min | 19,333 | 240s | **59.4 m** | 82.2 m | FC +28% |
 | 2013-04-05 | Spring | 68 min | 16,297 | 275s | **12.1 m** † | 268.9 m | FC +96% |
 
-> **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
+> **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
+> fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
+> rate to **both** filters. On those five **FusionCore wins two and loses three**, and
+> 2012-02-04 flipped from a published 81% win to a measured 20% loss. The other seven
+> have not been re-run. Their May 2026 run records exist and match the published figures
+> to three decimals, so the table was measured rather than invented, but it was measured
+> through the same faulty player and nothing should be concluded from those rows in
+> either direction.
+>
+> Measured, post-fix: 2013-04-05 **5.0x better** than robot_localization, 2012-09-28
+> **4.7x better**, 2012-02-04 1.2x worse, 2012-06-15 1.8x worse, 2012-08-20 **15x worse**.
+> The spread, not the average, is the open problem. Two identified defects sit inside
+> every one of these numbers: #150 and #148. See `tools/benchmark_regression.md`.
 >
 > | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
 > |---|---|---|---|

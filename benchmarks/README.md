@@ -23,28 +23,11 @@ FusionCore vs robot_localization EKF on the [NCLT dataset](http://robots.engin.u
 | 2013-02-23 | Winter | 78 min | 19,333 | 240s | **59.4 m** | 82.2 m | FC +28% |
 | 2013-04-05 | Spring | 68 min | 16,297 | 275s | **12.1 m** † | 268.9 m | FC +96% |
 
-> **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
->
-> | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
-> |---|---|---|---|
-> | 2012-06-15 | 49.2 m | **73.5 m** (`bcc0e09`), confirmed **73.3 m** on current `main` 2026-10-05 | 18.2 m vs 18.487 then 18.489 m |
-> | 2012-08-20 | 98.3 m | **116.4 m** (`bcc0e09`), now **145.2 m** on current `main` 2026-10-05 | 10.6 m vs 10.519 then 10.507 m |
-> | 2013-04-05 | 12.1 m | **189.7 m** (`bcc0e09`), then **50.2 m** (2026-10-03) | 268.9 m vs 266.7 to 268.8 m |
->
-> The RL-EKF control reproduces within 2% on all three rows. That is what rules out the harness and places the move in FusionCore's own column. On 2013-04-05 the margin over RL-EKF is 81% at the current figure and 29% at the September one, not the 93% this note claimed until 2026-10-05, and the 19.4 m it quoted is not supported by any run on file. The other nine rows have no run record and have not been re-measured in either direction.
->
-> The two rows re-measured on 2026-10-05 are load-bearing because their controls held: the RL-EKF figure moved **+0.01%** on 2012-06-15 and **-0.11%** on 2012-08-20, against an established band of under 1%. 2012-06-15 is now confirmed three independent times and sits inside its own n=8 spread. 2012-08-20 is worse than previously recorded and is a genuine regression, outside its 4.57% spread, so the baseline has deliberately not been moved to match it. The 2013-04-05 arm of that re-run is **void**: its control moved -4.40% after 20 `rl_ekf` update-rate misses, so it was CPU-starved and says nothing. It is being re-run.
->
-> **CORRECTED 2026-10-09.** Five of these twelve rows have now been re-measured at n=2
-> after fixing #169, a frame error in the NCLT player that fed a wrong wheel-odometry yaw
-> rate to BOTH filters. **On those five, FusionCore wins two and loses three.** The other
-> seven were measured in May 2026 through the faulty player and have never been re-run, so
-> nothing should be claimed about them. The earlier note here, that the overstatement was
-> systematic at about 1.48x, is withdrawn: across five rows the ratio runs 0.83x to 3.08x
-> and the control swings 0.24x to 2.52x despite sharing no code. See the table and the
-> explanation in the repository README.
->
-> `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
+> **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
+> fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
+> rate to **both** filters. On those five **FusionCore wins two and loses three**, and
+> 2012-02-04 flipped from a published 81% win to a measured 20% loss. The other seven
+> have not been re-run. Do not quote the table without this note.
 
 ATE = absolute trajectory error, SE3-aligned to RTK GPS ground truth. GPS Fixes = mode-3 (3D) fixes only, as published by nclt_player.
 

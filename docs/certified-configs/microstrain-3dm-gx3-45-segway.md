@@ -131,7 +131,19 @@ Evaluated against RTK GPS ground truth (Novatel SPAN-CPT RTK mode) using `evo_ap
 | 2013-04-05 | 12.1 m † | +96% better |
 | 2012-08-20 | 98.3 m † | RL wins (adversarial GPS cluster at blackout boundary) |
 
-> **Note:** three of these rows no longer describe current `main`, and in all three the published figure is better than every later measurement: 2012-06-15 (49.2 m published, confirmed 73.3 m on current `main` 2026-10-05), 2012-08-20 (98.3 m, now 145.2 m), and 2013-04-05 (12.1 m, then 189.7 m on `bcc0e09` and 50.2 m). The first two had their RL-EKF controls hold to +0.01% and -0.11%, which is what makes them trustworthy; both overstate FusionCore by the same 1.48x, which is unexplained. The RL-EKF control reproduces within 2% on all three, so the move is FusionCore's own. On 2013-04-05 the real margin over RL-EKF is 81% at the current figure, not the 93% quoted here until 2026-10-05. The other nine rows have no run record. A controlled full-suite re-run is owed. Affected rows are marked †. See `tools/benchmark_regression.md`.
+> **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
+> fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
+> rate to **both** filters. On those five **FusionCore wins two and loses three**, and
+> 2012-02-04 flipped from a published 81% win to a measured 20% loss. The other seven
+> have not been re-run. Their May 2026 run records exist and match the published figures
+> to three decimals, so the table was measured rather than invented, but it was measured
+> through the same faulty player and nothing should be concluded from those rows in
+> either direction.
+>
+> Measured, post-fix: 2013-04-05 **5.0x better** than robot_localization, 2012-09-28
+> **4.7x better**, 2012-02-04 1.2x worse, 2012-06-15 1.8x worse, 2012-08-20 **15x worse**.
+> The spread, not the average, is the open problem. Two identified defects sit inside
+> every one of these numbers: #150 and #148. See `tools/benchmark_regression.md`.
 
 Full results across all 12 sequences: [Benchmark Results](../reference/benchmark.md).
 

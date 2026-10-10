@@ -129,11 +129,23 @@ Evaluated against robot_localization EKF on the [NCLT dataset](http://robots.eng
 | 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
 | 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
 
-> **Note:** three of these rows no longer describe current `main`, and in all three the published figure is better than every later measurement: 2012-06-15 (49.2 m published, confirmed 73.3 m on current `main` 2026-10-05), 2012-08-20 (98.3 m, now 145.2 m), and 2013-04-05 (12.1 m, then 189.7 m on `bcc0e09` and 50.2 m). The first two had their RL-EKF controls hold to +0.01% and -0.11%, which is what makes them trustworthy; both overstate FusionCore by the same 1.48x, which is unexplained. The RL-EKF control reproduces within 2% on all three, so the move is FusionCore's own. On 2013-04-05 the real margin over RL-EKF is 81% at the current figure, not the 93% quoted here until 2026-10-05. The other nine rows have no run record. A controlled full-suite re-run is owed. Affected rows are marked †. See `tools/benchmark_regression.md`.
+> **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
+> fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
+> rate to **both** filters. On those five **FusionCore wins two and loses three**, and
+> 2012-02-04 flipped from a published 81% win to a measured 20% loss. The other seven
+> have not been re-run. Their May 2026 run records exist and match the published figures
+> to three decimals, so the table was measured rather than invented, but it was measured
+> through the same faulty player and nothing should be concluded from those rows in
+> either direction.
+>
+> Measured, post-fix: 2013-04-05 **5.0x better** than robot_localization, 2012-09-28
+> **4.7x better**, 2012-02-04 1.2x worse, 2012-06-15 1.8x worse, 2012-08-20 **15x worse**.
+> The spread, not the average, is the open problem. Two identified defects sit inside
+> every one of these numbers: #150 and #148. See `tools/benchmark_regression.md`.
 
 **CORRECTED 2026-10-09: on the five rows re-measured at n=2 after the #169 frame fix, FusionCore wins two and loses three. The previous 10/12 claim came from runs through a faulty dataset player and is withdrawn.** RL-EKF's losses trace to a single root cause: NCLT's GPS driver reports 3m sigma, but measured against RTK ground truth, actual p95 noise ranges from 9.7m to 53.1m depending on the day. RL's Mahalanobis gate is calibrated to the stated 3m, so it rejects valid fixes on sequences with higher actual noise. FusionCore's adaptive noise estimation (`adaptive.gnss: true`) adjusts the noise model in real time and keeps chi2 statistics calibrated.
 
-The two FC losses (2012-06-15 and 2012-08-20) both have specific root causes: a 462-second GPS blackout causing heading drift, and an adversarial cluster of 105 corrupt GPS fixes at a blackout boundary. Full root-cause analysis and path-to-fix in the [benchmark reference](reference/benchmark.md).
+There are now three measured FC losses (2012-02-04, 2012-06-15, 2012-08-20). The long-blackout explanation that stood here does not survive the data: 2013-04-05 is blind for 355 s and FusionCore wins, while 2012-02-04 is blind for 281 s and loses. Full root-cause analysis and path-to-fix in the [benchmark reference](reference/benchmark.md).
 
 RL-UKF diverged with NaN on all twelve sequences (known numerical instability under sim-time playback).
 

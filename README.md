@@ -62,12 +62,22 @@ inventing one.
 same source on ARM and x86. Build unoptimised and it is drastically slower, so do not
 skip `CMAKE_BUILD_TYPE`.
 
-**No, you should not trust the benchmark table below right now.** Three of its twelve
-rows have been re-measured since it was published and all three were better than
-reality, by about 1.48x on the two that are confirmed, with one sequence in active
-regression. It is marked, the corrected figures are stated beside it, and a
-re-measurement is owed. If a benchmark table in a README has never been wrong, nobody
-has checked it.
+**No, you should not trust the benchmark table below right now.** Five of its twelve
+rows have been re-measured at n=2 on corrected input, and the headline claim that stood
+here, that FusionCore beat robot_localization on ten of twelve, did not survive it:
+**FusionCore wins two of the five and loses three**, and one row reversed outright from
+a published 81% win to a measured 20% loss. The cause was a frame error in the dataset
+player (#169) that fed a wrong wheel-odometry yaw rate to **both** filters, so the old
+numbers describe an input that no longer exists in either column. The other seven rows
+have not been re-run and nothing should be concluded from them. If a benchmark table in
+a README has never been wrong, nobody has checked it.
+
+**What is defensible today.** FusionCore rejects GPS fixes that are kinematically
+impossible, and that one is provable from physics without any reference: a 60 m jump in
+one second cannot happen to a 1.5 m/s robot. On NCLT, post-fix, it is **5.0x and 4.7x
+better** than robot_localization on the two sequences where it wins, and 1.2x, 1.8x and
+15x worse on the three where it loses. The spread is the open problem and it is being
+worked; the average is not the interesting number and neither is a win count.
 
 ---
 
@@ -192,7 +202,19 @@ said so for weeks.
 
 FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/): same IMU, wheel odometry and GPS, no manual tuning, twelve full-length sequences across all seasons. RL-EKF run with chi-squared-equivalent thresholds at 99.9% confidence.
 
-> **Three of these twelve rows no longer describe current `main`, and in all three the published figure is better than every later measurement.** Do not quote the table without this note.
+> **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
+> fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
+> rate to **both** filters. On those five **FusionCore wins two and loses three**, and
+> 2012-02-04 flipped from a published 81% win to a measured 20% loss. The other seven
+> have not been re-run. Their May 2026 run records exist and match the published figures
+> to three decimals, so the table was measured rather than invented, but it was measured
+> through the same faulty player and nothing should be concluded from those rows in
+> either direction.
+>
+> Measured, post-fix: 2013-04-05 **5.0x better** than robot_localization, 2012-09-28
+> **4.7x better**, 2012-02-04 1.2x worse, 2012-06-15 1.8x worse, 2012-08-20 **15x worse**.
+> The spread, not the average, is the open problem. Two identified defects sit inside
+> every one of these numbers: #150 and #148. See `tools/benchmark_regression.md`.
 >
 > | Sequence | Published (May 2026) | Measured since | RL-EKF control, published vs measured |
 > |---|---|---|---|
