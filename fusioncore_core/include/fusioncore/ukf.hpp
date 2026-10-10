@@ -126,10 +126,23 @@ struct UKFParams {
   // shortest-path rotation exceeds that) after relax_s * (180/max_sigma_rotation_deg - 1)
   // seconds of silence. At 45 degrees and relax_s 100 that is 300 s.
   //
-  // PREDICTION THIS MAKES, which is how it should be judged: 2012-06-15 recovers toward
-  // its unbounded figure while 2012-08-20 and 2013-04-05 keep their gains. If instead
-  // every sequence reverts to the unbounded numbers, the bound is doing nothing useful
-  // once it is time-varying and the error-state migration is the remaining route.
+  // MEASURED 2026-10-10 AND THE IDEA IS WRONG. The prediction was that 2012-06-15
+  // recovers toward its unbounded figure while the other two keep their gains. Run at
+  // 45 degrees with relax_s 100, every control holding inside 0.66%:
+  //
+  //     sequence     bound off    held 45   relaxed 45/100   vs held
+  //     2012-06-15      82.011     94.299           96.695    +2.54%
+  //     2012-08-20     155.618    144.430          147.574    +2.18%
+  //     2013-04-05      14.058     12.944           15.145   +17.00%
+  //
+  // Relaxing is worse than holding on ALL THREE. 2012-06-15 did not recover at all, and
+  // 2013-04-05 lost its entire gain and went positive. So the harm on the long-blackout
+  // sequence is NOT caused by the bound being active during GNSS silence, and the
+  // benefit on the other two depends on the bound staying tight the whole time.
+  //
+  // The time-separation hypothesis is dead. Leave this at 0.0. It is kept, wired and
+  // tested rather than deleted so the next person does not re-derive the same idea:
+  // it is a reasonable thought, it was measured, and it does not work.
   double max_sigma_rotation_relax_s = 0.0;
 
   // Average the sigma points' attitudes in the TANGENT SPACE instead of summing the
