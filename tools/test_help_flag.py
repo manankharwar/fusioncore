@@ -14,6 +14,7 @@ SCRIPTS = [
     "check_node_member_wiring",
     "check_replay_wiring",
     "check_docs_test_count",
+    "fork_diff",
 ]
 
 
