@@ -22,6 +22,7 @@ import os
 import sys
 import urllib.error
 import urllib.request
+import argparse
 
 REPO = os.environ.get("FORK_DIFF_REPO", "manankharwar/fusioncore")
 API = "https://api.github.com"
@@ -43,7 +44,12 @@ def get(path):
         return None
 
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     forks = get(f"/repos/{REPO}/forks?per_page=100&sort=newest")
     if forks is None:
         sys.exit(f"could not list forks of {REPO}")
