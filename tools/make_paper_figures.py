@@ -18,6 +18,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.patheffects as pe
 import numpy as np
+import argparse
+import sys
 
 OUT = Path('paper')
 
@@ -229,8 +231,18 @@ def make_trajectory():
     print(f'  saved: {out}')
 
 
-if __name__ == '__main__':
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     print('Generating paper figures...\n')
     make_state_vector()
     make_trajectory()
     print('\nDone.')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

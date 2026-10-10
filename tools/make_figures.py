@@ -20,6 +20,8 @@ import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
 import numpy as np
+import argparse
+import sys
 
 from evo.tools import file_interface
 from evo.core import sync
@@ -286,9 +288,19 @@ def make_coast_chart():
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-if __name__ == '__main__':
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     print('Generating figures...\n')
     make_bar_chart()
     make_traj_grid()
     make_coast_chart()
     print(f'\nAll saved to {OUT}/')
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())
