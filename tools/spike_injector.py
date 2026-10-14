@@ -29,6 +29,7 @@ import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
+import argparse
 import threading
 import sys
 import termios
@@ -81,7 +82,12 @@ def get_key():
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old)
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.parse_args(argv)
     rclpy.init()
     node = SpikeInjector()
 
