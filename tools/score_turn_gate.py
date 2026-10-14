@@ -23,6 +23,7 @@ Usage:
 Needs only /imu/data and /odom/wheels, both present in any record.sh bag.
 """
 
+import argparse
 import sys, math, bisect
 
 def sim(gyr,speed_at,gate,param):
@@ -37,11 +38,17 @@ def sim(gyr,speed_at,gate,param):
             best=max(best,dist); dist=0.0; ang=0.0; lat+=1
     return max(best,dist),lat
 
-def main():
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("bags", nargs="*", help="bag directories to score")
+    opts = parser.parse_args(argv)
     import rosbag2_py
     from rclpy.serialization import deserialize_message
     from rosidl_runtime_py.utilities import get_message
-    for bag in sys.argv[1:]:
+    for bag in opts.bags:
         r=rosbag2_py.SequentialReader()
         r.open(rosbag2_py.StorageOptions(uri=bag,storage_id='mcap'),rosbag2_py.ConverterOptions('',''))
         types={t.name:t.type for t in r.get_all_topics_and_types()}
