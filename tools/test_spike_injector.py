@@ -124,5 +124,21 @@ class SpikeInjectorTest(unittest.TestCase):
         self.assertEqual(spike_injector.ORIGIN_LON, msg.longitude)
 
 
+class HelpFlagTest(unittest.TestCase):
+    """The parser runs before rclpy.init. The fake rclpy has no init, so reaching it fails."""
+
+    def test_help_prints_the_docstring_and_exits_zero(self):
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit) as raised:
+            spike_injector.main(["--help"])
+        self.assertEqual(0, raised.exception.code)
+        self.assertIn(spike_injector.__doc__.strip().splitlines()[0], out.getvalue())
+
+    def test_unknown_flag_exits_two(self):
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit) as raised:
+            spike_injector.main(["--bogus"])
+        self.assertEqual(2, raised.exception.code)
+
+
 if __name__ == "__main__":
     unittest.main()
