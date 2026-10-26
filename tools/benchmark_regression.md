@@ -2898,3 +2898,25 @@ re-anchoring node run on 2012-01-08, confirmed if it reads 9.253 to 12.403 m at 
 gates turning re-anchoring on in `platform.profile: ground_robot`; and a 2012-06-15 repeat read
 as nondeterminism at or below 13.703 m, systematic at or above 20.684 m.
 
+
+## 2026-10-26, evening  The withdrawal had not reached the docs site
+
+No measurement. The README carried the 2026-10-26 evaluation, but the published docs site still
+led with "Summary: 12 sequences, 10 FC wins", the May 2026 table with winner columns, and an
+explanation of robot_localization's losses (a gate calibrated to optimistic GPS covariance)
+that was measured through the faulty player. Same pattern as the 2026-10-22 audit: the
+correction was written in the newest place, not everywhere the claim lived. This time the
+claim lived in eleven files (docs/index.md, docs/vs-robot-localization.md,
+docs/reference/benchmark.md, docs/how-it-works.md, docs/configuration.md, docs/llms.txt, the
+NCLT certified config and its index, two blog posts, benchmarks/README.md) plus the mkdocs
+nav. All corrected in 0e1e61d and verified on the live site.
+
+Found on the way and also corrected: robot_localization fuses any number of imuN, poseN and
+twistN inputs, so "not built-in" was wrong for multiple IMUs, VSLAM pose and velocity sources;
+NCLT's fused GPS is a consumer-grade receiver, not a Novatel SPAN-CPT; the 3DM-GX3-45 has a
+magnetometer. The SPAN-CPT comment remains in the NCLT YAML configs until the RL re-run,
+because nclt_fusioncore.yaml's sha256 is pinned in the evaluation manifest.
+
+The check for next time: `grep -rn` the withdrawn phrase across docs/, docs/llms.txt,
+benchmarks/ and mkdocs.yml, then build the site and grep the rendered HTML, which is what
+caught the nav label.
