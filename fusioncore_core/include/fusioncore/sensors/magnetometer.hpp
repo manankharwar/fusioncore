@@ -30,9 +30,11 @@ struct MagParams {
   // near motors or structures with variable magnetic fields.
   double chi2_threshold = 9.21;
 
-  // Magnetic declination (rad): offset between magnetic north and true north.
-  // Positive east (e.g. +0.07 rad for London, -0.22 rad for Michigan).
-  // Look up at: https://www.magnetic-declination.com
+  // Magnetic declination (rad): the angle from true north to magnetic north,
+  // positive when magnetic north lies EAST of true north. Look up the local value
+  // at https://www.magnetic-declination.com (NOAA's calculator gives the same sign).
+  // Applied by subtraction from a magnetic ENU yaw: see mag_yaw_from_field. Also
+  // applied to a 9-axis IMU's orientation yaw when imu.has_magnetometer is true.
   // Leave at 0.0 when using magnetometer only for drift suppression during GPS
   // outages: the filter self-corrects for the constant offset via GPS.
   double declination_rad = 0.0;
@@ -129,7 +131,12 @@ inline double mag_yaw_from_field(
   const double my_h = cy * std::cos(r)
                     - cz * std::sin(r);
 
-  double yaw = std::atan2(mx_h, my_h) + p.declination_rad;
+  // atan2(mx_h, my_h) is the yaw from MAGNETIC east. With magnetic north D east of
+  // true north, the horizontal field seen by a body at true ENU yaw psi is
+  // (sin(psi + D), cos(psi + D)), so the true yaw is that angle MINUS D. This added
+  // D until 2026-10-22, which doubled the bias for anyone who set it; every shipped
+  // config sets 0.0, so no default was affected.
+  double yaw = std::atan2(mx_h, my_h) - p.declination_rad;
   // Normalize to [-pi, pi]
   return std::atan2(std::sin(yaw), std::cos(yaw));
 }

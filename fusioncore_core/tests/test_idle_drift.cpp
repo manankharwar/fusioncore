@@ -588,3 +588,77 @@ TEST(IdleDrift, BiasCheckDoesNotFireOnOrdinaryParkedWander) {
   EXPECT_LT(moved, 2.0)
       << "ordinary parked wander must stay suppressed, it moved " << moved;
 }
+
+// ─── A parked window must not span a GNSS solution-type change ───────────────
+//
+// Suggested by a Septentrio integrator replying to the ROS Discourse thread this
+// estimator came from: "reset your correlation estimate whenever the mode changes,
+// because the error process is different on each side of the switch."
+//
+// That is right, and the rover has the evidence. The same receiver measured 160x
+// MORE SMOOTHED than it declared on one pass, and 13.6x MORE OPTIMISTIC than it
+// declared after it acquired SBAS later the same day. Standalone, SBAS, DGNSS, RTK
+// float and RTK fixed each have their own magnitude and their own correlation time.
+// A window straddling a switch reports an r that describes neither side.
+namespace {
+
+// Park the robot and feed it `n_before` fixes in one solution type, then `n_after`
+// in another, and report the observed-sigma the estimator ends up with. After a mode
+// change that number must describe only the fixes since the change.
+double parked_sigma_after_mode_change(sensors::GnssFixType before,
+                                      sensors::GnssFixType after,
+                                      int n_before, int n_after) {
+  FusionCoreConfig cfg = idle_config(0.001, 100.0);
+  cfg.zupt_gnss_min_samples = 3;
+  FusionCore fc(cfg);
+  State s0;
+  fc.init(s0, 0.0);
+  const double DT = 0.01, G = 9.80665;
+  int step = 0;
+  auto feed = [&](sensors::GnssFixType ft, int n, double amp) {
+    for (int i = 0; i < n; ++i) {
+      for (int k = 0; k < 100; ++k) {           // 1 s of IMU and stationary encoder
+        const double t = (++step) * DT;
+        fc.update_imu(t, 0, 0, 0, 0, 0, G);
+        if (step % 2 == 0) {
+          fc.update_encoder(t, 0.0, 0.0, 0.0);
+          fc.update_ground_constraint(t);
+          fc.update_zupt(t, 0.01);            // the wheels assert stillness
+        }
+      }
+      sensors::GnssFix f = fix_at(amp * wander(step * DT), 0.0);
+      f.fix_type = ft;
+      fc.update_gnss(step * DT, f);
+    }
+  };
+  feed(before, n_before, 4.0);                  // a wide, wandering mode
+  feed(after,  n_after,  0.02);                 // then a tight one
+  return fc.get_status().gnss_parked_sigma_observed;
+}
+
+}  // namespace
+
+TEST(IdleDrift, ParkedEvidenceRestartsWhenTheSolutionTypeChanges)
+{
+  // The reference: a window that only ever saw the WIDE mode. Its observed sigma is
+  // metres, because that is what those fixes actually spread.
+  const double wide_only = parked_sigma_after_mode_change(
+      sensors::GnssFixType::GPS_FIX, sensors::GnssFixType::GPS_FIX, 30, 0);
+
+  // 30 wide fixes, then the receiver switches to RTK fixed and sends 5 tight ones.
+  // If the window carried across the switch the sigma would still be dominated by
+  // the wide mode. It must instead describe only the fixes since the change.
+  const double after_change = parked_sigma_after_mode_change(
+      sensors::GnssFixType::GPS_FIX, sensors::GnssFixType::RTK_FIXED, 30, 5);
+
+  ASSERT_GT(wide_only, 0.1) << "the wide mode is not wide enough to make this a test";
+  ASSERT_GT(after_change, 0.0) << "estimator produced no observed sigma";
+
+  // Not "approximately equal to a tight-only run": the two runs sample different
+  // phases of the wander, so their sigmas legitimately differ. What matters is the
+  // order of magnitude, which is the whole point of restarting the window.
+  EXPECT_LT(after_change, wide_only / 10.0)
+      << "after=" << after_change << " wide_only=" << wide_only
+      << ": the window still reflects the mode it was in BEFORE the switch, so a "
+         "solution-type change is not restarting the parked evidence";
+}

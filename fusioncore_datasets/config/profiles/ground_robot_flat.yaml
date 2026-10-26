@@ -1,0 +1,57 @@
+# Profile: ground_robot_flat
+#
+# ground_robot, plus a Z-position constraint for terrain that is actually flat:
+# campus, warehouse, parking lot, most field work. REQUIRES ENCODERS, as ground_robot
+# does. Do NOT use it where the robot genuinely climbs, because it will fight the real
+# altitude change.
+#
+# The Z constraint alone, measured separately on NCLT, controls inside 0.26%:
+#   2012-08-20  155.618 -> 154.371   -0.80%   6x its own 0.13% spread, decisive
+#   2012-06-15   82.011 ->  77.371   -5.66%   marginal against a 4.99% spread
+#   2013-04-05   14.058 ->  12.790   -9.02%   inside its 12.88% spread on its own
+# Decisive on one, consistent in direction on three.
+#
+# Z floats free by default, driven by a GPS altitude that carries about 5 m of noise
+# on NCLT, on a robot that never leaves the ground. That is generality nobody on a
+# ground robot is paying for.
+fusioncore:
+  ros__parameters:
+    # Stop driving the states that are not observable from this sensor set. Setting
+    # the process noise to zero stops anything pushing them; the tight initial sigma
+    # stops a measurement pulling them. Both are needed, or a q=0 state still wanders
+    # whenever a measurement happens to inform it.
+    #
+    # The accelerometer measures AX + B_AX + gravity. One equation, three unknowns,
+    # and the literature is explicit that accel bias is completely unobservable in
+    # straight motion. The filter was estimating all three; r(WZ,B_GZ) reaches -0.998 on a
+    # synthetic in-place spin (test_observability.cpp), -0.63 to -0.04 on NCLT.
+    ukf.q_acceleration:     0.0
+    ukf.q_accel_bias:       0.0
+    ukf.q_gyro_bias:        0.0
+    ukf.q_encoder_wz_bias:  0.0
+
+    imu.gyro_bias_initial_sigma:    1.0e-6
+    imu.accel_bias_initial_sigma:   1.0e-6
+    encoder.wz_scale_initial_sigma: 1.0e-6
+
+    # Why freezing the gyro bias does not wreck heading: the encoder measures yaw rate
+    # with no bias term, so the constraint moves to the sensor that can carry it.
+    # Stress tested in simulation, 6 seeds, a 600 s loop with turns and a 300 s GNSS
+    # blackout, mean RMS position error against shipped:
+    #     perfect encoder                       -62.6%   5 of 6 seeds better
+    #     10% encoder scale error               -63.1%   6 of 6
+    #     NCLT-grade 29.7% scale error          -56.2%   6 of 6
+    #     that AND a 20 deg/s MPU-6050 bias     -58.2%   6 of 6
+    # Both stress rows exist because the result is only meaningful if it survives a
+    # real bias and a bad encoder. If your encoder is worse than 30% out, fix that
+    # first; tools/bag_report.py will tell you.
+
+    # Pin Z to the ground plane. 0.3 m is loose enough not to fight gentle slopes and
+    # tight enough to beat GPS altitude noise. Tighter measured WORSE in simulation
+    # (0.1 gave 0.139 against 0.115 at 0.3), so do not reach for a smaller number.
+    ground_constraint.z_position_sigma: 0.3
+
+    # NOT included, deliberately: tightening ground_constraint_vz_sigma and
+    # ground_constraint_az_sigma. Measured 3.7x WORSE (0.152 -> 0.566). Constraining
+    # position helps; over-constraining velocity and acceleration does not. "Constrain
+    # more" is not a principle, it is a thing to measure one knob at a time.

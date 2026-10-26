@@ -1,5 +1,5 @@
 # robot_localization EKF config for NCLT benchmark
-# Sensor inputs: IMU (orientation + angular vel + accel) + wheel odometry
+# Sensor inputs: IMU yaw rate + wheel odometry velocities
 # GPS handled separately by navsat_transform → feeds as odom1
 rl_ekf:
   ros__parameters:
@@ -43,16 +43,22 @@ rl_ekf:
     # chi2(2, 0.999)=13.82; sqrt(13.82)=3.72
     odom1_pose_rejection_threshold: 3.72
 
-    # IMU: fuse orientation (roll/pitch only: yaw from GPS track), angular velocity, acceleration
+    # IMU: yaw rate only. This follows the planar wheeled-robot example in
+    # robot_localization's docs (doc/configuring_robot_localization.rst), minus its IMU x
+    # acceleration. Since 2026-10-25 the NCLT player marks the IMU orientation as not to be
+    # fused (covariance -1), and robot_localization then removes gravity using its own
+    # roll/pitch, which two_d_mode pins at zero (src/ros_filter.cpp, 3.8.3). Any real tilt
+    # leaks into the acceleration as g*sin(tilt) and gets integrated: fusing acceleration
+    # here ran to tens of km on 9 of 12 sequences. No absolute yaw either: no magnetometer.
     imu0: /imu/data
     imu0_config: [false, false, false,
-                  true,  true,  false,   # roll, pitch yes; yaw no (no magnetometer)
                   false, false, false,
-                  true,  true,  true,
-                  true,  true,  true]
+                  false, false, false,
+                  false, false, true,
+                  false, false, false]
     imu0_differential: false
     imu0_relative: false
-    imu0_remove_gravitational_acceleration: true
+    imu0_remove_gravitational_acceleration: false
     imu0_queue_size: 50
 
     # Match NCLT Microstrain + Segway specs

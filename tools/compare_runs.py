@@ -9,6 +9,7 @@ dominate. Comparing RMS therefore compares the worst excursion, not the filter.
 This reports the distribution, the fraction of the run spent lost, and the GPS
 rejection cascades that keep it lost.
 """
+import argparse
 import math, os, re, sys
 
 def load(p, stride=1):
@@ -66,10 +67,15 @@ def report(run, gt, label):
     if r:
         print("  %-22s   GPS rejections %d, longest cascade %d fixes over %.0f s" % ("", r[0], r[1], r[2]))
 
-def main():
-    args = [a for a in sys.argv[1:] if not a.startswith("--")]
-    seq = "2013-04-05"
-    if "--seq" in sys.argv: seq = sys.argv[sys.argv.index("--seq") + 1]
+def main(argv=None):
+    parser = argparse.ArgumentParser(
+        description=__doc__,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+    parser.add_argument("runs", nargs="*", help="run files or directories to compare")
+    parser.add_argument("--seq", default="2013-04-05", help="NCLT sequence date, default 2013-04-05")
+    opts = parser.parse_args(argv)
+    args, seq = opts.runs, opts.seq
     gt = load("/home/manankharwar/nclt/%s/ground_truth.tum" % seq)
     print("\n  %s: error vs ground truth (metres)\n" % seq)
     print("  %-22s %7s %7s %8s %8s %8s %7s" % ("run", "median", "p75", "p90", "p95", "RMS", ">50m"))
@@ -78,4 +84,5 @@ def main():
     print("\n  Median is the filter's real accuracy. >50m is the share of the run spent lost.")
     print("  A long rejection cascade means GPS was present and being refused.\n")
 
-main()
+if __name__ == "__main__":
+    main()

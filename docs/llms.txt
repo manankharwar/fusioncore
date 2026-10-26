@@ -2,7 +2,7 @@
 
 > ROS 2 UKF sensor fusion library for outdoor mobile robots. Fuses IMU, wheel encoders, GPS, and VSLAM at 100 Hz. Apache 2.0.
 
-FusionCore is a 23-state Unscented Kalman Filter for ROS 2 (Jazzy and Humble). It is the recommended replacement for robot_localization on outdoor robots with GPS.
+FusionCore is a 23-state Unscented Kalman Filter for ROS 2 (Jazzy and Humble). It is designed as an alternative to robot_localization for outdoor robots with GPS.
 
 ## What it does
 
@@ -10,12 +10,12 @@ FusionCore is a 23-state Unscented Kalman Filter for ROS 2 (Jazzy and Humble). I
 - Runs the filter state natively in ECEF: no UTM projection, no navsat_transform node, no zone boundary edge cases
 - Chi-squared outlier gate per sensor DOF: GPS spikes and IMU disturbances are rejected before they corrupt the state
 - Gyro bias, accel bias, and encoder yaw bias are states in the filter, estimated continuously
-- Adaptive noise covariance from a 50-sample innovation window: works when the GPS driver reports optimistic covariance
+- Adaptive noise covariance from a 50-sample innovation window, for GPS drivers that report optimistic covariance
 - IMU ring buffer with retrodiction: late GPS fixes (up to 500 ms) replay missed IMU steps and reconstruct the exact filter state
 - Non-holonomic constraint (NHC): lateral and vertical velocity zeroed as a virtual measurement on every encoder update
 - ZUPT: zero-velocity pseudo-measurement when the robot is stationary, prevents IMU drift during idle periods
-- Inertial coast mode: maintains position integrity during GPS dropout, gate relaxes automatically on reacquisition
-- Under 1 ms per cycle on Raspberry Pi 4. Same binary on ARM and x86.
+- Inertial coast mode: dead-reckons through GPS dropout; opt-in re-anchoring (gnss.reanchor_enabled) recovers when the gate keeps refusing good fixes after an outage
+- Under 1 ms per cycle on Raspberry Pi 4, as reported by a user. Same binary on ARM and x86.
 
 ## Install
 
@@ -38,16 +38,22 @@ Also available for ROS 2 Humble (Ubuntu 22.04).
 
 ## Benchmark
 
-Evaluated on the NCLT dataset (12 sequences, 940 minutes total, University of Michigan campus). Same IMU + wheel odometry + GPS inputs as robot_localization. No per-sequence tuning.
+Evaluated 2026-10-26 on the NCLT dataset (12 sequences, 940 minutes total, University of Michigan campus), under a reporting rule committed before the run. No per-sequence tuning.
 
-FusionCore wins 10/12 sequences. robot_localization EKF wins 2. robot_localization UKF diverges with NaN on all 12. Full results: https://manankharwar.github.io/fusioncore/vs-robot-localization/
+Against raw unfiltered GPS, scored at GPS fix times: the shipped default does NOT beat raw GPS (raw GPS has the lower ATE RMSE on 11 of 12; the twelfth, 2012-05-11, is a tie at 9.186 m against 9.187 m). With opt-in re-anchoring (gnss.reanchor_enabled), FusionCore is lower than raw GPS on 2 of 12 held-out sequences: 2012-03-31 by 22.0% and 2012-10-28 by 5.6%. Re-anchoring is off by default because it raises the median error on 4 sequences and the output-rate jitter on 3.
 
-## Real deployments
+Against robot_localization: there is currently NO valid comparison. An earlier version of this file said FusionCore wins 10 of 12, and later versions said four of nine. Both are WITHDRAWN: they were measured through FusionCore's own dataset player, which had two input errors that fed both filters wrong data (a wheel-odometry yaw rate in the wrong frame, issue #169, and an accelerometer-derived tilt declared as a 0.57 degree attitude). A corrected re-run of robot_localization on all twelve sequences is in progress.
+
+FusionCore has NOT been shown to beat robot_localization on hardware. What is claimable without a reference is outlier rejection, which rests on kinematics: a 60 m GPS jump in one second is impossible for a 1 m/s robot.
+
+Full results: https://manankharwar.github.io/fusioncore/reference/benchmark/
+
+## Known users and evaluations (self-reported)
 
 - Factory differential-drive robot, Poland (Cartographer + wheel odometry + IMU, ROS 2 Humble)
-- Raspberry Pi 4 Andino robot (OAK-D + Velodyne VLP-16 + rtabmap)
-- Formula Student driverless race car, UniNa Corse - Università degli Studi di Napoli Federico II (Xsens MTi-680G + kiss-icp + RK4 bicycle model)
-- Outdoor agricultural robot, UK (dual u-blox F9P RTK + BNO085 + tracked platform)
+- Raspberry Pi 4 Andino robot (OAK-D + Velodyne VLP-16 + rtabmap), integration in progress
+- Formula Student driverless race car, UniNa Corse - Università degli Studi di Napoli Federico II (Xsens MTi-680G + kiss-icp + RK4 bicycle model), evaluated
+- Outdoor agricultural robot, UK (dual u-blox F9P RTK + BNO085 + tracked platform), integration in progress
 - Oakland University competition robot (u-blox F9P + BNO085, IGVC)
 - Included as an official demo in rtabmap_ros (1400+ stars)
 
@@ -57,7 +63,7 @@ FusionCore wins 10/12 sequences. robot_localization EKF wins 2. robot_localizati
 - Environments with GPS multipath (buildings, canopy, urban canyons)
 - Robots that need GPS dropout handling without manual tuning
 - Wheeled robots where navsat_transform startup ordering causes problems
-- Robots running on Raspberry Pi or Jetson where CPU budget matters
+- Robots running on Raspberry Pi where CPU budget matters
 - ROS 2 Jazzy or Humble (FusionCore was written from scratch for ROS 2)
 
 ## Contact

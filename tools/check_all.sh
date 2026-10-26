@@ -32,7 +32,14 @@ CHECKS=(
   "check_docs_params.py"
   "check_docs_test_count.py"
   "check_replay_wiring.py"
+  "check_readme_benchmark.py --strict"
 )
+
+# check_links.py is deliberately NOT here. It makes ~170 network requests and takes
+# 80 s against about 2 s for everything else, and this script is what a developer runs
+# before every commit. A gate that is slow enough to skip stops being a gate. It runs
+# in its own workflow instead, on push, on pull requests and weekly, which is where
+# link rot actually needs catching since links die while nobody edits the file.
 
 pass=0; fail=0; skip=0
 failed_names=()

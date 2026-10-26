@@ -26,6 +26,7 @@ whatever they are named.
 | Stationary gyro bias | measured in the longest contiguous still interval |
 | GNSS quality | declared sigma against how far consecutive fixes actually move, and blackout length |
 | Observability | whether the bag contains a manoeuvre that makes heading and gyro bias observable at all |
+| IMU orientation | whether the IMU's reported roll/pitch agree with gravity at rest, and whether they are just the accelerometer's tilt (not acceleration-compensated) while moving |
 
 Findings come back as `BLOCKER`, `WARNING`, `INFO` or `OK`. A **blocker** is something
 that makes a whole class of estimation problem unfixable by tuning, so it is worth
@@ -69,11 +70,29 @@ BLOCKER: The robot never turned both ways
 
 A constant gyro bias and a constant yaw rate are indistinguishable until you turn
 **both** directions. Without a reversal the pair slides along `WZ + B_GZ = const` at
-zero measurement cost, measured at a correlation of -0.998 in this project's own
-tests. No amount of tuning fixes a heading problem in that data, because the data does
+zero measurement cost, measured at a correlation of -0.998 on an in-place spin in this
+project's own tests (on NCLT, which drives both directions, it measured -0.63 to -0.04). No amount of tuning fixes a heading problem in that data, because the data does
 not contain the information.
 
 See [Observability](observability.md) for the manoeuvres and why each one works.
+
+### Your IMU's orientation is its accelerometer, reported with confidence
+
+Many IMUs and drivers publish an orientation alongside the raw rates, and FusionCore fuses
+its roll and pitch at whatever covariance the message claims. Some of those orientations
+are not attitude estimates at all: they are the accelerometer's tilt, so they swing by
+atan(a/g) every time the robot accelerates or brakes, and the message still claims a
+fraction of a degree. The check compares the reported tilt with the accelerometer's tilt
+while the robot accelerates; a real attitude estimate departs from it, this kind does not.
+
+It is not hypothetical, and the first instance was ours. FusionCore's own NCLT dataset
+player published the dataset's AHRS roll/pitch at 0.57 deg 1-sigma. Those angles track the
+accelerometer's tilt to a median 0.08 deg even while accelerating, where a real attitude
+estimate would differ by about 4.3 deg, so the player was declaring the accelerometer a
+second time as confident attitude. That put FusionCore into an 800 s GPS lock-out on one
+sequence. The player now marks it unfusable. The fix in general is on the publishing side:
+report a covariance that covers the acceleration error, or set `orientation_covariance[0]`
+to -1. The node also warns once when it fuses roll/pitch declared tighter than 1 deg.
 
 ## What it will not tell you
 

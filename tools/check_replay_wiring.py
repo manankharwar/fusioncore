@@ -52,7 +52,11 @@ def declared_params(path):
 
 def replay_wired(path):
     src = open(path).read()
-    wired = set(re.findall(r'get\(\s*"([^"]+)"', src))
+    # get() carries doubles and get_string() carries strings. Both are wiring; a regex
+    # that only knew about the first would call every string parameter unwired forever,
+    # which is how platform.profile would have been pushed into kNodeLevel and then
+    # silently ignored by every offline sweep.
+    wired = set(re.findall(r'get(?:_string)?\(\s*"([^"]+)"', src))
     block = re.search(r"kNodeLevel\s*=\s*\{(.*?)\};", src, re.S)
     node_level = set(re.findall(r'"([^"]+)"', block.group(1))) if block else set()
     return wired, node_level

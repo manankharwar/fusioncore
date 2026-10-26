@@ -1,11 +1,22 @@
 ---
 date: 2026-04-20
 title: "Benchmarking FusionCore against robot_localization on real-world GPS data"
-description: "Head-to-head on the NCLT dataset: same IMU, same encoders, same GPS, no tuning advantage. Here is what happened."
+description: "Withdrawn 2026-10-26. An April 2026 FusionCore against robot_localization comparison on NCLT, measured through a dataset player later found to feed both filters wrong data."
 slug: benchmarking-fusioncore-vs-robot-localization-nclt
 tags:
   - ROS
 ---
+
+!!! warning "Withdrawn, 2026-10-26"
+    The results in this post are withdrawn and should not be cited. They were measured through
+    FusionCore's own NCLT dataset player, which had two input errors that fed both filters wrong
+    data: a wheel-odometry yaw rate in the wrong frame (#169) and an accelerometer-derived tilt
+    declared as a 0.57 degree attitude. The explanation below of why robot_localization did
+    worse rests on those runs and is withdrawn with them. Measured again on all twelve sequences
+    with the player corrected, the shipped FusionCore default does not beat raw unfiltered GPS,
+    and the robot_localization comparison is being re-run. Current numbers:
+    [Benchmark Results](../../reference/benchmark.md). The original text is left below unchanged
+    so the correction is visible.
 
 I ran FusionCore head-to-head against `robot_localization` on the NCLT dataset from the University of Michigan: a real robot driving around a campus for 10 minutes, mixed urban/suburban environment with tree cover, buildings, and open quads. Ground truth is RTK GPS at sub-10cm accuracy.
 

@@ -90,7 +90,7 @@ nav:
     - Is your filter's covariance honest?: guides/filter-consistency.md
   - Certified Configs:
     - Registry: certified-configs/index.md
-    - Microstrain 3DM-GX3-45 + Novatel SPAN-CPT: certified-configs/microstrain-3dm-gx3-45-segway.md
+    - Microstrain 3DM-GX3-45 + consumer GPS (NCLT): certified-configs/microstrain-3dm-gx3-45-segway.md
     - Bosch BNO085 + u-blox ZED-F9P: certified-configs/bosch-bno085-ublox-f9p-outdoor.md
     - Xsens MTi-680G: certified-configs/xsens-mti-680g-fsae.md
     - NVIDIA Isaac ROS Visual SLAM: certified-configs/nvidia-isaac-ros-vslam.md

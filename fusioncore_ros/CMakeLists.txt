@@ -87,6 +87,16 @@ if(BUILD_TESTING)
   else()
     message(WARNING "launch_testing_ament_cmake not found: skipping the /fromLL service type test")
   endif()
+
+  # Starts the real node and reads back resolved parameters, because a profile that
+  # only looks right in the source is the PR #129 failure mode: the layering has to
+  # be checked against what rcl actually resolved, not against what the code intends.
+  find_package(ament_cmake_pytest QUIET)
+  if(ament_cmake_pytest_FOUND)
+    ament_add_pytest_test(test_platform_profile tests/test_platform_profile.py TIMEOUT 600)
+  else()
+    message(WARNING "ament_cmake_pytest not found: skipping the platform profile test")
+  endif()
 endif()
 
 ament_auto_package()

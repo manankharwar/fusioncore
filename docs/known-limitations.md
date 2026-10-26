@@ -102,6 +102,17 @@ FusionCore resolves this by treating `B_EWZ` as known from the GPS calibration p
 
 **Workaround:** Ensure the robot operates with GPS for at least the first minute of each run to calibrate `B_EWZ`. The `init.stationary_window` setting helps calibrate `B_GZ` before motion begins.
 
+**Two limits on `init.stationary_window`, measured 2026-10-22 on NCLT 2013-04-05.** The window
+aborts if any single encoder sample exceeds `zupt.velocity_threshold` or
+`zupt.angular_threshold` (0.05 by default), so a robot that is never perfectly still at
+startup, such as a balancing platform, silently falls back to zero bias: NCLT's Segway
+sits at a median 0.04 to 0.05 m/s and a 90th percentile of 0.087 m/s while parked. And with
+the default `imu.gyro_bias_initial_sigma` of 0.175 rad/s, a correctly calibrated starting
+bias is forgotten within about 2 s of fusion, so on that sequence starting from the
+calibrated value changed ATE by nothing measurable. A robust stationarity test (gyro and
+accelerometer variance plus the MEDIAN wheel speed) and a tighter prior after a successful
+window would both be needed for boot calibration to matter.
+
 ---
 
 ## Non-holonomic constraint assumes flat ground

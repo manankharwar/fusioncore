@@ -149,12 +149,31 @@ TEST(MagnetometerTest, GateStillRejectsOnceHeadingIsEstablished) {
 
 // ─── Test 4: Declination offset applied correctly ────────────────────────────
 
+// This test used to assert yaw == +0.1 here, which pinned the formula's own sign
+// error rather than the physics. A field straight along body +y means the body faces
+// MAGNETIC east. With magnetic north 0.1 rad east of true north, magnetic east is
+// 0.1 rad clockwise of true east, so the true ENU yaw is -0.1.
 TEST(MagnetometerTest, DeclinationOffset) {
   MagParams p;
-  p.declination_rad = 0.1;  // 0.1 rad positive declination
-  // Pointing east (yaw=0 true north reference). m_body = [0, Bh, 0].
+  p.declination_rad = 0.1;  // magnetic north 0.1 rad east of true north
   double yaw = mag_yaw_from_field(0.0, 1.0, 0.0, p, 0.0, 0.0);
-  EXPECT_NEAR(yaw, 0.1, 1e-9);
+  EXPECT_NEAR(yaw, -0.1, 1e-9);
+}
+
+// The physics, built forward: put the body at a known TRUE yaw, construct the field
+// it would measure, and require the true yaw back. World field direction in ENU is
+// (sin D, cos D); in a body at yaw psi it reads (sin(psi + D), cos(psi + D)).
+TEST(MagnetometerTest, DeclinationRecoversTrueYaw) {
+  for (double D : {-0.18, 0.0, 0.1, 0.27}) {
+    MagParams p;
+    p.declination_rad = D;
+    for (double psi : {0.0, 1.0, -2.0, 3.0}) {
+      const double yaw = mag_yaw_from_field(std::sin(psi + D), std::cos(psi + D), 0.0,
+                                            p, 0.0, 0.0);
+      const double err = std::atan2(std::sin(yaw - psi), std::cos(yaw - psi));
+      EXPECT_NEAR(err, 0.0, 1e-9) << "D=" << D << " psi=" << psi;
+    }
+  }
 }
 
 // ─── Test 5: Hard iron correction ────────────────────────────────────────────

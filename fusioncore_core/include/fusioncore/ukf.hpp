@@ -111,6 +111,40 @@ struct UKFParams {
   // sample is a rotation by construction. That is the direction #150 should take.
   double max_sigma_rotation_deg = 0.0;
 
+  // Seconds of GNSS silence over which max_sigma_rotation_deg is relaxed back to
+  // inert. 0.0 keeps the bound constant, which is the behaviour measured above.
+  //
+  // WHY: the 2026-10-10 A/B showed the bound is a tradeoff, not a fix. It helps where
+  // blackouts are short (-7.9% and -7.2%) and hurts the one sequence with a 416 s gap
+  // (+15.0%), which is the overconfidence the bound was always predicted to cause. The
+  // two effects are separable in time: the cancellation it fixes happens continuously,
+  // while the overconfidence only costs anything once GNSS has been gone long enough
+  // that the filter needs a wide attitude prior to accept the returning fix.
+  //
+  // So the bound is scaled by (1 + t_since_gnss / relax_s). It holds while fixes are
+  // arriving and widens as they stop, passing 180 degrees (where it is inert, since no
+  // shortest-path rotation exceeds that) after relax_s * (180/max_sigma_rotation_deg - 1)
+  // seconds of silence. At 45 degrees and relax_s 100 that is 300 s.
+  //
+  // MEASURED 2026-10-10 AND THE IDEA IS WRONG. The prediction was that 2012-06-15
+  // recovers toward its unbounded figure while the other two keep their gains. Run at
+  // 45 degrees with relax_s 100, every control holding inside 0.66%:
+  //
+  //     sequence     bound off    held 45   relaxed 45/100   vs held
+  //     2012-06-15      82.011     94.299           96.695    +2.54%
+  //     2012-08-20     155.618    144.430          147.574    +2.18%
+  //     2013-04-05      14.058     12.944           15.145   +17.00%
+  //
+  // Relaxing is worse than holding on ALL THREE. 2012-06-15 did not recover at all, and
+  // 2013-04-05 lost its entire gain and went positive. So the harm on the long-blackout
+  // sequence is NOT caused by the bound being active during GNSS silence, and the
+  // benefit on the other two depends on the bound staying tight the whole time.
+  //
+  // The time-separation hypothesis is dead. Leave this at 0.0. It is kept, wired and
+  // tested rather than deleted so the next person does not re-derive the same idea:
+  // it is a reasonable thought, it was measured, and it does not work.
+  double max_sigma_rotation_relax_s = 0.0;
+
   // Average the sigma points' attitudes in the TANGENT SPACE instead of summing the
   // 4-vectors and renormalising.
   //
@@ -149,6 +183,66 @@ struct UKFParams {
   // the evidence that the cheap half of it is not a shortcut. Kept, off, for that reason.
   bool tangent_space_quaternion_mean = false;
 
+  // Treat attitude DEVIATIONS as a local rotation vector instead of a plain
+  // 4-vector difference, in all three places the UKF measures one: the predict
+  // covariance, the update cross-covariance, and the correction applied to the
+  // state.
+  //
+  // Why this and not the mean. Fixing only the mean was tried twice (Markley, and
+  // tangent_space_quaternion_mean above) and neither helped, because the mean was
+  // never the problem. Measured 2026-10-18 with tools/repro/yaw_pullback.cpp:
+  // start 30 deg off, feed a perfect encoder, a perfect IMU and TRUTH GNSS at 1 Hz,
+  // and heading random-walks the whole circle either way (-142, +45, -74, +109 deg
+  // with the tangent mean on). Position stays inside 1.2 m throughout, so the
+  // filter tracks WHERE it is and cannot work out which way it points.
+  //
+  // The cause is that a covariance built from q_sigma - q_mean measures a chord in
+  // R^4, not a rotation. The Kalman gain then relates a position innovation to a
+  // quaternion correction with the wrong magnitude, so heading is nudged in a
+  // plausible direction by a meaningless amount, forever.
+  //
+  // This keeps the 23-dimensional state and covariance. The QW slot carries the
+  // scalar part of the error, which is ~0 by construction, so its variance is
+  // floored to keep P invertible. That is the pragmatic form of USQUE
+  // (Crassidis & Markley 2003) rather than a full reduction to 22 dimensions.
+  // Treat every q_* above as a continuous-time spectral density in units per
+  // SECOND, multiplied by dt at each predict, instead of a fixed amount injected
+  // per STEP.
+  //
+  // Why this is a defect and not a preference. Q is currently added once per
+  // predict and never scaled by dt, so the uncertainty injected per second is
+  // q * rate. At the 100 Hz NCLT IMU rate, q_angular_vel = 0.1 injects 10
+  // (rad/s)^2 every second against a gyro whose own variance is 9e-6. Measured
+  // steady state for a random-walk state corrected every step is sqrt(q*R):
+  // sqrt(0.1 * 9e-6) = 9.5e-4 predicted against 1.089873e-03 measured, within 15%,
+  // so the per-step treatment fully accounts for the floor on var(WZ). That floor
+  // integrates into the 20 to 30 degrees of yaw sigma seen across NCLT.
+  //
+  // It also makes the filter depend on MESSAGE RATE rather than on time. Two runs
+  // over the same data that happen to deliver a different number of messages get a
+  // different amount of process noise, which is a candidate explanation for the
+  // 14.80% run-to-run spread measured through the live node against 0.02% for the
+  // control on identical input.
+  //
+  // Default false so existing tuning is untouched byte for byte. When true, the
+  // q_* values are reinterpreted as per-second densities, so a value tuned for
+  // 100 Hz needs dividing by about 100 to mean the same thing.
+  bool q_time_scaled = false;
+
+  // Factor the sigma-point covariance exactly instead of regularising it every step.
+  // generate_sigma_points() builds the points from (n+lambda)*P + 1e-6*I, which adds
+  // variance to EVERY state on every predict, and a state held at zero variance makes
+  // P singular so the identity-shift repair raises every diagonal as well. Together
+  // they let a "frozen" bias drift: on NCLT 2013-04-05 the ground_robot profile's gyro
+  // bias reached a median sigma of 0.053 rad/s with zero process noise
+  // (tools/benchmark_regression.md 2026-10-22). When true, a pivoted LDLT factors the
+  // positive SEMIdefinite matrix as it is, so a zero-variance state gets zero spread,
+  // and the regularise-and-repair chain runs only if a pivot is genuinely negative.
+  // Default false: it changes every output, so it ships only through the holdout rule.
+  bool semidefinite_sqrt = false;
+
+  bool tangent_space_attitude = false;
+
   // Process noise: how much we trust the motion model
   double q_position     = 0.01;   // m²/step
   // Quaternion regularization: keeps Q positive-definite.
@@ -157,7 +251,7 @@ struct UKFParams {
   // Set to a very small value; large values corrupt the quaternion norm.
   double q_orientation  = 1e-9;   // quaternion regularization (dimensionless)
   double q_velocity     = 0.1;    // (m/s)²/step
-  double q_angular_vel  = 0.1;    // (rad/s)²/step
+  double q_angular_vel  = 0.1;    // (rad/s)²/step  (see q_time_scaled)
   double q_acceleration = 1.0;    // (m/s²)²/step
   double q_gyro_bias         = 1e-5;   // (rad/s)²/step -- biases change slowly
   double q_accel_bias        = 1e-5;   // (m/s²)²/step
@@ -205,6 +299,40 @@ public:
   // Get current state estimate
   const State& state() const { return state_; }
 
+  // Move the filter to a position it did not believe in, and widen its confidence
+  // to match. This is NOT a measurement update: it is for the case where several
+  // mutually consistent fixes agree with odometry and disagree with the filter,
+  // which means the filter is the wrong one and no amount of gated updating will
+  // argue it round. Cross-covariances are left alone so the next updates can still
+  // correct velocity and attitude through them.
+  void reanchor_position(double x, double y, double z, double sigma_xy, double sigma_z) {
+    state_.x[X] = x; state_.x[Y] = y; state_.x[Z] = z;
+    state_.P(X,X) = std::max(state_.P(X,X), sigma_xy * sigma_xy);
+    state_.P(Y,Y) = std::max(state_.P(Y,Y), sigma_xy * sigma_xy);
+    state_.P(Z,Z) = std::max(state_.P(Z,Z), sigma_z  * sigma_z);
+  }
+
+  // Replace yaw while keeping roll and pitch, and widen the attitude covariance.
+  // Position alone is not enough: 2012-09-28 accepts its fixes at a median
+  // mahalanobis of 0.526 and still fails to recover, because the heading it left
+  // the blackout with is wrong and it walks off again between fixes.
+  void reanchor_yaw(double yaw_rad, double sigma_yaw_rad) {
+    const double qw = state_.x[QW], qx = state_.x[QX];
+    const double qy = state_.x[QY], qz = state_.x[QZ];
+    const double roll  = std::atan2(2*(qw*qx + qy*qz), 1 - 2*(qx*qx + qy*qy));
+    const double pitch = std::asin(std::max(-1.0, std::min(1.0, 2*(qw*qy - qz*qx))));
+    const double cr = std::cos(roll*0.5),  sr = std::sin(roll*0.5);
+    const double cp = std::cos(pitch*0.5), sp = std::sin(pitch*0.5);
+    const double cy = std::cos(yaw_rad*0.5), sy = std::sin(yaw_rad*0.5);
+    state_.x[QW] = cr*cp*cy + sr*sp*sy;
+    state_.x[QX] = sr*cp*cy - cr*sp*sy;
+    state_.x[QY] = cr*sp*cy + sr*cp*sy;
+    state_.x[QZ] = cr*cp*sy - sr*sp*cy;
+    const double v = sigma_yaw_rad * sigma_yaw_rad * 0.25;  // d(quat)/d(yaw) ~ 1/2
+    state_.P(QZ,QZ) = std::max(state_.P(QZ,QZ), v);
+    state_.P(QW,QW) = std::max(state_.P(QW,QW), v);
+  }
+
   // Overwrite the orientation quaternion, leaving every other state and the
   // whole covariance alone. For establishing an attitude the filter never had a
   // measurement of, as opposed to correcting one it did: see
@@ -243,6 +371,10 @@ public:
   // encoder WZ measurements can drive fast bias correction during GPS outages.
   // 1.0 = normal (tight); 100.0 = fast adaptation.
   void set_gyro_bias_noise_scale(double s) { gyro_bias_noise_scale_ = s; }
+
+  // Multiplier on max_sigma_rotation_deg for the next predict, set from FusionCore
+  // which is what knows how long GNSS has been silent. 1.0 is the unscaled bound.
+  void set_sigma_rotation_scale(double s) { sigma_rot_scale_ = (s >= 1.0 ? s : 1.0); }
   double gyro_bias_noise_scale() const     { return gyro_bias_noise_scale_; }
 
   // Inflate P[X,X] and P[Y,Y] to at least sigma_xy_sq using max().
@@ -269,6 +401,7 @@ public:
 
 private:
   UKFParams params_;
+  double sigma_rot_scale_ = 1.0;
   double last_pos_correction_ = 0.0;
   State state_;
   bool   initialized_           = false;

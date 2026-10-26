@@ -521,7 +521,7 @@ TEST(GnssReacquireTest, BlackoutDoesNotUnlockRecoveryForALaterSpike) {
 }
 
 // The confirmation count is a parameter now, so sweep it and assert the output
-// changes. That rule came out of PR #129 itself: the knob it parameterised had
+// changes. That rule came out of the confirmation-count knob of issue #126: it had
 // been dead, and sweeping it through its range produced byte-identical results,
 // which is what exposed the bug. A knob that compiles and passes tests is not a
 // knob that does anything.
@@ -594,7 +594,7 @@ TEST(GnssReacquireTest, SweepTheReacquireConfirmCount) {
   EXPECT_GT(acc[3], acc[0])
       << "a confirmation count that can never be reached left the latch set, so "
          "the spike should have been accepted where it was not at 0. The knob "
-         "reached the filter and changed nothing: that is the #129 bug again.";
+         "reached the filter and changed nothing: that is the dead-knob bug again.";
 }
 
 // ─── #151: a blackout that begins DURING a rejection cascade ─────────────────

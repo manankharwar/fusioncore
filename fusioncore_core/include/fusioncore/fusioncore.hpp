@@ -277,6 +277,36 @@ struct FusionCoreConfig {
   // Learning rate: how fast R adapts to estimated noise (0.0 = off, 0.1 = fast)
   double adaptive_alpha = 0.01;
 
+  // Hard ceiling on an adapted R, as a multiple of the configured nominal. 0 means
+  // unbounded, which is the current behaviour and the default so nothing moves.
+  //
+  // adapt_R moves R toward the measured innovation covariance and clamps it only
+  // from BELOW. That is a positive feedback loop: a wrong filter produces large
+  // innovations, R grows toward them, the update carries less weight AND the
+  // chi-squared gate widens because it normalises by S = H*P*H' + R, so the filter
+  // gets wronger. Measured on NCLT 2013-04-05 with the shipped config, the gyro R
+  // reached 1723x its configured value: var(WZ + B_GZ) of 1.551077e-02 against a
+  // configured 9.000e-06. With adaptation off the same quantity is 8.912238e-06,
+  // a ratio of 1.0 to nominal, which is what confirms the gyro is otherwise fused
+  // correctly.
+  //
+  // A wrong filter should not be able to manufacture its own permission to stay
+  // wrong. 10.0 is a reasonable setting: it still lets adaptation absorb a sensor
+  // that is genuinely several times noisier than specified.
+  double adaptive_r_max_scale = 0.0;
+
+  // Subtract the filter's own contribution before treating the innovation window
+  // as an estimate of R.
+  //
+  // The innovation covariance is E[nu*nu'] = H*P*H' + R, so assigning the measured
+  // window covariance straight into R double counts H*P*H'. That is a SECOND
+  // feedback path with the same shape as the missing ceiling: a large P inflates
+  // the innovations, which inflates R, which widens the gate. The textbook estimate
+  // is C_hat - H*P*H', floored at the nominal.
+  //
+  // Default false so the existing behaviour is byte identical.
+  bool adaptive_subtract_hph = false;
+
   // Max delay to compensate for (seconds). GNSS is typically 100-300ms late.
   double max_measurement_delay = 0.5;
 
@@ -569,6 +599,26 @@ struct FusionCoreConfig {
   // Scale = 1000: encoder provides ~96% (essentially RL behavior for heading).
   // 1.0 = disabled (default). Suggested: 500.0 for deployments with long GPS outages.
   double gnss_coast_imu_wz_scale = 1.0;
+  // Multiplier applied to R_encoder[WZ] during GPS coast mode, the mirror of
+  // gnss_coast_imu_wz_scale: large values leave heading rate to the gyro (pair it
+  // with gnss_coast_imu_wz_scale = 1). 1.0 = disabled. Experimental and not exposed
+  // as a ROS parameter: on NCLT it helped four sequences and cost 2013-04-05 65%,
+  // see tools/benchmark_regression.md 2026-10-22, the coast variant.
+  double gnss_coast_encoder_wz_scale = 1.0;
+  // During GPS coast, after each IMU update, hold the three body acceleration states
+  // at zero with this 1-sigma (m/s^2), so speed comes from the wheels rather than from
+  // integrating acceleration. The IMU's accelerometer rows still run, so gravity keeps
+  // roll and pitch observable; only AX/AY/AZ are pinned. 0 = disabled. Experimental,
+  // replay-only: see tools/benchmark_regression.md 2026-10-22.
+  double gnss_coast_hold_accel_sigma = 0.0;
+  // Non-holonomic lateral-acceleration constraint for wheeled robots: on every encoder
+  // update, fuse AY - VX*WZ = 0 with this 1-sigma (m/s^2). A robot that does not slip
+  // sideways has only centripetal lateral acceleration. VY = 0 is already fused through
+  // the encoder (encoder.nhc_vy_sigma); AY was left free, and with nothing observing it
+  // during a GNSS gap its cross-covariance with position grows and every update kicks
+  // position sideways (tools/benchmark_regression.md 2026-10-22). 0 = disabled.
+  // Experimental, replay-only.
+  double nhc_ay_sigma = 0.0;
   // Also enter coast mode when GPS has been absent for this many seconds.
   // Handles GPS outages where the receiver stops publishing entirely (mode=2,
   // power loss, tunnel) rather than publishing fixes that fail the chi2 gate.
@@ -616,6 +666,80 @@ struct FusionCoreConfig {
   // Number of consecutive accepted fixes required to confirm GNSS recovery.
   // Set to 0 to disable confirmation and clear the outage latch immediately.
   int    gnss_reacquire_confirm_fixes = 3;
+
+  // ── Re-anchoring after a blackout ───────────────────────────────────────────
+  //
+  // Measured 2026-10-18 on NCLT: 74.8% to 96.8% of the error on every sequence is
+  // in GNSS gaps or the recovery after them, and steady coverage never exceeds
+  // 25.2%. Inside the recovery windows the gate rejects 81.0% and 81.2% of fixes
+  // against 10.4% and 10.6% over the whole run, with a median mahalanobis of
+  // 85.542 against a threshold of 16.27. The filter drifts in the hole, then
+  // throws away the fixes that would get it out because they disagree with it.
+  //
+  // The existing maybe_inflate_for_recovery() widens P but never MOVES the
+  // filter, and 81% rejection is what that is worth. Re-anchoring moves it.
+  //
+  // THE EVIDENCE IS AGREEMENT AMONG THE FIXES, NOT WITH THE FILTER. The filter is
+  // the thing in doubt, so it does not get a vote. A buffer of recent fixes must
+  // agree with each other AND with wheel odometry over the same interval, which
+  // is an independent source. That is what stops this becoming the third latch
+  // bug in this file: it cannot fire on a drifting cluster of outliers, because
+  // outliers do not track the encoder.
+  //
+  // Default OFF so the shipped path is byte identical.
+  bool   gnss_reanchor_enabled = false;
+  // Re-anchoring triggers on a windowed REJECTION RATE, not a consecutive count.
+  //
+  // A consecutive counter was tried first and never fired. Measured on
+  // 2012-08-20, the recovery windows reject 81.2% of fixes, but the ~19% that are
+  // accepted are interspersed, so runs of consecutive rejections stay short and
+  // a threshold of 20 is never reached. The synthetic caught this before it ever
+  // touched real data: with NCLT-grade fix noise it rejected 31 of 220 and fired
+  // zero times. What actually characterises a stuck filter is the RATE.
+  int    gnss_reanchor_window = 20;        // fixes to look back over
+  double gnss_reanchor_reject_frac = 0.6;  // fraction of them rejected
+  // SECOND trigger, for branch C. A high rejection rate cannot detect the case
+  // where fixes are ACCEPTED and the filter is still wrong, which is what
+  // 2012-09-28 does: median mahalanobis 0.526 against a 16.27 threshold, and the
+  // error persists anyway because the heading it left the blackout with is wrong.
+  // The synthetic reproduces it too, settling 18.9 m out after 120 s of good
+  // fixes while rejecting only 15 of 220.
+  //
+  // The signature is a PERSISTENTLY ONE-SIDED innovation: every fix pulls the
+  // filter the same way, which random noise does not do. Trigger when the mean
+  // offset over the window exceeds this many metres and is consistent in
+  // direction.
+  // The persistent-bias trigger, branch C. DEFAULT OFF, and that is a measured
+  // decision rather than caution. Ablated on NCLT 2026-10-18: with it on, 5 of 5
+  // sequences improve over baseline but three are WORSE than with it off, and the
+  // reject-rate trigger alone fires about half as often and lands better:
+  //
+  //   sequence     baseline   both triggers   rate trigger only
+  //   2012-02-04    142.792     61.357 (14)      59.689  (7)
+  //   2012-06-15     78.139     78.109  (1)      78.139  (0)
+  //   2012-08-20    171.393     60.674  (6)      46.671  (4)
+  //   2012-09-28     23.638     13.750  (4)      10.008  (2)
+  //   2013-04-05     16.677     16.005  (5)      16.011  (3)
+  //
+  // The extra events the bias trigger adds are net harmful, by 23% on 2012-08-20
+  // and 27% on 2012-09-28. What it buys is 0.04% on the two sequences where it
+  // wins. Fewer re-anchors is better. See tools/benchmark_regression.md 2026-10-18.
+  bool   gnss_reanchor_bias_trigger = false;
+  double gnss_reanchor_bias_m = 8.0;
+  // How many recent fixes must agree. Fewer than 3 cannot establish a track.
+  int    gnss_reanchor_buffer_n = 5;
+  // Each fix-to-fix displacement must match the odometry distance over the same
+  // interval to within this, in metres. This is the independent check.
+  double gnss_reanchor_odom_tol_m = 4.0;
+  // Minimum speed, m/s, before the GNSS track is trusted as a heading source.
+  // Below this the bearing between fixes is receiver noise, not a direction.
+  // Position sigma to leave behind after re-anchoring, metres.
+  double gnss_reanchor_sigma_xy = 5.0;
+  // Yaw sigma to leave behind when heading is reset, radians.
+  // TIME BOUND. No second re-anchor within this many seconds, and normal gating
+  // resumes immediately afterwards because nothing here latches. A test asserts
+  // that it does.
+  double gnss_reanchor_cooldown_s = 20.0;
   // Floor for the P inflation, in metres of XY sigma. The inflation itself is
   // sized from the rejected innovation, because the error to be covered is
   // however far the dead reckoning went and no constant brackets that: 50 m is
@@ -1006,6 +1130,17 @@ struct FusionCoreStatus {
   // confirm it from a bag. A recovery that silently never runs looks exactly like one
   // that runs and does not help.
   long   gnss_recovery_inflations = 0;
+  // Re-anchor events, so a nav stack can tell a corrected pose from a diverged one.
+  // A re-anchor is a deliberate position discontinuity: on NCLT 2012-08-20 one moved
+  // the estimate 787 m and took the error from 798 m to 16.8 m. A consumer that cannot
+  // see it happen has to treat it as divergence and chase it, which is the opposite of
+  // what it should do. jump_m is the distance the state moved. A re-anchor moves
+  // POSITION ONLY, so a consumer never sees a heading discontinuity from one: the yaw
+  // reset that used to sit beside it was removed on 2026-10-18, having shown no
+  // measurable benefit on NCLT, which cannot score heading at all.
+  long   gnss_reanchors = 0;
+  double gnss_reanchor_last_t = 0.0;
+  double gnss_reanchor_last_jump_m = 0.0;
   // #151: the two flags that decide whether recovery can run at all.
   bool   gnss_reject_after_gap = false;
   int    gnss_consecutive_rejects_now = 0;
@@ -1114,6 +1249,11 @@ public:
   // Diagnostic passthrough: metres the last measurement update moved position.
   // See UKF::last_position_correction().
   double last_position_correction() const { return ukf_.last_position_correction(); }
+  // Diagnostics only: run the predict step up to t with no measurement, so the
+  // update that follows at the same t predicts nothing and its position change is
+  // the update's alone. hardware/replay.cpp uses it to split motion into predict
+  // and update; replay with it on is byte-identical to replay without it.
+  void predict_only(double t) { predict_to(t); }
   FusionCoreStatus   get_status()     const;
 
   // Per-outcome tallies, indexed by static_cast<int>(the reason enum).
@@ -1124,6 +1264,20 @@ public:
   const std::array<OutcomeTally, MAG_REJECTION_REASON_COUNT>&
     mag_outcome_tally() const { return mag_tally_; }
   const GnssFixDebug& get_gnss_debug() const { return gnss_debug_; }
+
+  // The adapted GNSS position noise, and the nominal it started from. Exposed
+  // because "the fix was accepted but weighted at nothing" and "the fix was
+  // rejected" are different failures with different fixes, and they are
+  // indistinguishable from the outside without this. adapt_R has no ceiling on
+  // this channel: on the IMU channel the same code was measured at 1723x nominal.
+  // How many times the filter has been re-anchored. Exposed so a test can assert
+  // that it fired, and that it did NOT fire while GNSS was healthy.
+  long gnss_reanchor_count() const { return reanchor_count_; }
+
+  double gnss_r_scale_xy() const {
+    const double nom = R_gnss_floor_(0,0);
+    return nom > 0.0 ? R_gnss_(0,0) / nom : 1.0;
+  }
   const MagnetometerDebug& get_magnetometer_debug() const { return mag_debug_; }
   void               reset();
   bool               is_initialized()    const { return initialized_; }
@@ -1269,6 +1423,13 @@ private:
   // nothing about a receiver that is moving.
   void reset_parked_gnss_evidence();
 
+  // Which GNSS solution type the parked-evidence window is accumulating. The error
+  // process differs per mode (standalone, SBAS, DGNSS, RTK float, RTK fixed, PPP), so
+  // a window that spans a mode switch is averaging two different processes and the
+  // lag-1 correlation it reports describes neither. Suggested by a Septentrio
+  // integrator on the ROS Discourse thread this estimator came from.
+  sensors::GnssFixType parked_fix_type_ = sensors::GnssFixType::NO_FIX;
+
   // GNSS fixes seen while the wheels confirm the robot is parked. All of them
   // sample the same physical point, so their spread and how strongly one fix
   // predicts the next are direct measurements of the receiver, not estimates.
@@ -1360,6 +1521,16 @@ private:
   // fixes accepted in a row rather than one. A sustained spike cannot abuse
   // this, because the latch is only ever SET by a real gap.
   bool post_outage_unconfirmed_   = false;
+
+  // Re-anchor buffer: recent fixes with the odometry distance at each, so the
+  // consistency test can use a source the filter does not influence.
+  struct ReanchorSample { double t, x, y, z, odom, fx, fy, sigma; };
+  std::deque<ReanchorSample> reanchor_buf_;
+  double reanchor_last_t_ = -1e18;
+  std::deque<bool> reanchor_recent_;   // true = rejected, most recent at the back
+  long   reanchor_count_  = 0;
+  double reanchor_last_jump_ = 0.0;
+  bool   maybe_reanchor(double timestamp_seconds);
   int  gnss_consecutive_accepts_  = 0;
   // Recovery mode: after a timeout-triggered coast, accept the first returning
   // GPS fix unconditionally (bypass chi2 gate). After 7+ minutes blind, dead
@@ -1379,12 +1550,16 @@ private:
   void init_adaptive_R();
 
   template <int z_dim>
+  // hph is the filter's own contribution H*P*H' to the innovation covariance.
+  // Pass a zero matrix when it is not available; the subtraction is then a no-op
+  // and only the ceiling applies.
   void adapt_R(
     Eigen::Matrix<double, z_dim, z_dim>& R,
     const Eigen::Matrix<double, z_dim, z_dim>& R_floor,
     InnovationWindow<z_dim>& window,
     const Eigen::Matrix<double, z_dim, 1>& innovation,
-    bool enabled
+    bool enabled,
+    const Eigen::Matrix<double, z_dim, z_dim>* hph = nullptr
   );
 
   // ─── State snapshot for delay compensation

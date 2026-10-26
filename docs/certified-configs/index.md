@@ -19,7 +19,7 @@ Community-contributed configurations that have been validated on real hardware. 
 
 | Config | IMU | GPS | Platform | Status |
 |---|---|---|---|---|
-| [Microstrain 3DM-GX3-45 + Novatel SPAN-CPT](microstrain-3dm-gx3-45-segway.md) | Microstrain 3DM-GX3-45 | Novatel SPAN-CPT (~3m CEP) | Segway RMP campus rover | **Field validated** (12 sequences, 940 min, RTK ground truth) |
+| [Microstrain 3DM-GX3-45 + consumer GPS (NCLT)](microstrain-3dm-gx3-45-segway.md) | Microstrain 3DM-GX3-45 | Consumer-grade receiver (reports 3 m sigma) | Segway RMP campus rover | **Field validated** (12 sequences, 940 min, RTK ground truth; does not beat raw GPS at shipped defaults) |
 | [Bosch BNO085 + u-blox ZED-F9P](bosch-bno085-ublox-f9p-outdoor.md) | Bosch BNO085 (9-axis) | u-blox ZED-F9P (standard GPS or RTK) | Differential drive outdoor | **Community contributed** (Oakland University IGVC robot, Agroecology Lab) |
 | [Xsens MTi-680G](xsens-mti-680g-fsae.md) | Xsens MTi-680G (IMU + integrated GNSS) | Xsens MTi-680G GNSS (RTK capable) | Formula Student race car (Ackermann) | **Validation in progress** (UniNa Corse, FSAE Italy 2025) |
 | [NVIDIA Isaac ROS Visual SLAM](nvidia-isaac-ros-vslam.md) | any (use the same one Isaac ROS uses) | optional | Jetson Orin or Thor with a camera | **Untested** (interface verified by inspection, never run) |

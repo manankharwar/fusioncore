@@ -17,6 +17,13 @@ I have been working on FusionCore for the last several months. It is a ROS 2 Jaz
 
 FusionCore addresses all three.
 
+!!! note "Correction, 2026-10-26"
+    The covariance sentence above is wrong. robot_localization uses the covariance each sensor
+    message carries, so a fix that reports a large covariance is weighted less, and it supports
+    per-sensor Mahalanobis rejection thresholds. What it does not do is adapt the noise model
+    when a driver's reported covariance is too optimistic, which is the difference FusionCore's
+    adaptive noise layer is for.
+
 The filter is a 23-state UKF: position (3), orientation quaternion (4), body-frame velocity (3), angular velocity (3), body-frame acceleration (3), gyro bias (3), accelerometer bias (3), encoder WZ bias (1). Gyro and accelerometer biases are live states that the filter estimates and corrects continuously. GNSS is fused in ECEF (via PROJ), so UTM zone boundaries do not exist. Sensor noise covariances are adapted in real time from the innovation sequence using a sliding window, so bad GPS fixes are automatically down-weighted without any config change.
 
 ## Feature summary

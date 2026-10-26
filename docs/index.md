@@ -1,6 +1,21 @@
 # FusionCore
 
-**ROS 2 UKF sensor fusion for robots that run in the real world. IMU + wheel encoders + GPS at 100 Hz. Two numbers from your IMU datasheet instead of days of tuning, and when it drifts it names the sensor and the reason. Handles bad calibration, timestamp jitter, delayed GPS, wheel slip, and ARM hardware out of the box. Apache 2.0.**
+**ROS 2 sensor fusion for outdoor wheeled ground robots that lose GPS. IMU + wheel encoders + GPS at 100 Hz in a 23-state UKF. Two numbers from your IMU datasheet instead of days of tuning, and when it drifts it names the sensor and the reason. Handles bad calibration, timestamp jitter, delayed GPS, wheel slip, and ARM hardware out of the box. Apache 2.0.**
+
+Built and measured for a **wheeled robot, outdoors, with wheel odometry**: differential
+drive, skid steer, tracked or Ackermann. NCLT is a wheeled Segway and the hardware runs
+are a four-wheeled rover, so that is the platform every number here was measured on. You
+declare the platform in one line with `platform.profile` and that decides which states
+the filter estimates, because a 23-state filter can estimate more than a wheeled robot
+can observe. See [Declaring the platform](configuration.md#declaring-the-platform).
+
+**Not built for drones, boats, legged robots or mecanum platforms.** The library runs on
+them (the core is full 3D with no planar assumption, and `platform.profile: general`
+freezes nothing), but nothing here is tuned or benchmarked for them and the
+non-holonomic constraint is wrong for anything that can move sideways on purpose. For
+those platforms, and for fusing an arbitrary set of sensors,
+[robot_localization](https://github.com/cra-ros-pkg/robot_localization) is the right
+answer: mature, general by design, and it is where this one has no evidence.
 
 [![CI](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml/badge.svg)](https://github.com/manankharwar/fusioncore/actions/workflows/ci.yml)
 [![arXiv](https://img.shields.io/badge/arXiv-2605.25239-b31b1b)](https://arxiv.org/abs/2605.25239)
@@ -101,10 +116,10 @@ robot_localization is a solid, well-maintained package used on tens of thousands
 | GPS fix quality gating | Not built-in | HDOP, satellite count, fix type |
 | Dual antenna heading | Not built-in | Yes |
 | Inertial coast mode | Not built-in | Auto on sustained GPS dropout |
-| GPS velocity fusion (wheel slip detection) | Not built-in | Yes (Doppler vs wheel innovation reveals slip) |
-| Radar Doppler velocity fusion | Not built-in | Yes (works indoors, all weather, slip detection) |
-| VSLAM pose fusion | Not built-in | Yes: `vslam.topic` fuses 6-DOF pose from ORB-SLAM3, RTAB-Map, Kimera, etc. |
-| Dual IMU | Not built-in | Yes: `imu2.topic` fuses a second IMU as an independent measurement |
+| GPS velocity fusion (wheel slip detection) | Any twist input (`twistN`), no slip detection | Yes (Doppler vs wheel innovation reveals slip) |
+| Radar Doppler velocity fusion | Any twist input (`twistN`) | Yes (works indoors, all weather, slip detection) |
+| VSLAM pose fusion | Any pose input (`poseN`) | Yes: `vslam.topic` fuses 6-DOF pose from ORB-SLAM3, RTAB-Map, Kimera, etc. |
+| Multiple IMUs | Any number (`imu0`, `imu1`, ...) | Two: `imu2.topic` fuses a second IMU as an independent measurement |
 | ROS 2 Jazzy / Humble | Ported from ROS 1 | Native, from scratch |
 
 ---
@@ -112,49 +127,25 @@ robot_localization is a solid, well-maintained package used on tens of thousands
 
 ## Benchmark: 12 NCLT sequences, same config, no per-sequence tuning
 
-Evaluated against robot_localization EKF on the [NCLT dataset](http://robots.engin.umich.edu/nclt/) (University of Michigan). Same IMU, wheel odometry, and GPS inputs. SE3-aligned ATE against RTK ground truth.
+Measured 2026-10-26 on all twelve [NCLT](http://robots.engin.umich.edu/nclt/) sequences under
+a reporting rule committed before the run. Scored at GPS fix times, **the shipped default does
+not beat raw unfiltered GPS**: raw GPS has the lower ATE RMSE on 11 of 12, and the twelfth is a
+tie (9.186 m against 9.187 m). With opt-in re-anchoring (`gnss.reanchor_enabled`), FusionCore
+is lower than raw GPS on 2 of 12 held-out sequences (2012-03-31 by 22.0%, 2012-10-28 by 5.6%).
+Re-anchoring lowers RMSE against the default on 10 of 12 and raises it on none, but raises the
+median on 4 and the output-rate jitter on 3, which is why it is off by default.
 
-| Sequence | Season | Duration | FC ATE | RL-EKF ATE | Winner |
-|---|---|---|---|---|---|
-| 2012-01-08 | Winter | 92 min | **18.6 m** | 41.2 m | FC +55% |
-| 2012-02-04 | Winter | 77 min | **49.7 m** | 265.5 m | FC +81% |
-| 2012-03-31 | Spring | 87 min | **22.0 m** | 156.5 m | FC +86% |
-| 2012-05-11 | Spring | 84 min | **9.7 m** | 11.5 m | FC +16% |
-| 2012-06-15 | Summer | 55 min | 49.2 m † | **18.2 m** | RL +63% |
-| 2012-08-20 | Summer | 83 min | 98.3 m † | **10.6 m** | RL +89% |
-| 2012-09-28 | Fall | 77 min | **22.4 m** | 53.8 m | FC +58% |
-| 2012-10-28 | Fall | 85 min | **15.6 m** | 56.4 m | FC +72% |
-| 2012-11-04 | Fall | 79 min | **60.1 m** | 122.0 m | FC +51% |
-| 2012-12-01 | Winter | 75 min | **21.0 m** | 90.7 m | FC +77% |
-| 2013-02-23 | Winter | 78 min | **59.4 m** | 82.2 m | FC +28% |
-| 2013-04-05 | Spring | 68 min | **12.1 m** † | 268.9 m | FC +96% |
-
-> **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
-> fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
-> rate to **both** filters. On those five **FusionCore wins two and loses three**, and
-> 2012-02-04 flipped from a published 81% win to a measured 20% loss. The other seven
-> have not been re-run. Their May 2026 run records exist and match the published figures
-> to three decimals, so the table was measured rather than invented, but it was measured
-> through the same faulty player and nothing should be concluded from those rows in
-> either direction.
->
-> Measured, post-fix: 2013-04-05 **5.0x better** than robot_localization, 2012-09-28
-> **4.7x better**, 2012-02-04 1.2x worse, 2012-06-15 1.8x worse, 2012-08-20 **15x worse**.
-> The spread, not the average, is the open problem. Two identified defects sit inside
-> every one of these numbers: #150 and #148. See `tools/benchmark_regression.md`.
-
-**CORRECTED 2026-10-09: on the five rows re-measured at n=2 after the #169 frame fix, FusionCore wins two and loses three. The previous 10/12 claim came from runs through a faulty dataset player and is withdrawn.** RL-EKF's losses trace to a single root cause: NCLT's GPS driver reports 3m sigma, but measured against RTK ground truth, actual p95 noise ranges from 9.7m to 53.1m depending on the day. RL's Mahalanobis gate is calibrated to the stated 3m, so it rejects valid fixes on sequences with higher actual noise. FusionCore's adaptive noise estimation (`adaptive.gnss: true`) adjusts the noise model in real time and keeps chi2 statistics calibrated.
-
-There are now three measured FC losses (2012-02-04, 2012-06-15, 2012-08-20). The long-blackout explanation that stood here does not survive the data: 2013-04-05 is blind for 355 s and FusionCore wins, while 2012-02-04 is blind for 281 s and loses. Full root-cause analysis and path-to-fix in the [benchmark reference](reference/benchmark.md).
-
-RL-UKF diverged with NaN on all twelve sequences (known numerical instability under sim-time playback).
+The comparison against robot_localization is being re-run and there is no current figure to
+cite. The "10 of 12" comparison that stood here is withdrawn: it was measured through our
+dataset player with two input errors that fed both filters wrong data. Every number, its
+pipeline and the full history are in the [benchmark reference](reference/benchmark.md).
 
 ---
 
 
 ## Used on real hardware
 
-Real engineers, real robots, real sensor data. Not demos.
+People who have reported running or integrating FusionCore on their own robots.
 
 > "The system was stable on real robot data and was relatively easy to configure. I was able to get reasonable behavior without spending excessive time on parameter tuning. The overall experience felt more deployment-oriented than research-demo-oriented."
 >
@@ -169,7 +160,7 @@ Real engineers, real robots, real sensor data. Not demos.
 > Outdoor agricultural robot, integration in progress
 
 > **Russ Hall**, Andino robot (Raspberry Pi)
-> OAK-D (stereo depth + IMU) + Velodyne VLP-16 + rtabmap: indoor SLAM mapping
+> OAK-D (stereo depth + IMU) + Velodyne VLP-16 + rtabmap: indoor SLAM mapping, integration in progress
 
 Running FusionCore on your robot? Drop a note in [Discussions #22](https://github.com/manankharwar/fusioncore/discussions/22) and I will add you here.
 
@@ -179,7 +170,7 @@ Running FusionCore on your robot? Drop a note in [Discussions #22](https://githu
 
 **rtabmap_ros (merged):** FusionCore is included as a named demo in the official [rtabmap_ros](https://github.com/introlab/rtabmap_ros) repository, maintained by @matlabbe. The demo ("Turtlebot3 Nav2, 2D LiDAR SLAM with FusionCore") shows FusionCore and icp_odometry running in a feedback loop: FusionCore's stable odom frame seeds scan matching via `guess_frame_id`, and the ICP result feeds back into FusionCore as a second velocity source. [View the demo](https://github.com/introlab/rtabmap_ros/tree/ros2/rtabmap_demos)
 
-**Stereolabs community:** FusionCore + ZED integration guide posted on the Stereolabs developer forum, acknowledged by Stereolabs support. Under active evaluation by [@privvyledge](https://github.com/privvyledge) comparing FusionCore against Wolf, TIER IV EagleEye, and robot_localization on two platforms: an F1/10 scale car (indoor, VESC + RealSense D435i) and a full-size autonomous van (GPS + ZED 2i + 360 LiDAR).
+**Stereolabs community:** a FusionCore + ZED integration guide is posted on the Stereolabs developer forum. [@privvyledge](https://github.com/privvyledge) set out to compare FusionCore against Wolf, TIER IV EagleEye and robot_localization in May 2026 on an F1/10 scale car (indoor, VESC + RealSense D435i) and a full-size van (GPS + ZED 2i + 360 LiDAR); no results have been reported back.
 
 ---
 

@@ -6,11 +6,49 @@
 [![Docs](https://img.shields.io/badge/docs-manankharwar.github.io%2Ffusioncore-blue)](https://manankharwar.github.io/fusioncore/)
 [![Newsletter](https://img.shields.io/badge/newsletter-subscribe-orange)](https://manankharwar.substack.com)
 
-**A 23-state UKF for outdoor robots: IMU, wheel encoders, GPS and visual SLAM at 100 Hz. Two numbers from your IMU datasheet instead of days of tuning, and when the estimate goes wrong it names the sensor and the reason instead of drifting silently. Apache 2.0, ROS 2 Jazzy and Humble, and the filter itself is a plain C++ library with no ROS dependency.**
+**Sensor fusion for outdoor wheeled ground robots that lose GPS. IMU, wheel encoders, GPS and visual SLAM at 100 Hz in a 23-state UKF. Two numbers from your IMU datasheet instead of days of tuning, and when the estimate goes wrong it names the sensor and the reason instead of drifting silently. Apache 2.0, ROS 2 Jazzy and Humble, and the filter itself is a plain C++ library with no ROS dependency.**
 
 <img width="1080" height="608" alt="586785007-e1e07cfb-74e0-48b9-9bfd-32b68ee5a6ef" src="https://github.com/user-attachments/assets/d59b74ec-af94-4cb1-ab19-e5310a5d138b" />
 
 ---
+
+---
+
+## What this is for
+
+A **wheeled robot, outdoors, with wheel odometry, that loses GPS.** Differential drive,
+skid steer, tracked or Ackermann. That is the platform every number on this page was
+measured on: NCLT is a wheeled Segway and the hardware runs are a four-wheeled rover.
+
+You tell the filter which platform it is, in one line, and that decides which states it
+bothers to estimate:
+
+```yaml
+fusioncore:
+  ros__parameters:
+    platform.profile: ground_robot_flat   # general | ground_robot | ground_robot_flat
+```
+
+A 23-state filter can estimate more than a wheeled robot can observe. The gyro measures
+`WZ + B_GZ` and the accelerometer measures `AX + B_AX + gravity`, so those pairs are not
+separately observable from those sensors alone. On a robot with encoders,
+`platform.profile: ground_robot` sets the bias process noises and priors to zero and
+treats the encoder's yaw rate as bias-free, so the encoder carries the constraint. It slows
+the biases rather than holding them: the UKF's covariance regularisation still lets them
+drift (a median sigma of 0.053 rad/s on the gyro bias on NCLT 2013-04-05). In replay on five NCLT sequences that
+lowered ATE RMSE on all five, by 0.3% to 17.7% (table in the CHANGELOG). Declaring the
+platform is what lets the filter stop guessing. See
+[Declaring the platform](https://manankharwar.github.io/fusioncore/configuration/#declaring-the-platform).
+
+**Not built for drones, boats, legged robots or mecanum platforms.** The library will run
+on them: the core is full 3D, there is no planar assumption, and `platform.profile:
+general` exists precisely so nothing is frozen that those platforms need. But nothing
+here is tuned or benchmarked for them, the profiles do not apply, and the non-holonomic
+constraint is wrong for anything that can move sideways on purpose.
+
+**For those platforms, and for fusing an arbitrary set of sensors, use
+[robot_localization](https://github.com/cra-ros-pkg/robot_localization).** It is mature,
+it is general by design, and it is the right answer where this one has no evidence.
 
 ## Start without installing anything
 
@@ -202,6 +240,203 @@ said so for weeks.
 
 FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.umich.edu/nclt/): same IMU, wheel odometry and GPS, no manual tuning, twelve full-length sequences across all seasons. RL-EKF run with chi-squared-equivalent thresholds at 99.9% confidence.
 
+> **Status, 2026-10-26, and this supersedes every dated note below it.**
+>
+> All twelve NCLT sequences were re-run under a reporting rule committed before the run
+> started (`tools/report_rule_20261025.md`). The dataset player was corrected first: it had
+> been declaring the IMU's accelerometer-derived tilt as a 0.57 degree attitude measurement.
+> That declaration was ours, not the dataset's. It counted the accelerometer twice and made
+> the ROS node lock onto a wrong position for about 800 s on 2012-01-08 (178.808 m full
+> trajectory RMSE before the correction, 57.314 m in this run).
+>
+> Scored at GPS fix times, the shipped default does not beat raw GPS: raw GPS has the lower
+> RMSE on 11 of 12, and the twelfth, 2012-05-11, is a tie at 9.186 m against 9.187 m. With
+> opt-in re-anchoring (`gnss.reanchor_enabled`), FusionCore is lower than raw GPS on 2 of 12,
+> 2012-03-31 by 22.0% and 2012-10-28 by 5.6%, both held-out sequences never used for tuning.
+> Against the default on the same pipeline and scored over the full trajectory, re-anchoring
+> lowers RMSE on 10 of 12 and raises it on none. It also raises the median on 4 (by 0.3% to
+> 3.0%) and the output-rate jitter on 3 (by up to 0.124), which is why it is off by default.
+>
+> ATE RMSE (3D) at GPS fix times, every column on identical timestamps:
+>
+> | Sequence | Set | Raw GPS | Default, ROS node | Default, replay | Re-anchoring on, replay | Re-anchoring on, ratio to raw GPS |
+> |---|---|---|---|---|---|---|
+> | 2012-01-08 | held out | 9.883 m | 56.957 m | 50.065 m | 10.899 m | 1.103x |
+> | 2012-02-04 | dev | 57.564 m | 163.830 m | 145.629 m | 59.340 m | 1.031x |
+> | 2012-03-31 | held out | 13.825 m | 16.818 m | 16.937 m | **10.787 m** | 0.780x |
+> | 2012-05-11 | held out | 9.187 m | 9.186 m | 9.187 m | 9.187 m | 1.000x |
+> | 2012-06-15 | dev | 9.293 m | 24.363 m | 12.041 m | 12.041 m | 1.296x |
+> | 2012-08-20 | dev | 34.250 m | 160.359 m | 172.961 m | 39.790 m | 1.162x |
+> | 2012-09-28 | dev | 8.960 m | 18.883 m | 22.236 m | 10.176 m | 1.136x |
+> | 2012-10-28 | held out | 13.923 m | 15.999 m | 16.763 m | **13.150 m** | 0.944x |
+> | 2012-11-04 | held out | 20.267 m | 23.626 m | 24.512 m | 20.414 m | 1.007x |
+> | 2012-12-01 | held out | 12.681 m | 16.160 m | 16.466 m | 12.741 m | 1.005x |
+> | 2013-02-23 | held out | 15.724 m | 17.294 m | 16.951 m | 15.793 m | 1.004x |
+> | 2013-04-05 | dev | 8.624 m | 9.994 m | 10.007 m | 8.798 m | 1.020x |
+>
+> How these were produced: the ROS node at 1x playback (achieved filter rate 99.8 to
+> 103.3 Hz on every sequence) and the deterministic offline replay of the same shipped config
+> on the same input, scored by `tools/score_nclt_suite.py` (version `803c158e99ff`, printed
+> on every row) through `hardware/ate_tum.py`. Re-anchoring was run through replay only, so
+> compare it with the replay default column. The node and the replay still disagree: node
+> over replay is 0.70x to 1.14x over the full trajectory, and at fix times up to 2.0x on
+> 2012-06-15 (24.363 m against 12.041 m). That gap is not yet explained. No sequence was
+> excluded. Medians, path ratios, jitter and coverage for every arm and sequence are in
+> `tools/eval_20261025_results.md`. "Held out" sequences were never used to develop or tune
+> anything (`tools/ship_rule.md`).
+>
+> **robot_localization: a corrected re-run is pending, and the comparison table further down
+> predates it.** In this run robot_localization's config fused IMU acceleration. Once the
+> corrected player stopped supplying an attitude, robot_localization removed gravity using a
+> level attitude, so real tilt leaked into the acceleration and it diverged to kilometres on
+> nine sequences. That was our input change meeting that config, not a property of
+> robot_localization, so those numbers are withheld. All twelve are being re-run with the
+> config following robot_localization's own planar wheeled-robot example (the amendment in
+> the rule file states exactly what changed and why).
+
+> **Status, 2026-10-25. SUPERSEDED by the 2026-10-26 note above, which re-measures the same twelve sequences with the corrected player.**
+>
+> Scored at GPS fix times on all 12 NCLT sequences, the shipped default does not beat raw
+> GPS: raw GPS is better on 11 and tied (within 0.2%) on the twelfth. With opt-in
+> re-anchoring (`gnss.reanchor_enabled`), FusionCore beats raw GPS on 2 of 12: 2012-03-31
+> by 22.4% and 2012-10-28 by 5.4%, both held-out sequences never used for tuning. On the
+> held-out set, scored over the full trajectory, re-anchoring lowers RMSE on 6 of 7 and
+> raises it on none, including 2012-01-08 going from 178.2 m to 17.0 m. It also raises
+> median error by 3.3% and 4.4% on two sequences and jitter on one, which is why it is off
+> by default.
+>
+> ATE RMSE (3D) at GPS fix times, all three columns on identical timestamps:
+>
+> | Sequence | Set | Raw GPS | FusionCore, shipped default | FusionCore, re-anchoring on | Re-anchoring on, ratio to raw GPS |
+> |---|---|---|---|---|---|
+> | 2012-01-08 | held out | 9.883 m | 170.643 m | 10.891 m | 1.102x |
+> | 2012-02-04 | dev | 57.564 m | 151.937 m | 59.303 m | 1.030x |
+> | 2012-03-31 | held out | 13.824 m | 15.206 m | **10.726 m** | 0.776x |
+> | 2012-05-11 | held out | 9.186 m | 9.166 m | 9.166 m | 0.998x |
+> | 2012-06-15 | dev | 9.293 m | 12.469 m | 12.469 m | 1.342x |
+> | 2012-08-20 | dev | 34.250 m | 193.923 m | 39.782 m | 1.162x |
+> | 2012-09-28 | dev | 8.960 m | 21.560 m | 10.166 m | 1.135x |
+> | 2012-10-28 | held out | 13.921 m | 15.057 m | **13.170 m** | 0.946x |
+> | 2012-11-04 | held out | 20.267 m | 27.319 m | 22.535 m | 1.112x |
+> | 2012-12-01 | held out | 12.681 m | 16.149 m | 12.731 m | 1.004x |
+> | 2013-02-23 | held out | 15.719 m | 17.435 m | 15.780 m | 1.004x |
+> | 2013-04-05 | dev | 8.624 m | 9.981 m | 8.774 m | 1.017x |
+>
+> How these were produced, so they can be reproduced: the deterministic offline replay of
+> the shipped NCLT config, fusing the IMU orientation exactly as the ROS node does (on
+> 2012-01-08 that reproduces the node to 0.3%), scored by `tools/score_raw_vs_fc.py`
+> (version `ed061b2ff01a`, which prints that hash on every row) through `hardware/ate_tum.py`.
+> "Held out" sequences were never used to develop or tune anything; the rule they were
+> tested under was committed before their logs existed (`tools/ship_rule.md`). The
+> 2026-10-18 table below could not be reproduced: its files survive but the scoring step
+> that produced its numbers does not, so it is kept only as history.
+
+> **Status, 2026-10-18. SUPERSEDED by the 2026-10-25 note above; its table could not be reproduced and is kept as history.**
+>
+> **The baseline this table never had: raw, unfiltered GNSS.** Take the fixes straight out
+> of the log, score them as a trajectory, and compare. Scored at identical points, both
+> through the same scorer, five sequences (2012-01-08 is excluded, see the withdrawal
+> below):
+>
+> | Sequence | Raw GNSS | FusionCore, before | FusionCore, after | After, as ratio to raw GNSS |
+> |---|---|---|---|---|
+> | 2012-02-04 | 58.672 m | 144.903 m | **60.522 m** | 1.03x |
+> | 2012-06-15 | 9.046 m | 10.945 m | 10.945 m | 1.21x |
+> | 2012-08-20 | 32.238 m | 176.805 m | **39.397 m** | 1.22x |
+> | 2012-09-28 | 8.983 m | 23.956 m | **9.866 m** | 1.10x |
+> | 2013-04-05 | 8.561 m | 10.149 m | **8.752 m** | 1.02x |
+>
+> **Unfiltered GNSS has a lower ATE RMSE than FusionCore on all five sequences, before and
+> after.** That is the first thing a careful reader should check and it was not anywhere in
+> this repository until now. Before the fix below, fusing made the answer 1.19x to 5.48x
+> worse than not fusing. After it, 1.02x to 1.22x worse.
+>
+> The medians say where the remaining gap lives. Each filter median as a percentage of the
+> raw GNSS median on the same sequence:
+>
+> | Sequence | Raw GNSS median | Before | After |
+> |---|---|---|---|
+> | 2012-02-04 | 13.817 m | +154.1% | **-0.4%** |
+> | 2012-06-15 | 4.937 m | +0.4% | +0.4% |
+> | 2012-08-20 | 7.337 m | +444.1% | +3.0% |
+> | 2012-09-28 | 6.289 m | +14.2% | +1.6% |
+> | 2013-04-05 | 6.287 m | +2.1% | +1.9% |
+>
+> After the fix every median is within 3.1% of unfiltered GNSS and four of the five are
+> within 2%, with 2012-02-04 slightly better than unfiltered. Before it, two sequences were
+> 154% and 444% out. So **typical-case accuracy now matches doing no filtering at all, and
+> the entire remaining RMSE gap is excursions**, which is a sharper statement than the RMSE
+> ratio alone.
+>
+> **Where the error actually was.** Classifying each sequence by whether a GNSS fix was
+> available, using windows taken from the raw fix stream so the classification does not
+> depend on the thing being measured, 74.8% to 96.8% of squared error sat in the blackouts or
+> in the re-convergence right after them. On 2012-02-04, 44.5% of the run was spent
+> re-converging and that window held 94.5% of the error.
+>
+> **The cause.** During re-convergence the outlier gate rejected 81% of arriving fixes on
+> 2012-02-04 and 2012-08-20, against 10% across the rest of the run, while adaptive R
+> inflated the measurement noise up to 4,907x. The filter was discarding and discounting
+> precisely the fixes that would have corrected it, because its own covariance said it was
+> confident and the fixes disagreed. A filter that is wrong and certain rejects the
+> evidence that it is wrong.
+>
+> **The fix**, `gnss.reanchor_enabled`, default off: when the gate has been refusing most
+> of what arrives, and the recent fixes are self-consistent against wheel odometry, jump
+> the state onto them instead of waiting for the gate to let them in. Full trajectory:
+> 2012-02-04 142.792 to 59.689, 2012-08-20 171.393 to 46.671, 2012-09-28 23.638 to 10.008,
+> 2013-04-05 16.677 to 16.011, 2012-06-15 unchanged at 78.139. No sequence regresses on
+> RMSE. 16 re-anchors across five sequences and roughly 25,000 s of driving; the smallest
+> error any of them fired at was 138 m, so none fires while the filter is healthy.
+>
+> **What is still not true, stated plainly:**
+> - FusionCore does not beat unfiltered GNSS on RMSE on any of these five sequences.
+> - 2012-06-15 does not move, because 84.6% of its error is inside one 462 s blackout and
+>   re-anchoring acts only after a blackout ends. Error accumulated during a blackout is
+>   dead reckoning drift and is untouched by this work.
+> - Whether the filter's coast beats plain dead reckoning during a blackout **cannot be
+>   answered on NCLT**: its ground truth covers only 18% of GNSS gap time and 2 of 5
+>   sequences have no ground truth at all inside their gaps, because NCLT's own ground
+>   truth degrades under the conditions that take the GNSS out.
+> - 2012-09-28's path length ratio gets **worse** with the fix on, 1.048 to 1.106, while
+>   its RMSE improves 2.36x. If your consumer integrates the path rather than reading the
+>   pose, that trade matters.
+> - The bimodal `ukf.q_angular_vel` behaviour, where a 33% parameter change flips the
+>   filter between a path ratio near 1.0 and near 0.17, is **not** fixed by this and is
+>   still open.
+>
+> **Withdrawn here:** every replay figure for 2012-01-08 measured on 2026-10-18, because
+> that export covers 66% of the sequence (3740 s of 5640 s). The 185.2 m node figure in the
+> table below is a full-trajectory run and stands. Also withdrawn, from internal notes
+> rather than this page: a claim that dead reckoning beat the filter's coast by 3.4x, which
+> compared 462 s of integration against 276 s of ground truth.
+>
+> Measurement detail, including the ablation that turned the persistent-bias trigger off
+> and the seven labelling errors found and corrected on 2026-10-17, is in
+> `tools/benchmark_regression.md`.
+>
+> **Status, 2026-10-17, and this supersedes the dated notes below it.** **Nine of the
+> twelve rows now have a run record** on corrected input. **FusionCore wins four and loses
+> five.** The four rows added since the 2026-10-10 note were measured on 2026-10-12 at
+> **n=1 each**, and two of them flip a published win to a loss:
+>
+> | Sequence | Published (May 2026) | Measured 2026-10-12 | |
+> |---|---|---|---|
+> | 2012-01-08 | FC 18.6 m, RL 41.2 m, **FC +55%** | FC 185.2 m, RL 22.8 m, **RL +88%** | flips, and it is the largest flip on record here |
+> | 2012-05-11 | FC 9.7 m, RL 11.5 m, **FC +16%** | FC 9.6 m, RL 8.9 m, **RL +7%** | flips, small absolute numbers |
+> | 2012-03-31 | FC 22.0 m, RL 156.5 m, **FC +86%** | FC 28.5 m, RL 160.6 m, **FC +82%** | holds, the largest measured win here |
+> | 2012-10-28 | FC 15.6 m, RL 56.4 m, **FC +72%** | FC 17.1 m, RL 25.1 m, **FC +32%** | holds, margin shrinks |
+>
+> Every one of those is **n=1 with an unknown spread**, so none of them can be graded
+> against a single later run. 2012-02-04 also moved from n=2 to **n=3**, and its recorded
+> spread went from 0.51% to **14.80%** while its control held at 0.02%: a tight spread at
+> n=2 is two samples that landed together, not evidence of a tight spread.
+>
+> The direction of the original error is now consistent across nine rows: **the published
+> table flattered FusionCore on every row where the two differ materially.** The control
+> moved in both directions, which is what places the change in FusionCore's column rather
+> than in the harness.
+>
 > **Status, 2026-10-10.** Five of these twelve rows have been re-measured at n=2 after
 > fixing #169, a frame error in the dataset player that fed a wrong wheel-odometry yaw
 > rate to **both** filters. On those five **FusionCore wins two and loses three**, and
@@ -237,28 +472,34 @@ FusionCore against robot_localization on the [NCLT dataset](http://robots.engin.
 >
 > `tools/benchmark_regression.md` is the standing rule: no published number changes without a `verified` baseline entry and a clean regression check. Rows this note affects are marked † in every table on this page.
 
+**Pending, 2026-10-26: this table predates the corrected dataset player and is being
+replaced.** A re-run of robot_localization on all twelve sequences, with a corrected
+configuration, is in progress; see the 2026-10-26 status note above. Until it finishes,
+nothing in this table should be read as the current comparison.
+
 | Sequence | Season | Duration | FC ATE RMSE | RL-EKF ATE RMSE | Winner | Status |
 |---|---|---|---|---|---|---|
-| 2012-01-08 | Winter | 92 min | 18.6 m | 41.2 m | FC +55% | ‡ never verified |
-| 2012-02-04 | Winter | 77 min | **153.5 m** | **123.1 m** | **RL +20%** | re-measured, n=2 |
-| 2012-03-31 | Spring | 87 min | 22.0 m | 156.5 m | FC +86% | ‡ never verified |
-| 2012-05-11 | Spring | 84 min | 9.7 m | 11.5 m | FC +16% | ‡ never verified |
+| 2012-01-08 | Winter | 92 min | **185.2 m** | **22.8 m** | **RL +88%** | re-measured, n=1 |
+| 2012-02-04 | Winter | 77 min | **147.0 m** | **123.1 m** | **RL +19%** | re-measured, n=3 |
+| 2012-03-31 | Spring | 87 min | **28.5 m** | **160.6 m** | **FC +82%** | re-measured, n=1 |
+| 2012-05-11 | Spring | 84 min | **9.6 m** | **8.9 m** | **RL +7%** | re-measured, n=1 |
 | 2012-06-15 | Summer | 55 min | **82.0 m** | **45.9 m** | **RL +44%** | re-measured, n=2 |
 | 2012-08-20 | Summer | 83 min | **155.6 m** | **10.4 m** | **RL +93%** | re-measured, n=2 |
 | 2012-09-28 | Fall | 77 min | **18.6 m** | **87.2 m** | **FC +77%** | re-measured, n=2 |
-| 2012-10-28 | Fall | 85 min | 15.6 m | 56.4 m | FC +72% | ‡ never verified |
+| 2012-10-28 | Fall | 85 min | **17.1 m** | **25.1 m** | **FC +32%** | re-measured, n=1 |
 | 2012-11-04 | Fall | 79 min | 60.1 m | 122.0 m | FC +51% | ‡ never verified |
 | 2012-12-01 | Winter | 75 min | 21.0 m | 90.7 m | FC +77% | ‡ never verified |
 | 2013-02-23 | Winter | 78 min | 59.4 m | 82.2 m | FC +28% | ‡ never verified |
 | 2013-04-05 | Spring | 68 min | **14.1 m** | **65.5 m** | **FC +79%** | re-measured, n=2 |
 
-**Read the five bold rows and ignore the rest.** Those five were re-measured on 2026-10-09
-at n=2 each, after a bug fix described below. The seven rows marked ‡ were measured in May
-2026 through a dataset player that is now known to have been wrong, and they have not been
-re-run. They are left in the table only so the correction is visible; **no claim should be
-built on them in either direction.**
+**Read the nine bold rows and ignore the rest.** Those nine have a run record on
+corrected input. Four of them carry **n=1** and a single run cannot be graded: the clearest
+evidence for that is 2012-02-04 itself, which read a 0.51% spread at n=2 and 14.80% at n=3.
+The three rows still marked ‡ were measured in May 2026 through a dataset player now known
+to have been wrong and have not been re-run. They are left in the table only so the
+correction is visible; **no claim should be built on them in either direction.**
 
-**On the five rows that have been measured, FusionCore wins two and loses three.** This
+**On the nine rows that have been measured, FusionCore wins four and loses five.** This
 page previously claimed FusionCore beat robot_localization on ten of twelve. That claim
 was never supported by a verifiable run.
 
@@ -394,7 +635,7 @@ Useful if you are on PX4, a custom middleware, or an embedded loop where ROS 2 i
 
 **rtabmap_ros (merged):** included as a named demo in the official [rtabmap_ros](https://github.com/introlab/rtabmap_ros) repository. The demo runs FusionCore and `icp_odometry` in a feedback loop: FusionCore's stable odom frame seeds scan matching via `guess_frame_id`, and the ICP result returns as a second velocity source. [View the demo](https://github.com/introlab/rtabmap_ros/tree/ros2/rtabmap_demos)
 
-**Stereolabs community:** a FusionCore + ZED integration guide is posted on the Stereolabs developer forum. Under evaluation by [@privvyledge](https://github.com/privvyledge) against Wolf, TIER IV EagleEye and robot_localization on an F1/10 scale car and a full-size autonomous van.
+**Stereolabs community:** a FusionCore + ZED integration guide is posted on the Stereolabs developer forum. [@privvyledge](https://github.com/privvyledge) set out to compare FusionCore against Wolf, TIER IV EagleEye and robot_localization in May 2026 on an F1/10 scale car and a full-size van; no results have been reported back.
 
 **OpenMowerNext:** [PR #45](https://github.com/jkaflik/OpenMowerNext/pull/45) integrates FusionCore as the localization stack for a community ROS 2 mowing system, replacing robot_localization with a single lifecycle node fusing RTK GPS (u-blox F9P), IMU and wheel odometry.
 

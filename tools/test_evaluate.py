@@ -81,6 +81,40 @@ def write_tum(path, xyz, timestamps=None):
 
 
 @unittest.skipIf(EVO, EVO or "")
+class OutputRatePathRatio(unittest.TestCase):
+    """The output-rate path ratio sees motion BETWEEN ground-truth samples.
+
+    path_length_ratio samples the estimate at ground-truth timestamps and cannot see a
+    pose that jitters in between, which is exactly what NCLT showed on 2026-10-22.
+    """
+
+    def gt_and_dense(self, wobble):
+        g = curve(60)
+        gt = traj(g)
+        # The estimate at 10x the ground-truth rate, exactly on the truth at every
+        # truth timestamp, with a sideways wobble only at the samples in between.
+        ts = np.arange(0, 59.0 + 1e-9, 0.1)
+        x = np.interp(ts, np.arange(60), g[:, 0])
+        y = np.interp(ts, np.arange(60), g[:, 1])
+        z = np.interp(ts, np.arange(60), g[:, 2])
+        between = np.abs(ts - np.round(ts)) > 1e-6
+        y = y + np.where(between, wobble * np.where(np.arange(len(ts)) % 2 == 0, 1, -1), 0.0)
+        return gt, traj(np.column_stack([x, y, z]), ts)
+
+    def test_a_smooth_dense_estimate_scores_one(self):
+        gt, est = self.gt_and_dense(0.0)
+        self.assertAlmostEqual(1.0, evaluate.output_rate_path_ratio(gt, est), delta=0.02)
+
+    def test_jitter_between_truth_samples_raises_it(self):
+        gt, est = self.gt_and_dense(0.5)
+        self.assertGreater(evaluate.output_rate_path_ratio(gt, est), 1.5)
+
+    def test_the_old_ratio_cannot_see_the_same_jitter(self):
+        gt, est = self.gt_and_dense(0.5)
+        self.assertAlmostEqual(1.0, evaluate.path_length_ratio(gt, est), delta=0.02)
+
+
+@unittest.skipIf(EVO, EVO or "")
 class AlignmentContract(unittest.TestCase):
     """What SE(3) alignment absorbs, and what it must not."""
 
@@ -265,6 +299,7 @@ class MetricsJsonContract(unittest.TestCase):
         self.assertIn("RL-EKF", data["filters"])
         self.assertIn(check_benchmark_regression.METRIC, data["filters"]["FusionCore"])
         self.assertIn(check_benchmark_regression.CONTROL_METRIC, data["filters"]["RL-EKF"])
+        self.assertIn("output_rate_path_ratio", data["filters"]["FusionCore"])
 
     def test_the_checker_can_actually_load_what_was_written(self):
         # Going through the checker's own loader rather than re-reading the keys by

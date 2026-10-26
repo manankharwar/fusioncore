@@ -414,10 +414,21 @@ class NCLTPlayer(Node):
         msg.header.frame_id = 'imu_link'
 
         msg.orientation = euler_to_quat(roll, pitch, yaw)
+        # orientation_covariance[0] = -1 means "do not fuse this orientation".
+        #
+        # This player used to declare roll/pitch at variance 1e-4 (0.57 deg 1-sigma).
+        # That was OUR choice, not the dataset's: measured 2026-10-25, the MS25
+        # roll/pitch in ms25_euler.csv track the accelerometer's tilt to 0.04-0.08 deg
+        # even while the Segway accelerates, so they are the same accelerometer that is
+        # already fused, and declaring them as 0.57-deg attitude double-counted it with
+        # a confident wrong tilt whenever the robot sped up or braked. It is what put
+        # the node into an 800 s GPS lock-out on 2012-01-08. Not fusing it is the
+        # principled fix (no covariance was tuned to a score). The quaternion is still
+        # published so export_bag.py keeps it as a heading reference.
         msg.orientation_covariance = [
-            1e-4, 0.0,  0.0,
-            0.0,  1e-4, 0.0,
-            0.0,  0.0,  1e6,    # large yaw covariance → FC ignores yaw (6-axis mode)
+            -1.0, 0.0, 0.0,
+            0.0,  0.0, 0.0,
+            0.0,  0.0, 0.0,
         ]
 
         msg.angular_velocity.x = wx

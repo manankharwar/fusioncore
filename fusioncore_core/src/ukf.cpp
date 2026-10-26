@@ -80,6 +80,77 @@ void UKF::build_process_noise() {
                    params_.q_encoder_wz_bias;
 }
 
+
+// Local rotation error between a sigma point's attitude and a reference, written
+// into the quaternion slots of a state-difference vector.
+//
+// dq = q_ref^-1 * q_sigma is the rotation FROM the reference TO the sigma point.
+// For a small rotation its vector part is dtheta/2, so 2*vec(dq) is the rotation
+// vector in the reference's own frame, which is what a covariance should measure.
+// The scalar slot carries dq.w - 1, which is second order and therefore ~0.
+static void attitude_difference(fusioncore::StateVector& diff,
+                                const fusioncore::StateVector& sigma,
+                                const fusioncore::StateVector& ref)
+{
+  using namespace fusioncore;
+  Eigen::Quaterniond qs(sigma[QW], sigma[QX], sigma[QY], sigma[QZ]);
+  Eigen::Quaterniond qr(ref[QW],   ref[QX],   ref[QY],   ref[QZ]);
+  if (qs.norm() < 1e-12 || qr.norm() < 1e-12) return;   // leave the plain diff alone
+  qs.normalize(); qr.normalize();
+  Eigen::Quaterniond dq = qr.conjugate() * qs;
+  if (dq.w() < 0.0) { dq.coeffs() *= -1.0; }            // short way round
+
+  // EXACT log map, not the small-angle 2*vec(dq).
+  //
+  // vec(dq) is sin(theta/2)*axis, so 2*vec(dq) equals theta only while theta is
+  // small. apply_attitude_correction below uses the exact exponential map, so the
+  // small-angle inverse made the two maps inverses of each other ONLY near zero.
+  // Measured as a progressively lossy round trip: feeding P(QZ,QZ) back through
+  // generation and differencing returned a ratio of 1.0002 at 1e-4, 0.981 at 1e-2,
+  // 0.926 at 0.04 and 0.604 at 0.25. At 23 states the sigma spread is
+  // sqrt((n+lambda)*P), so a variance of 0.25 means sigma points sitting about
+  // 2.4 rad away, exactly where 2*sin(theta/2) badly underestimates theta.
+  // The covariance therefore shrank every time it was rebuilt.
+  const double vnorm = dq.vec().norm();
+  Eigen::Vector3d rv;
+  if (vnorm > 1e-12) {
+    rv = (2.0 * std::atan2(vnorm, dq.w()) / vnorm) * dq.vec();
+  } else {
+    rv = 2.0 * dq.vec();
+  }
+  diff[QW] = dq.w() - 1.0;
+  diff[QX] = rv.x();
+  diff[QY] = rv.y();
+  diff[QZ] = rv.z();
+}
+
+// Apply a correction whose quaternion slots are a local rotation vector.
+// q_new = q_old * exp(dtheta/2), which keeps the result on the unit sphere by
+// construction instead of adding and renormalising.
+static void apply_attitude_correction(fusioncore::StateVector& x,
+                                      const fusioncore::StateVector& correction)
+{
+  using namespace fusioncore;
+  Eigen::Vector3d dtheta(correction[QX], correction[QY], correction[QZ]);
+  Eigen::Quaterniond q(x[QW], x[QX], x[QY], x[QZ]);
+  if (q.norm() < 1e-12) return;
+  q.normalize();
+  const double angle = dtheta.norm();
+  Eigen::Quaterniond dq;
+  if (angle > 1e-12) {
+    const double half = 0.5 * angle;
+    const Eigen::Vector3d axis = dtheta / angle;
+    dq = Eigen::Quaterniond(std::cos(half),
+                            std::sin(half) * axis.x(),
+                            std::sin(half) * axis.y(),
+                            std::sin(half) * axis.z());
+  } else {
+    dq = Eigen::Quaterniond(1.0, 0.5*dtheta.x(), 0.5*dtheta.y(), 0.5*dtheta.z());
+  }
+  Eigen::Quaterniond qn = (q * dq).normalized();
+  x[QW] = qn.w(); x[QX] = qn.x(); x[QY] = qn.y(); x[QZ] = qn.z();
+}
+
 Eigen::MatrixXd UKF::generate_sigma_points() {
   int n_sigma = 2 * n_aug_ + 1;
   Eigen::MatrixXd sigma(STATE_DIM, n_sigma);
@@ -95,59 +166,102 @@ Eigen::MatrixXd UKF::generate_sigma_points() {
   state_.P(WY,WY) = std::min(state_.P(WY,WY), kMaxAngVelVar);
   state_.P(WZ,WZ) = std::min(state_.P(WZ,WZ), kMaxAngVelVar);
 
-  StateMatrix P_reg = (n_aug_ + lambda_) * state_.P;
-  P_reg += StateMatrix::Identity() * 1e-6;
+  StateMatrix L;
+  bool have_L = false;
+  if (params_.semidefinite_sqrt) {
+    // Exact square root of a positive semidefinite matrix: A = P^T L D L^T P, so
+    // S = P^T L sqrt(D) satisfies S S^T = A. Any square root gives valid sigma points.
+    const StateMatrix A = (n_aug_ + lambda_) * state_.P;
+    Eigen::LDLT<StateMatrix> ldlt(A);
+    const Eigen::Matrix<double, STATE_DIM, 1> d = ldlt.vectorD();
+    const double dmax = std::max(d.cwiseAbs().maxCoeff(), 1e-300);
+    if (ldlt.info() == Eigen::Success && d.minCoeff() >= -1e-12 * dmax) {
+      StateMatrix Lm = ldlt.matrixL();
+      StateMatrix S = ldlt.transpositionsP().transpose() *
+                      (Lm * d.cwiseMax(0.0).cwiseSqrt().asDiagonal());
+      L = S;
+      have_L = true;
+    }
+    // A genuinely negative pivot: fall through to the regularise-and-repair chain.
+  }
 
-  Eigen::LLT<StateMatrix> llt(P_reg);
-  if (llt.info() != Eigen::Success) {
-    // P has developed negative eigenvalues (common under sustained high-rate IMU
-    // updates where the K*S*K^T subtraction overshoots in the bias dimensions).
-    // Fix: identity shift: add eps*I to raise all eigenvalues by |min_eigenvalue|.
-    // Unlike the V*max(λ,ε)*V^T clamp, a shift preserves the eigenvectors and keeps
-    // large position/velocity eigenvalues intact.  The clamp approach destroys them
-    // because P's eigenvectors mix position and bias components after cross-coupling,
-    // so clamping bias eigenvalues to 1e-9 also collapses position uncertainty when
-    // P is reconstructed, making the Mahalanobis gate far too tight and rejecting GPS.
-    Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
-    double min_eigen = es.eigenvalues().minCoeff();
-    state_.P += StateMatrix::Identity() * (-min_eigen + 1e-9);
-    P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
-    llt.compute(P_reg);
+  if (!have_L) {
+    StateMatrix P_reg = (n_aug_ + lambda_) * state_.P;
+    P_reg += StateMatrix::Identity() * 1e-6;
+
+    Eigen::LLT<StateMatrix> llt(P_reg);
     if (llt.info() != Eigen::Success) {
-      // Last resort: rebuild P from its eigendecomposition with all eigenvalues
-      // floored to a small positive value. This always yields a PSD matrix, so
-      // the filter degrades gracefully and re-converges when good measurements
-      // return, instead of aborting the whole process. Flooring can shrink some
-      // uncertainty dimensions (the identity shift above is tried first precisely
-      // to avoid that), but a briefly over-confident filter is recoverable; a
-      // crash is not. Reaching here means the state was already badly corrupted
-      // (e.g. by replay clock chaos), which the predict_to re-sync guards upstream.
-      Eigen::SelfAdjointEigenSolver<StateMatrix> es_full(state_.P);
-      Eigen::Matrix<double, STATE_DIM, 1> ev = es_full.eigenvalues().cwiseMax(1e-9);
-      state_.P = es_full.eigenvectors() * ev.asDiagonal() * es_full.eigenvectors().transpose();
-      state_.P = (state_.P + state_.P.transpose()) * 0.5;
+      // P has developed negative eigenvalues (common under sustained high-rate IMU
+      // updates where the K*S*K^T subtraction overshoots in the bias dimensions).
+      // Fix: identity shift: add eps*I to raise all eigenvalues by |min_eigenvalue|.
+      // Unlike the V*max(λ,ε)*V^T clamp, a shift preserves the eigenvectors and keeps
+      // large position/velocity eigenvalues intact.  The clamp approach destroys them
+      // because P's eigenvectors mix position and bias components after cross-coupling,
+      // so clamping bias eigenvalues to 1e-9 also collapses position uncertainty when
+      // P is reconstructed, making the Mahalanobis gate far too tight and rejecting GPS.
+      Eigen::SelfAdjointEigenSolver<StateMatrix> es(state_.P, Eigen::EigenvaluesOnly);
+      double min_eigen = es.eigenvalues().minCoeff();
+      state_.P += StateMatrix::Identity() * (-min_eigen + 1e-9);
       P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
       llt.compute(P_reg);
       if (llt.info() != Eigen::Success) {
-        // Absolute last resort: reset to a safe diagonal covariance. Never throw.
-        state_.P = StateMatrix::Identity();
+        // Last resort: rebuild P from its eigendecomposition with all eigenvalues
+        // floored to a small positive value. This always yields a PSD matrix, so
+        // the filter degrades gracefully and re-converges when good measurements
+        // return, instead of aborting the whole process. Flooring can shrink some
+        // uncertainty dimensions (the identity shift above is tried first precisely
+        // to avoid that), but a briefly over-confident filter is recoverable; a
+        // crash is not. Reaching here means the state was already badly corrupted
+        // (e.g. by replay clock chaos), which the predict_to re-sync guards upstream.
+        Eigen::SelfAdjointEigenSolver<StateMatrix> es_full(state_.P);
+        Eigen::Matrix<double, STATE_DIM, 1> ev = es_full.eigenvalues().cwiseMax(1e-9);
+        state_.P = es_full.eigenvectors() * ev.asDiagonal() * es_full.eigenvectors().transpose();
+        state_.P = (state_.P + state_.P.transpose()) * 0.5;
         P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
         llt.compute(P_reg);
+        if (llt.info() != Eigen::Success) {
+          // Absolute last resort: reset to a safe diagonal covariance. Never throw.
+          state_.P = StateMatrix::Identity();
+          P_reg = (n_aug_ + lambda_) * state_.P + StateMatrix::Identity() * 1e-6;
+          llt.compute(P_reg);
+        }
       }
     }
+    L = llt.matrixL();
   }
-  StateMatrix L = llt.matrixL();
   sigma.col(0) = state_.x;
   for (int i = 0; i < n_aug_; ++i) {
-    sigma.col(i + 1)          = state_.x + L.col(i);
-    sigma.col(i + 1 + n_aug_) = state_.x - L.col(i);
+    if (params_.tangent_space_attitude) {
+      // The attitude slots of L are a ROTATION VECTOR once P measures rotation,
+      // so they have to be composed onto the quaternion, not added to it. Adding
+      // them was the fourth and last place the two representations were mixed:
+      // with the other three fixed and this one left additive, heading converged
+      // but position diverged to 13 km with 45 of 120 fixes rejected, because the
+      // sigma cloud no longer matched the covariance that generated it.
+      StateVector plus  = state_.x + L.col(i);
+      StateVector minus = state_.x - L.col(i);
+      plus.segment<4>(QW)  = state_.x.segment<4>(QW);
+      minus.segment<4>(QW) = state_.x.segment<4>(QW);
+      const StateVector dplus  =  L.col(i);
+      const StateVector dminus = -L.col(i);
+      apply_attitude_correction(plus,  dplus);
+      apply_attitude_correction(minus, dminus);
+      sigma.col(i + 1)          = plus;
+      sigma.col(i + 1 + n_aug_) = minus;
+    } else {
+      sigma.col(i + 1)          = state_.x + L.col(i);
+      sigma.col(i + 1 + n_aug_) = state_.x - L.col(i);
+    }
   }
 
   // Keep each sigma point's attitude a physically meaningful sample. See
   // UKFParams::max_sigma_rotation_deg for why, and for why this bounds the POINTS and
   // deliberately leaves P alone.
-  if (params_.max_sigma_rotation_deg > 0.0) {
-    const double max_rad = params_.max_sigma_rotation_deg * M_PI / 180.0;
+  // A bound at or past 180 degrees cannot bind, because a shortest-path rotation
+  // never exceeds it, so the relaxed case costs nothing rather than doing busy work.
+  const double scaled_rot_deg = params_.max_sigma_rotation_deg * sigma_rot_scale_;
+  if (params_.max_sigma_rotation_deg > 0.0 && scaled_rot_deg < 180.0) {
+    const double max_rad = scaled_rot_deg * M_PI / 180.0;
     Eigen::Vector4d q0 = state_.x.segment<4>(QW);
     const double n0 = q0.norm();
     if (n0 > 1e-9) {
@@ -216,7 +330,10 @@ void UKF::predict(double dt) {
   // Scaling by dt here would require re-tuning all Q values by the IMU rate (~100x),
   // which would break all existing configurations and cause GPS Mahalanobis rejections
   // as P grows too slowly to track real motion.
-  StateMatrix P_pred = Q_;
+  // Q is a per-step amount by default, or a per-second density scaled by dt when
+  // q_time_scaled is set. See UKFParams::q_time_scaled for why the default is wrong
+  // and why it is still the default.
+  StateMatrix P_pred = params_.q_time_scaled ? (Q_ * dt).eval() : Q_;
   if (pos_noise_scale_ != 1.0) {
     P_pred(X, X) *= pos_noise_scale_;
     P_pred(Y, Y) *= pos_noise_scale_;
@@ -233,7 +350,14 @@ void UKF::predict(double dt) {
     // vector would treat it as a quaternion and scale it to unit length,
     // completely corrupting the covariance.
     StateVector diff = sigma_pred.col(i) - x_pred;
+    if (params_.tangent_space_attitude) attitude_difference(diff, sigma_pred.col(i), x_pred);
     P_pred += Wc_[i] * diff * diff.transpose();
+  }
+  if (params_.tangent_space_attitude) {
+    // QW carries dq.w - 1, which is second order, so its variance collapses toward
+    // zero and would make P singular in that direction. Floor it.
+    constexpr double kScalarAttitudeVarFloor = 1e-6;
+    P_pred(QW, QW) = std::max(P_pred(QW, QW), kScalarAttitudeVarFloor);
   }
   state_.x = x_pred;
   state_.P = P_pred;
@@ -291,6 +415,7 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
     for (int d = 0; d < z_dim; ++d)
       if (angle_dims & (1u << d)) z_diff[d] = normalize_angle(z_diff[d]);
     StateVector x_diff = sigma.col(i) - state_.x;  // plain diff, no angle wrapping needed
+    if (params_.tangent_space_attitude) attitude_difference(x_diff, sigma.col(i), state_.x);
     S   += Wc_[i] * z_diff * z_diff.transpose();
     Pxz += Wc_[i] * x_diff * z_diff.transpose();
   }
@@ -305,7 +430,14 @@ Eigen::Matrix<double, z_dim, 1> UKF::update(
   PxzMatrix K = S_ldlt.solve(Pxz.transpose()).transpose();
   const StateVector correction = K * innovation;
   last_pos_correction_ = std::hypot(correction[X], correction[Y]);
-  state_.x = normalize_state(state_.x + correction);
+  if (params_.tangent_space_attitude) {
+    StateVector x_new = state_.x + correction;
+    x_new.segment<4>(QW) = state_.x.segment<4>(QW);   // attitude handled multiplicatively
+    apply_attitude_correction(x_new, correction);
+    state_.x = normalize_state(x_new);
+  } else {
+    state_.x = normalize_state(state_.x + correction);
+  }
   state_.P -= K * S * K.transpose();
   // Symmetrize after each update to prevent floating-point asymmetry from
   // accumulating across the ~100 Hz IMU + 1 Hz GPS update stream.

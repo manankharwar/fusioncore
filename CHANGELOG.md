@@ -8,6 +8,85 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`platform.profile`: the deployment declares what it can observe.** One parameter,
+  values `general` (the default, which changes nothing), `ground_robot` and
+  `ground_robot_flat`. A 23-state filter can estimate more than a wheeled robot can
+  observe: the gyro measures `WZ + B_GZ` and the accelerometer measures
+  `AX + B_AX + gravity`, so those pairs are not separately observable from those sensors
+  alone. On a robot with encoders, `ground_robot` sets the bias process noises and priors
+  to zero and treats the encoder's yaw rate as bias-free, so the encoder carries the
+  constraint. That does NOT hold the biases fixed: the UKF's sigma-point regularisation (a 1e-6 identity added to P, plus the identity-shift repair a zero-variance state triggers) still lets them drift: on NCLT 2013-04-05 the 'frozen' gyro bias reached a median sigma of 0.053 rad/s and roamed up to about 0.18 rad/s, so the profile slows the biases rather than holding them (found 2026-10-22, not
+  fixed). Measured in
+  replay, frozen against free, scored through `hardware/ate_tum.py` (the median is worse
+  on 2013-04-05, 7.010 to 7.082, and better on the other four):
+
+  ```
+    replay, ATE RMSE 3D (m), shipped NCLT config, only the seven profile keys differ
+    sequence      free      ground_robot   change
+    2012-02-04   142.043     141.595       -0.3%
+    2012-06-15    78.428      64.537      -17.7%
+    2012-08-20   165.364     141.195      -14.6%
+    2012-09-28    22.805      21.560       -5.5%
+    2013-04-05    16.456      15.168       -7.8%
+  ```
+
+  An earlier version of this entry justified the change with `r(WZ, B_GZ) = -0.998`. That
+  figure is real but comes from a 1.8 s in-place spin in `test_observability.cpp`, not from
+  a robot driving on real data; on NCLT the same correlation measured -0.63 to -0.04, so it
+  does not support this change and was removed. It also said the encoder measures yaw rate
+  with no bias term; the model carries an encoder yaw-rate bias, which the profile freezes.
+
+  Measured on NCLT at 1x, with the robot_localization control on the same run shown
+  because it reads the same input and runs none of this code:
+
+  ```
+    2012-06-15   82.011 -> 32.149   -60.8%   ctrl -0.05%   a 44% loss becomes a 30% win
+    2013-04-05   14.058 ->  9.193   -34.6%   ctrl +0.50%
+    2012-08-20  155.618 -> 157.591   +1.3%   ctrl +0.04%   worse, so it is not uniform
+    2012-09-28   18.594 ->  8.872   -52.3%   ctrl +11.2%   weak, that control move is
+                                                           inside the sequence's own
+                                                           11.05% control spread
+  ```
+
+  Four of twelve sequences measured. Measured on three rover bags offline: closure moved
+  less than the receiver's own 2.6 m sigma in every arm, so it is not an accuracy result
+  on hardware, but it establishes that freezing seven states broke nothing on real data.
+  Excess path length fell 3 to 11% on 3 of 3 with a 120 s GNSS blackout cut in.
+
+  **A profile only supplies DEFAULTS.** Anything set explicitly wins and the node logs
+  both what it supplied and what it kept. One consequence worth knowing: a config that
+  writes a value out, even the value the node would have used anyway, blocks the profile
+  for that key. Delete what you hand to a profile. An unknown profile name refuses to
+  configure rather than silently falling back to `general`.
+
+  No library default changed. `0.0` is the right process noise for `fusioncore_core`,
+  which has to serve platforms that leave the ground plane, and the equivalent parameter
+  bundles still ship as YAML in `fusioncore_datasets/config/profiles/`.
+  `tools/test_profiles.py` pins the node's table to those files so the two forms cannot
+  drift apart and hand two users different filters.
+
+### Changed
+
+- **The robot_localization benchmark config fuses IMU yaw rate only, no longer acceleration
+  or roll/pitch** (`fusioncore_datasets/config/rl_ekf.yaml`). Once the NCLT player stopped
+  supplying an attitude (orientation covariance -1), robot_localization removed gravity
+  using its own roll and pitch, which `two_d_mode` holds at zero, so platform tilt leaked
+  into the fused acceleration and the control diverged to kilometres on nine of twelve
+  sequences. The new config follows the planar wheeled-robot example in
+  robot_localization's documentation, minus its x acceleration for the same reason. The
+  rover replay launch reuses this file, so its robot_localization arm changes too.
+
+- **Scope stated explicitly: FusionCore is for outdoor wheeled ground robots that lose
+  GPS.** Differential drive, skid steer, tracked or Ackermann. That is the platform every
+  published number was measured on (NCLT is a wheeled Segway, the hardware runs are a
+  four-wheeled rover). Not built for drones, boats, legged robots or mecanum platforms:
+  the library runs on them and `platform.profile: general` freezes nothing, but nothing
+  is tuned or benchmarked for them and the non-holonomic constraint is wrong for anything
+  that can move sideways on purpose. No code changed; this was always what the evidence
+  covered and the README did not say so.
+
 ### Documentation
 
 - **The published NCLT table overstated FusionCore on all three rows that have since
@@ -92,6 +171,27 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   later, the parameter comes back with the feature that needs it.
 
 ### Fixed
+
+- **The ROS buildfarm dev jobs (Humble and Jazzy) were Unstable with 5 test failures.**
+  `test_platform_profile.py` drives the node through the `ros2` CLI, and `ros2run`,
+  `ros2node`, `ros2lifecycle` and `ros2param` were never declared, so the buildfarm, which
+  installs only declared dependencies, had no `ros2` command. Reproduced locally by hiding
+  the CLI: all four of that file's tests fail. They are now `test_depend`s.
+
+- **`magnetometer.declination_rad` had the wrong sign, and the 9-axis IMU path ignored
+  it.** Behaviour change for anyone who set a non-zero declination; every shipped config
+  sets 0.0, so no default changes. The raw-field path computed yaw as the magnetic angle
+  PLUS the declination. With magnetic north D east of true north, a body at true ENU yaw
+  psi measures a horizontal field of (sin(psi + D), cos(psi + D)), so the true yaw is the
+  magnetic angle MINUS D, and setting the documented value doubled the bias instead of
+  removing it. The old unit test pinned the formula's own output rather than this physics;
+  it is replaced by one that builds the field from a known true yaw and requires that yaw
+  back. Separately, with `imu.has_magnetometer: true` the IMU's orientation quaternion is
+  the heading source and its yaw is magnetic, but nothing on that path applied the
+  declination at all, so the local declination went straight into heading as a constant
+  bias. It is now subtracted there with the same convention. Tests:
+  `MagnetometerTest.DeclinationRecoversTrueYaw`,
+  `FusionCoreTest.NineAxisYawCorrectedForDeclination`.
 
 - **The GNSS Doppler bridge never compiled.** `gnss_doppler_bridge.cpp` set the
   outgoing odometry stamp from `msg->header.stamp` on a `ublox_msgs/NavPVT`, and

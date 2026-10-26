@@ -87,7 +87,8 @@ void FusionCore::adapt_R(
   const Eigen::Matrix<double, z_dim, z_dim>& R_floor,
   InnovationWindow<z_dim>& window,
   const Eigen::Matrix<double, z_dim, 1>& innovation,
-  bool enabled)
+  bool enabled,
+  const Eigen::Matrix<double, z_dim, z_dim>* hph)
 {
   window.push(innovation);
 
@@ -95,6 +96,14 @@ void FusionCore::adapt_R(
 
   // Estimate actual noise covariance from innovation window
   auto C_hat = window.estimate_covariance();
+
+  // The innovation covariance is H*P*H' + R, so the window on its own is NOT an
+  // estimate of R. Assigning it straight in double counts the filter's own
+  // uncertainty and makes a large P inflate R, which widens the gate, which keeps
+  // P large. Subtract the filter's share when the caller can supply it.
+  if (config_.adaptive_subtract_hph && hph != nullptr) {
+    C_hat -= *hph;
+  }
 
   // Slow exponential moving average toward estimated value
   // R_(k+1) = (1 - alpha) * R_k + alpha * C_hat
@@ -106,6 +115,16 @@ void FusionCore::adapt_R(
   // causing K[position, accel] to explode and Z to drift at m/s rates.
   for (int i = 0; i < z_dim; ++i) {
     if (R(i,i) < R_floor(i,i)) R(i,i) = R_floor(i,i);
+  }
+
+  // Ceiling. Without one this is bounded below and unbounded above, so a wrong
+  // filter grows its own R until the gate stops protecting it. Measured at 1723x
+  // nominal on NCLT 2013-04-05. See FusionCoreConfig::adaptive_r_max_scale.
+  if (config_.adaptive_r_max_scale > 0.0) {
+    for (int i = 0; i < z_dim; ++i) {
+      const double ceil_i = R_floor(i,i) * config_.adaptive_r_max_scale;
+      if (R(i,i) > ceil_i) R(i,i) = ceil_i;
+    }
   }
 }
 
@@ -229,6 +248,7 @@ void FusionCore::reset_parked_gnss_evidence() {
   gnss_parked_inflation_      = 1.0;
   parked_ref_x_ = parked_ref_y_ = 0.0;
   parked_path_len_ = 0.0;
+  parked_fix_type_ = sensors::GnssFixType::NO_FIX;
   parked_seg_n_ = 0;
 }
 
@@ -867,6 +887,20 @@ void FusionCore::predict_to(double timestamp_seconds) {
     ukf_.set_gyro_bias_noise_scale(config_.gnss_coast_q_bias_factor);
   }
 
+  // Relax the sigma-point rotation bound as GNSS stays silent. FusionCore owns this
+  // rather than the UKF because the UKF has no idea what a GNSS fix is. See
+  // UKFParams::max_sigma_rotation_relax_s for the mechanism and the prediction it
+  // makes. With relax_s at 0 the scale is always 1.0 and behaviour is unchanged.
+  if (config_.ukf.max_sigma_rotation_deg > 0.0 &&
+      config_.ukf.max_sigma_rotation_relax_s > 0.0)
+  {
+    // Before the first fix there is nothing to be silent about, so hold the bound.
+    const double silent_s = (last_gnss_time_ >= 0.0)
+                              ? std::max(0.0, timestamp_seconds - last_gnss_time_)
+                              : 0.0;
+    ukf_.set_sigma_rotation_scale(1.0 + silent_s / config_.ukf.max_sigma_rotation_relax_s);
+  }
+
   double dt = timestamp_seconds - last_timestamp_;
   // Large backward time jump (clock reset, badly out-of-order timestamps,
   // bag-replay clock corruption on WSL2): re-sync the clock to the new time
@@ -1078,6 +1112,15 @@ void FusionCore::update_imu(
   // Track innovation for adaptive noise estimation
   adapt_R<sensors::IMU_DIM>(R_imu_, R_imu_floor_, imu_innovations_, innovation, config_.adaptive_imu);
 
+  if (gnss_in_coast_ && config_.gnss_coast_hold_accel_sigma > 0.0) {
+    const Eigen::Matrix<double, 3, 1> z_zero = Eigen::Matrix<double, 3, 1>::Zero();
+    const double s2 = config_.gnss_coast_hold_accel_sigma * config_.gnss_coast_hold_accel_sigma;
+    const Eigen::Matrix<double, 3, 3> R_hold = Eigen::Matrix<double, 3, 3>::Identity() * s2;
+    ukf_.update<3>(z_zero, [](const StateVector& x) {
+      Eigen::Matrix<double, 3, 1> h; h << x[AX], x[AY], x[AZ]; return h;
+    }, R_hold);
+  }
+
   // Save snapshot for delay compensation
   save_snapshot();
 
@@ -1178,6 +1221,14 @@ void FusionCore::update_imu_orientation(
   z[0] = roll;
   z[1] = pitch;
   z[2] = yaw;
+  // A 9-axis IMU's yaw is referenced to MAGNETIC north. Convert it to true north
+  // with the same convention as the raw-field path in magnetometer.hpp: subtract
+  // the east-positive declination. A 6-axis yaw is never used as heading, so it is
+  // left alone.
+  if (config_.imu_has_magnetometer && config_.mag.declination_rad != 0.0) {
+    const double y = yaw - config_.mag.declination_rad;
+    z[2] = std::atan2(std::sin(y), std::cos(y));
+  }
 
   sensors::ImuOrientationParams fallback;
 
@@ -1249,8 +1300,27 @@ void FusionCore::update_imu_orientation(
 
   // IMU orientation validates heading ONLY if the IMU has a magnetometer.
   // 6-axis IMUs integrate gyro for yaw: this drifts and is not a valid
-  // heading reference. 9-axis IMUs with magnetometer give true heading.
+  // heading reference.
   // peci1 fix: don't blindly trust IMU orientation as heading source.
+  //
+  // CORRECTION 2026-10-19: this comment used to end "9-axis IMUs with magnetometer
+  // give true heading". They do not. They give MAGNETIC heading, and the difference
+  // is the local declination: about 7 degrees in Michigan, over 15 in parts of the
+  // US west coast, and it is a constant bias straight into yaw.
+  //
+  // `mag.declination_rad` exists and is applied in exactly one place,
+  // magnetometer.hpp computing yaw from a raw field. Nothing applies it on THIS
+  // path, where the IMU hands us an orientation quaternion that is already
+  // magnetic-referenced, so a user with a 9-axis IMU and a true-north map carries
+  // the declination as heading bias with nothing saying so.
+  //
+  // FIXED 2026-10-22: update_imu_orientation now subtracts mag.declination_rad from
+  // the IMU's yaw when has_magnetometer is true (test: NineAxisYawCorrectedFor
+  // Declination). At the default 0.0 nothing changes. The heading_vs_track_deg
+  // cross-check on /fusion/debug/gnss_status still surfaces a wrong value.
+  //
+  // No NCLT result is affected: that config sets imu.has_magnetometer false and
+  // takes yaw from GPS track only, so this branch never runs there.
   if (config_.imu_has_magnetometer) {
     if (!heading_validated_ ||
         heading_source_ == HeadingSource::GPS_TRACK) {
@@ -1333,6 +1403,8 @@ void FusionCore::update_encoder(
   if (var_vx > 0.0) R(0,0) = var_vx;
   if (var_vy > 0.0) R(1,1) = var_vy;
   if (var_wz > 0.0) R(2,2) = var_wz;
+  if (gnss_in_coast_ && config_.gnss_coast_encoder_wz_scale > 1.0)
+    R(2,2) *= config_.gnss_coast_encoder_wz_scale;
 
   // Mahalanobis outlier rejection for encoder
   if (config_.outlier_rejection) {
@@ -1360,6 +1432,15 @@ void FusionCore::update_encoder(
   // Only adapt axes where message covariance was not provided
   if (var_vx <= 0.0 && var_vy <= 0.0 && var_wz <= 0.0) {
     adapt_R<sensors::ENCODER_DIM>(R_encoder_, R_encoder_floor_, encoder_innovations_, innovation, config_.adaptive_encoder);
+  }
+
+  if (config_.nhc_ay_sigma > 0.0) {
+    const Eigen::Matrix<double, 1, 1> z0 = Eigen::Matrix<double, 1, 1>::Zero();
+    Eigen::Matrix<double, 1, 1> R_ay;
+    R_ay(0, 0) = config_.nhc_ay_sigma * config_.nhc_ay_sigma;
+    ukf_.update<1>(z0, [](const StateVector& x) {
+      Eigen::Matrix<double, 1, 1> h; h(0, 0) = x[AY] - x[VX] * x[WZ]; return h;
+    }, R_ay);
   }
 
   last_encoder_time_ = timestamp_seconds;
@@ -1539,6 +1620,128 @@ double FusionCore::xchk_median_deg() const {
 //
 // IMPLAUSIBLE_JUMP deliberately does NOT call this: that gate rejects on physics
 // and must never be able to inflate P, or an outlier could talk its way in.
+
+// Move the filter to where several mutually consistent fixes say it is, when the
+// gate has been refusing them for long enough that it clearly will not come round.
+//
+// The whole safety of this rests on WHAT COUNTS AS EVIDENCE. Agreement with the
+// filter is worthless here, because the filter is the thing in doubt. What is used
+// instead is agreement among the fixes themselves AND agreement with wheel
+// odometry, which the GNSS does not influence. A cluster of outliers can be
+// internally consistent; it cannot also track the encoder.
+//
+// Returns true if it re-anchored.
+bool FusionCore::maybe_reanchor(double timestamp_seconds)
+{
+  if (!config_.gnss_reanchor_enabled) return false;
+  const int need = std::max(3, config_.gnss_reanchor_buffer_n);
+  if ((int)reanchor_buf_.size() < need) return false;
+  // Trigger 1, branch A: the gate is refusing most of what arrives.
+  const int win = std::max(5, config_.gnss_reanchor_window);
+  bool trigger_reject = false;
+  if ((int)reanchor_recent_.size() >= win) {
+    int rej = 0;
+    for (bool r : reanchor_recent_) if (r) ++rej;
+    trigger_reject =
+      (double)rej / reanchor_recent_.size() >= config_.gnss_reanchor_reject_frac;
+  }
+
+  // Trigger 2, branch C: the fixes are being accepted and the filter is still
+  // wrong, which shows up as an offset that keeps pointing the same way. Random
+  // noise cancels over a buffer; a real offset does not.
+  double mx = 0.0, my = 0.0;
+  for (const auto& r : reanchor_buf_) { mx += r.x - r.fx; my += r.y - r.fy; }
+  mx /= reanchor_buf_.size(); my /= reanchor_buf_.size();
+  double spread = 0.0;
+  for (const auto& r : reanchor_buf_)
+    spread += std::hypot((r.x - r.fx) - mx, (r.y - r.fy) - my);
+  spread /= reanchor_buf_.size();
+  const double bias = std::hypot(mx, my);
+  const bool trigger_bias =
+    config_.gnss_reanchor_bias_trigger &&
+    bias >= config_.gnss_reanchor_bias_m && bias > spread;
+
+  if (!trigger_reject && !trigger_bias) return false;
+  // Time bound. Nothing latches, so normal gating is already back; this only stops
+  // a re-anchor storm while the filter settles.
+  if (timestamp_seconds - reanchor_last_t_ < config_.gnss_reanchor_cooldown_s) return false;
+
+  // Consistency: every fix-to-fix displacement must match the odometry distance
+  // over the same interval. This is the test an outlier cluster fails.
+  // The tolerance has to know about the receiver's own noise. A fixed 4 m was
+  // tried and never fired on anything realistic: at 1 Hz with sigma 3 m fixes the
+  // displacement between two consecutive fixes carries about 4.2 m of noise on
+  // roughly 1 m of motion, so the check failed on healthy data. Scale it.
+  for (size_t i = 1; i < reanchor_buf_.size(); ++i) {
+    const auto& a = reanchor_buf_[i-1];
+    const auto& b = reanchor_buf_[i];
+    const double d_fix  = std::hypot(b.x - a.x, b.y - a.y);
+    const double d_odom = std::abs(b.odom - a.odom);
+    const double noise  = 3.0 * std::hypot(a.sigma, b.sigma);
+    if (std::abs(d_fix - d_odom) > config_.gnss_reanchor_odom_tol_m + noise) return false;
+  }
+  // The NET displacement across the whole buffer is the stronger test: noise
+  // averages down over the span while a real disagreement does not.
+  const double net_fix = std::hypot(reanchor_buf_.back().x - reanchor_buf_.front().x,
+                                    reanchor_buf_.back().y - reanchor_buf_.front().y);
+  const double net_odom = std::abs(reanchor_buf_.back().odom - reanchor_buf_.front().odom);
+  const double net_noise = 3.0 * std::hypot(reanchor_buf_.front().sigma,
+                                            reanchor_buf_.back().sigma);
+  if (std::abs(net_fix - net_odom) > config_.gnss_reanchor_odom_tol_m + net_noise)
+    return false;
+
+  const auto& last  = reanchor_buf_.back();
+  const auto& first = reanchor_buf_.front();
+  if (last.t - first.t <= 1e-6) return false;
+  (void)first;
+
+  const double pre_x = ukf_.state().x[X];
+  const double pre_y = ukf_.state().x[Y];
+  ukf_.reanchor_position(last.x, last.y, last.z,
+                         config_.gnss_reanchor_sigma_xy,
+                         config_.gnss_reanchor_sigma_xy * 2.0);
+
+  // NO HEADING RESET. A re-anchor moves position only, and that is a measured
+  // decision rather than an omission.
+  //
+  // There was a yaw reset here, taking heading from the bearing between the first
+  // and last buffered fix. The comment beside it claimed position alone does not
+  // fix 2012-09-28, whose fixes are accepted at a median mahalanobis of 0.526
+  // while the error persists, and that the heading it left the gap with is why.
+  // WITHDRAWN 2026-10-18. Disabling the reset moved 2012-09-28 from 13.750 to
+  // 13.748, and with the bias trigger off, which is now the default, position RMSE
+  // was unchanged to three decimals on all five sequences.
+  //
+  // Be precise about what that does and does not show, because the first version of
+  // this comment said "bit-identical on all five" and that was wrong. Four of the
+  // five ARE bit-identical. On 2012-08-20 the trajectories diverge from t=1345508586:
+  // position by up to 0.798 m and a quaternion component by 0.934, which is a large
+  // rotation, while the position RMSE lands on 46.671 either way. So the reset was
+  // not inert in the STATE, it was inert in the position metric.
+  //
+  // And NCLT cannot settle it either way: ground_truth.tum carries an exactly
+  // identity quaternion on every row, so the dataset has no heading to score against.
+  // Removed because there is no evidence it helps and it is one more thing to be
+  // wrong, not because it was proven to do nothing.
+  //
+  // Keeping position-only also means a re-anchor cannot rotate the estimate, so a
+  // consumer sees a translation and never a heading discontinuity. UKF::reanchor_yaw
+  // still exists and is still tested; nothing calls it. test_gnss_reanchor.cpp
+  // asserts that a re-anchor leaves the quaternion untouched, so if a future
+  // sequence needs heading the evidence for adding it has to be produced, not
+  // assumed.
+  reanchor_last_jump_ = std::hypot(ukf_.state().x[X] - pre_x,
+                                   ukf_.state().x[Y] - pre_y);
+
+  reanchor_last_t_ = timestamp_seconds;
+  ++reanchor_count_;
+  gnss_consecutive_rejects_ = 0;
+  reanchor_buf_.clear();
+  reanchor_recent_.clear();   // start the rate window fresh, so one re-anchor
+                              // cannot immediately justify the next
+  return true;
+}
+
 void FusionCore::maybe_inflate_for_recovery(
   const sensors::GnssPosMeasurement& innovation_pre)
 {
@@ -1689,6 +1892,34 @@ bool FusionCore::update_gnss(
   gnss_debug_.chi2_threshold     = config_.outlier_threshold_gnss;
   gnss_debug_.in_coast_mode      = gnss_in_coast_;
   gnss_debug_.consecutive_rejects = gnss_consecutive_rejects_;
+
+  // Record every RECEIVED fix with the odometry distance at that moment, before any
+  // gate runs. The buffer has to describe the receiver, not the subset the filter
+  // agreed with, or the consistency test is circular.
+  if (config_.gnss_reanchor_enabled) {
+    reanchor_buf_.push_back({timestamp_seconds, fix.x, fix.y, fix.z,
+                             distance_traveled_,
+                             ukf_.state().x[X], ukf_.state().x[Y],
+                             fix.sigma_xy > 0.0 ? fix.sigma_xy : fix.hdop});
+    const size_t cap = (size_t)std::max(3, config_.gnss_reanchor_buffer_n);
+    while (reanchor_buf_.size() > cap) reanchor_buf_.pop_front();
+
+    // Record the PREVIOUS fix's outcome here rather than at each of the many
+    // return points, so there is exactly one place that can get it wrong.
+    // NOT_PROCESSED only appears before the first fix, which is correctly skipped.
+    if (gnss_debug_.reason != GnssRejectionReason::NOT_PROCESSED) {
+      reanchor_recent_.push_back(gnss_debug_.reason != GnssRejectionReason::ACCEPTED);
+      const size_t wcap = (size_t)std::max(5, config_.gnss_reanchor_window);
+      while (reanchor_recent_.size() > wcap) reanchor_recent_.pop_front();
+    }
+
+    // Evaluate once per RECEIVED fix, here, rather than only on the rejection
+    // paths. Branch C is the case where fixes are being ACCEPTED and the filter
+    // is still wrong, so a rejection-only call site can never see it: the
+    // synthetic reproduced that failure and fired zero times until this moved.
+    maybe_reanchor(timestamp_seconds);
+  }
+
   const StateMatrix& P_now = ukf_.state().P;
   gnss_debug_.position_sigma_x   = std::sqrt(std::max(P_now(X, X), 0.0));
   gnss_debug_.position_sigma_y   = std::sqrt(std::max(P_now(Y, Y), 0.0));
@@ -1850,6 +2081,19 @@ bool FusionCore::apply_gnss_update(
   }
 
   if (zupt_holds_pos_noise_ && config_.zupt_gnss_noise_scale > 1.0) {
+    // A window that spans a solution-type change is averaging two different error
+    // processes. Standalone, SBAS, DGNSS, RTK float and RTK fixed each have their own
+    // magnitude AND their own correlation time, so the r measured across a switch
+    // describes neither side of it. Start again rather than carry it over.
+    //
+    // This is not hypothetical on the rover: the same receiver measured 160x more
+    // smoothed than it declared on one pass and 13.6x more optimistic than it
+    // declared after it picked up SBAS later the same day.
+    if (parked_fix_n_ > 0.0 && fix.fix_type != parked_fix_type_) {
+      reset_parked_gnss_evidence();
+    }
+    parked_fix_type_ = fix.fix_type;
+
     const std::array<double, 3> z{fix.x, fix.y, fix.z};
     parked_fix_n_ += 1.0;
     for (int k = 0; k < 3; ++k) {
@@ -2063,6 +2307,7 @@ bool FusionCore::apply_gnss_update(
             ukf_.predict_measurement<sensors::GNSS_POS_DIM>(
               z, h_gnss, R, innov_c, S_c);
             maybe_inflate_for_recovery(innov_c);
+            maybe_reanchor(timestamp_seconds);
           }
           return false;
         }
@@ -2177,6 +2422,10 @@ bool FusionCore::apply_gnss_update(
           ukf_.set_gyro_bias_noise_scale(config_.gnss_coast_q_bias_factor);
         }
         maybe_inflate_for_recovery(innovation_pre);
+        // Widening P is not enough on its own: measured, the gate still rejects
+        // 81% of fixes during recovery. This moves the filter when the fixes
+        // agree with each other and with odometry.
+        maybe_reanchor(timestamp_seconds);
       }
       return false;
     }
@@ -2660,6 +2909,9 @@ FusionCoreStatus FusionCore::get_status() const {
   status.zupt_parked_but_moving     = parked_moving_detected_;
   status.gnss_parked_bias_standdown  = gnss_parked_bias_standdown_;
   status.gnss_recovery_inflations    = gnss_recovery_inflations_;
+  status.gnss_reanchors                = reanchor_count_;
+  status.gnss_reanchor_last_t          = reanchor_last_t_ > -1e17 ? reanchor_last_t_ : 0.0;
+  status.gnss_reanchor_last_jump_m     = reanchor_last_jump_;
   status.gnss_reject_after_gap       = reject_after_gap_;
   status.gnss_consecutive_rejects_now = gnss_consecutive_rejects_;
   status.gnss_recovery_last_sigma    = gnss_recovery_last_sigma_;

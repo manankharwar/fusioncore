@@ -49,6 +49,7 @@ a bag and without ROS. Only read_bag() needs a sourced workspace.
 """
 
 import argparse
+import bisect
 import json
 import math
 import os
@@ -72,6 +73,7 @@ TURNING_RAD_S = 0.08
 # Below this the platform is treated as stationary, for bias and ZUPT questions.
 STILL_SPEED = 0.02
 STILL_RATE = 0.02
+STILL_GYRO_SIGMA = 0.05    # rad/s: a still MEMS gyro is ~0.003-0.02; above this the body is moving
 
 SEVERITY_ORDER = {"BLOCKER": 0, "WARNING": 1, "INFO": 2, "OK": 3}
 
@@ -349,6 +351,17 @@ def check_stationary_bias(series):
         return []
     bias = statistics.mean(gz)
     noise = statistics.pstdev(gz) if len(gz) > 1 else 0.0
+    # The wheels say still; the gyro has to agree before its mean is a bias. On a
+    # balancing or vibrating platform the wheels can sit near zero while the body
+    # rocks, and the mean of that is motion, not bias: a 20 min NCLT window reported
+    # -0.110 rad/s from 6.9 s whose gyro 1-sigma was 0.171 (the full log: +0.003).
+    if noise > STILL_GYRO_SIGMA:
+        return [finding(
+            "INFO", "Stationary gyro bias not measured: the gyro was not quiet",
+            f"The longest interval the wheels call still ({hi - lo:.1f} s) has a gyro-z "
+            f"1-sigma of {noise:.3f} rad/s, so the body was moving while the wheels were "
+            f"not, and its mean ({bias:+.4f} rad/s) is not a bias.",
+            "Record 10 s or more with the platform genuinely at rest.")]
     out = [finding("INFO", f"Stationary gyro-z bias {bias:+.5f} rad/s",
                    f"Mean over {len(gz)} samples in the longest still interval "
                    f"({hi - lo:.1f} s), 1-sigma {noise:.5f}.")]
@@ -476,7 +489,7 @@ def check_observability(series):
             f"Only {still} of {len(odom)} samples had the platform still.",
             "The gyro reports rate + bias, so any split of the two fits it equally "
             "and the pair slides at zero measurement cost. Measured at a correlation "
-            "of -0.998. Stopping is the only thing that breaks it, because a "
+            "of -0.998 on a synthetic in-place spin. Stopping is the only thing that breaks it, because a "
             "zero-velocity update asserts the rate is zero with no bias term, which "
             "turns the gyro reading into a direct measurement of the bias. Measured: "
             "without a stop, yaw integrates at 85% of truth; after a two-second "
@@ -534,8 +547,95 @@ def pick_wheel_odometry(by_topic):
     return by_topic[chosen], note
 
 
+def _tilt_from_q(q):
+    x, y, z, w = q
+    roll = math.atan2(2 * (w * x + y * z), 1 - 2 * (x * x + y * y))
+    pitch = math.asin(max(-1.0, min(1.0, 2 * (w * y - z * x))))
+    return roll, pitch
+
+
+def _tilt_from_accel(m):
+    return math.atan2(m["ay"], m["az"]), math.atan2(-m["ax"], math.hypot(m["ay"], m["az"]))
+
+
+def check_imu_orientation(series):
+    """Is the IMU's reported roll/pitch something a filter should trust as a measurement?
+
+    Two failure shapes, both measured on NCLT on 2026-10-25:
+
+    1. Inconsistent with gravity at rest: the reported tilt and the accelerometer's
+       tilt disagree while the platform is still. That is a frame or convention error.
+    2. It IS the accelerometer's tilt: while the platform accelerates, a real attitude
+       estimate departs from accelerometer tilt by about atan(a/g), and this one does
+       not. Fused with a tight covariance it double-counts the accelerometer and hands
+       the filter a confident wrong tilt every time the robot speeds up or brakes. On
+       NCLT this check fired on FusionCore's own dataset player, which declared the
+       dataset's accelerometer-derived tilt at 0.57 deg 1-sigma; that put the filter into
+       an 800 s lock-out on 2012-01-08. The player no longer fuses it.
+    """
+    imu = [m for m in (series.get("imu") or []) if m.get("q") and m.get("ax") is not None]
+    if len(imu) < 200:
+        return []
+    odom = [o for o in (series.get("odom") or []) if o.get("v") is not None]
+    if len(odom) < 50:
+        return [finding("INFO", "IMU orientation present, not checked against motion",
+                        "Checking it needs forward speed from wheel odometry.")]
+    ot = [o["t"] for o in odom]
+
+    def speed_at(ts):
+        i = bisect.bisect_left(ot, ts)
+        i = min(max(i, 1), len(ot) - 1)
+        return odom[i]["v"], i
+
+    still, accel = [], []
+    for m in imu:
+        v, i = speed_at(m["t"])
+        j = min(i + 5, len(odom) - 1); k = max(i - 5, 0)
+        dt = odom[j]["t"] - odom[k]["t"]
+        dv = (odom[j]["v"] - odom[k]["v"]) / dt if dt > 0 else 0.0
+        rq, pq = _tilt_from_q(m["q"]); ra, pa = _tilt_from_accel(m)
+        diff = math.degrees(math.hypot(rq - ra, pq - pa))
+        if abs(v) < STILL_SPEED and abs(m.get("wz") or 0.0) < STILL_RATE:
+            still.append(diff)
+        elif abs(dv) > 0.3:
+            accel.append((diff, math.degrees(math.atan2(abs(dv), 9.80665))))
+    out = []
+    var = statistics.median(max(m["q_var_rp"][0], 0.0) for m in imu)
+    sigma_deg = math.degrees(math.sqrt(var)) if var > 0 else 0.0
+    if len(still) >= 50 and statistics.median(still) > 3.0:
+        out.append(finding(
+            "WARNING", "IMU orientation is inconsistent with gravity",
+            f"While the platform is still, the reported roll/pitch differ from the "
+            f"accelerometer's tilt by a median {statistics.median(still):.1f} deg over "
+            f"{len(still)} samples. At rest those should agree.",
+            "Check the orientation's frame and convention against the accelerometer's "
+            "(NED and ENU differ by a sign on two axes), or set orientation_covariance[0] "
+            "to -1 so FusionCore does not fuse it."))
+    if len(accel) >= 50:
+        med = statistics.median(d for d, _ in accel)
+        expect = statistics.median(e for _, e in accel)
+        if med < 0.2 and expect > 1.0:
+            out.append(finding(
+                "WARNING", "IMU orientation is the accelerometer's tilt",
+                f"While accelerating ({len(accel)} samples, |dv/dt| > 0.3 m/s^2) the "
+                f"reported roll/pitch track the accelerometer's tilt to a median "
+                f"{med:.2f} deg, where a real attitude estimate would differ by about "
+                f"{expect:.1f} deg. It is not acceleration-compensated, and the message "
+                f"declares {sigma_deg:.2f} deg 1-sigma for it.",
+                "Report a covariance that covers the acceleration error (a few degrees), "
+                "or set orientation_covariance[0] to -1 so FusionCore does not fuse it. "
+                "FusionCore's own NCLT player made exactly this mistake (0.57 deg on an "
+                "accelerometer-derived tilt) and it caused an 800 s GPS lock-out."))
+        elif not out:
+            out.append(finding("OK", "IMU orientation behaves like an attitude estimate",
+                               f"While accelerating it departs from accelerometer tilt by "
+                               f"a median {med:.2f} deg, consistent with compensation."))
+    return out
+
+
 CHECKS = (check_inventory, check_clock_skew, check_yaw_rate_signs,
-          check_stationary_bias, check_gnss_quality, check_observability)
+          check_stationary_bias, check_gnss_quality, check_observability,
+          check_imu_orientation)
 
 
 def analyse(series):
@@ -641,9 +741,15 @@ def read_bag(bag):
         if t <= 0:
             t = recv
         if ty == IMU_TYPE:
+            la, oq = msg.linear_acceleration, msg.orientation
+            has_q = (msg.orientation_covariance[0] >= 0.0 and
+                     abs(oq.x) + abs(oq.y) + abs(oq.z) + abs(oq.w) > 0.0)
             series["imu"].append({"t": t, "recv": recv,
                                   "wz": msg.angular_velocity.z,
-                                  "az": msg.linear_acceleration.z})
+                                  "ax": la.x, "ay": la.y, "az": la.z,
+                                  "q": (oq.x, oq.y, oq.z, oq.w) if has_q else None,
+                                  "q_var_rp": (msg.orientation_covariance[0],
+                                               msg.orientation_covariance[4]) if has_q else None})
         elif ty == ODOM_TYPE:
             tw = msg.twist.twist
             # Keep odometry topics SEPARATE. A bag commonly carries wheel odometry

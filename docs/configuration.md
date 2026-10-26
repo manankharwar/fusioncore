@@ -14,6 +14,12 @@ ros2 launch fusioncore_ros fusioncore.launch.py \
 ```yaml
 fusioncore:
   ros__parameters:
+    platform.profile: general   # general | ground_robot | ground_robot_flat
+                                # What kind of robot is this? The filter cannot work
+                                # that out, and the answer decides which states are
+                                # worth estimating. See "Declaring the platform" below.
+                                # Only supplies DEFAULTS: anything you set yourself wins.
+
     base_frame: base_link    # must match your robot's base TF frame
     odom_frame: odom
     publish_rate: 100.0
@@ -823,6 +829,171 @@ gnss.velocity_topic: "/gnss/doppler_vel"
 Fixes with `fix_type < 3` (no 3D lock) or `gnssFixOK` flag unset are silently dropped. Speeds below 0.05 m/s are also dropped to avoid heading corruption at standstill.
 
 **Other receivers:** publish `nav_msgs/Odometry` with ENU velocity on any topic and point `gnss.velocity_topic` at it. FusionCore doesn't care which driver produced it.
+
+---
+
+## Recovering after GPS comes back (`gnss.reanchor_enabled`)
+
+**Recommended for any robot that loses GPS for more than a few seconds at a time. Off by
+default, for the reasons measured below.**
+
+When GPS drops out, the filter dead-reckons and drifts. When fixes return, they disagree
+with the drifted estimate, so the outlier gate can reject them as outliers, and adaptive
+noise discounts the few that get through. The filter then stays wrong, sometimes for many
+minutes, while perfectly good fixes arrive. Measured on NCLT, most of the error on the
+worst sequences was in this recovery window, not in the outage itself.
+
+Re-anchoring watches for that state: the gate refusing most of what arrives, while the
+recent fixes agree with each other and with wheel odometry. When both hold, it moves the
+position onto the fixes instead of waiting for the gate to let them in. It moves position
+only, never heading.
+
+```yaml
+    gnss.reanchor_enabled: true
+```
+
+Every other re-anchoring setting (window, rejection fraction, buffer, odometry tolerance, cooldown) has a measured default; leave them unless you have
+data that says otherwise. Each re-anchor is reported on `/fusion/debug/gnss_status`
+(`reanchored`, `reanchor_jump_m`, `reanchor_count`) and in `/diagnostics`, because it is a
+deliberate jump in the published position and anything consuming the pose should know.
+
+**What it does, measured on seven NCLT sequences never used to develop it** (offline replay
+of the shipped config, fusing IMU orientation as the node does, full-trajectory ATE RMSE):
+lower RMSE on 6 of 7 and higher on none. The largest change was a sequence where the filter
+otherwise stayed locked out for about 800 seconds: 178.2 m to 17.0 m.
+
+**What it costs, on the same seven:** median error rose 3.3% and 4.4% on two sequences, and
+the output-rate jitter of the position rose on one. A re-anchor is a jump, and those are the
+price of it. That is why it is not the default: the rule a default change has to pass was
+written before the test, and it fails on those two costs. The full table and the rule are
+in `tools/benchmark_regression.md` and `tools/ship_rule.md`.
+
+## Declaring the platform
+
+`platform.profile` is a single parameter that answers one question: what can this
+robot actually observe? It is the only setting in FusionCore that changes other
+settings, so it is worth understanding before you use it.
+
+```yaml
+fusioncore:
+  ros__parameters:
+    platform.profile: ground_robot_flat
+```
+
+### Why a 23-state filter needs to be told
+
+FusionCore estimates 23 states. The textbook GNSS/INS error-state filter estimates 15.
+The extra eight are angular velocity, acceleration, the encoder yaw-rate bias, and the
+quaternion carried as four numbers instead of three, and some of them cannot be
+observed from the sensors on a wheeled robot:
+
+| the sensor measures | the filter estimates | result |
+|---|---|---|
+| `WZ + B_GZ` (gyro) | both separately | one equation, two unknowns |
+| `AX + B_AX + gravity` (accel) | all three | one equation, three unknowns |
+
+Measured on a 1.8 s in-place spin in `test_observability.cpp`, `r(WZ, B_GZ) = -0.998`. On
+NCLT with encoders the same correlation measured -0.63 to -0.04, so real driving locks the
+pair far less than that synthetic does. Where it is locked, the pair slides along an unobservable
+line at no measurement cost: the sum stays correct, so nothing objects, and anything
+integrating `WZ` on its own inherits the whole error. The literature agrees
+independently, that accelerometer bias is completely unobservable in straight motion
+and that for land vehicles the azimuth and its gyro bias are unobservable in straight
+motion and under constant acceleration.
+
+### The three values
+
+- **`general`** is the default and changes nothing. Estimate everything. This is the
+  right answer for drones, boats, handhelds and anything that leaves the ground plane,
+  and it is why no library default was changed to ship this.
+- **`ground_robot`** stops estimating acceleration and the bias states.
+  **It requires wheel encoders.** Freezing the gyro bias is only safe because the
+  profile also treats the encoder's yaw rate as bias-free (the model carries an encoder
+  yaw-rate bias, which the profile freezes too), so the encoder carries the constraint.
+  **Measured 2026-10-22: "frozen" means slowed, not held.** The profile zeroes the bias process noises and priors, but the UKF adds a 1e-6 identity to P when it builds sigma points, and a zero-variance state triggers its identity-shift repair, so the biases still drift. On NCLT 2013-04-05 the gyro bias reached a median sigma of 0.053 rad/s and roamed up to about 0.18 rad/s. The measured improvements are what the profile does as shipped; the word "freeze" overstates the mechanism. Not yet fixed. On a
+  platform without odometry this profile is simply wrong.
+- **`ground_robot_flat`** is `ground_robot` plus a Z-position constraint at 0.3 m, for
+  terrain that really is flat: campus, warehouse, parking lot, most field work. Do not
+  use it where the robot genuinely climbs, because it will fight the real altitude
+  change.
+
+An unknown value refuses to configure rather than falling back to `general`, because
+you asked for something specific and would not have got it.
+
+### What it measured
+
+NCLT at 1x through the ROS node, ATE RMSE in metres, measured 2026-10-17. The fourth column is
+how far robot_localization moved on the same run: it consumes the same input and runs none of
+this code, so a control that stays put is what makes the FusionCore change attributable
+rather than merely coincident. These runs used the dataset player as it was before
+2026-10-25, which declared the accelerometer-derived tilt as a 0.57 degree attitude (since
+corrected), so they measure the profile's direction, not current figures.
+
+| sequence | `general` | `ground_robot_flat` | control moved | change |
+|---|---|---|---|---|
+| 2012-06-15 | 82.011 | **32.149** | -0.05% | **-60.8%** |
+| 2013-04-05 | 14.058 | **9.193** | +0.50% | **-34.6%** |
+| 2012-08-20 | 155.618 | 157.591 | +0.04% | +1.3% |
+| 2012-09-28 | 18.594 | **8.872** | +11.23% | **-52.3%** |
+
+2012-08-20 gets slightly worse, by about 10x its own 0.13% run-to-run spread, so the
+profile is not uniformly better and this page is not going to pretend otherwise.
+
+The 2012-09-28 row needs a caveat the others do not. Its control moved 11.23%, which
+would normally void the comparison, except that this sequence has a measured
+control-side spread of 11.05% of its own. So the control move is consistent with that
+sequence's noise rather than with a changed input, and the row is weaker evidence than
+the three above it.
+
+Four of the twelve NCLT sequences have been measured with the profile and **no hardware
+bag has.** Treat these as a measured direction, not as a number your robot will
+reproduce.
+
+### It only ever supplies defaults
+
+Anything you set explicitly wins over the profile. The node logs every value it
+supplied and every value of yours it kept:
+
+```
+[INFO] Platform profile: ground_robot_flat. 7 parameter(s) supplied, 1 kept from your config.
+[INFO]   ukf.q_gyro_bias                    0.002      KEPT (you set it, profile wanted 0)
+```
+
+So a profile is a starting point you can disagree with one line at a time, and you can
+see in the log which line won. The equivalent parameter bundles are also shipped as
+YAML in `fusioncore_datasets/config/profiles/` if you would rather read and copy the
+values than set one parameter; a test pins the two forms together so they cannot drift.
+
+### If you adopt a profile, delete the lines it replaces
+
+A profile supplies defaults, so a value already written in your YAML wins, even when
+it is the value the node would have used anyway. FusionCore's own rover config lists
+all four process noises at exactly their library defaults, and on that config a profile
+correctly keeps all four and applies almost nothing. Writing a number down is
+indistinguishable from meaning it. Delete what you are handing over, and read the
+startup log to confirm what was applied instead of assuming.
+
+### What it did on real hardware
+
+Three rover bags replayed offline through `fusioncore_core`, about 105 m driven each.
+Loop closure moved by less than the receiver's own 2.6 m sigma in every arm, with
+continuous GPS and with a 120 s blackout cut into the same logs, so nothing there is a
+measurement of accuracy. What it does establish is that freezing seven states broke
+nothing on real data. Excess path length fell 3 to 11% on 3 of 3 under the blackout,
+the same direction as the NCLT result.
+
+The NCLT-scale gain did not appear, and the likely reason is the course: 105 m over
+about 400 s with continuous 1 Hz fixes, against NCLT's 7.5 km with a 461 s blackout.
+Unobservable states need time and distance with nothing pinning them. If your robot
+drives further than it can see GPS, expect more than this; if it never loses sky, expect
+about this.
+
+### Check your bag first
+
+Run `tools/bag_report.py` on one of your own bags before changing this. If it reports
+that your IMU and wheels disagree about turn direction, or that the bag contains no
+manoeuvre that makes heading observable, fix that first. A profile cannot rescue a
+sensor that is wired backwards.
 
 ---
 

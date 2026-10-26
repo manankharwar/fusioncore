@@ -295,3 +295,74 @@ class ReportShapeTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ImuOrientationTest(unittest.TestCase):
+    """The NCLT 2026-10-25 case: an AHRS whose roll/pitch is just accelerometer tilt."""
+
+    G = 9.80665
+
+    def _drive(self, orientation, q_var=1e-4, frame_flip=False):
+        """60 s still, then 120 s alternating 0.5 m/s^2 accelerate / brake on flat ground.
+
+        orientation: "accel_tilt" reports the accelerometer's tilt (the bad AHRS);
+        "true" reports the platform's real attitude, level throughout.
+        """
+        import math
+        imu, odom = [], []
+        v = 0.0
+        for i in range(18000):
+            t = i / 100.0
+            a = 0.0 if t < 60 else (0.5 if int((t - 60) // 5) % 2 == 0 else -0.5)
+            v = max(0.0, v + a * 0.01) if t >= 60 else 0.0
+            ax, ay, az = a, 0.0, self.G
+            if orientation == "accel_tilt":
+                roll, pitch = math.atan2(ay, az), math.atan2(-ax, math.hypot(ay, az))
+            else:
+                roll, pitch = 0.0, 0.0
+            if frame_flip:
+                roll, pitch = roll + math.radians(8), pitch
+            cr, sr, cp, sp = math.cos(roll / 2), math.sin(roll / 2), math.cos(pitch / 2), math.sin(pitch / 2)
+            q = (sr * cp, cr * sp, -sr * sp, cr * cp)
+            imu.append({"t": t, "recv": t, "wz": 0.0, "ax": ax, "ay": ay, "az": az,
+                        "q": q, "q_var_rp": (q_var, q_var)})
+            if i % 2 == 0:
+                odom.append({"t": t, "recv": t, "v": v, "wz": 0.0})
+        return {"imu": imu, "odom": odom}
+
+    def test_accelerometer_tilt_reported_as_orientation_is_a_warning(self):
+        f = br.check_imu_orientation(self._drive("accel_tilt"))
+        self.assertIn("IMU orientation is the accelerometer's tilt", titles(sev(f, "WARNING")))
+
+    def test_a_real_attitude_estimate_is_ok(self):
+        f = br.check_imu_orientation(self._drive("true"))
+        self.assertEqual([], sev(f, "WARNING"), titles(f))
+        self.assertIn("behaves like an attitude estimate", titles(sev(f, "OK")))
+
+    def test_a_frame_error_at_rest_is_a_warning(self):
+        f = br.check_imu_orientation(self._drive("true", frame_flip=True))
+        self.assertIn("inconsistent with gravity", titles(sev(f, "WARNING")))
+
+    def test_no_orientation_is_not_checked(self):
+        s = self._drive("true")
+        for m in s["imu"]:
+            m["q"] = None
+        self.assertEqual([], br.check_imu_orientation(s))
+
+
+class StationaryBiasQuietTest(unittest.TestCase):
+    """The wheels say still, but the body rocks: its mean gyro is motion, not bias."""
+
+    def test_a_rocking_body_is_not_reported_as_bias(self):
+        import math
+        imu = stream(2000, 100.0, wz=lambda i: -0.11 + 0.2 * math.sin(i / 7.0))
+        odom = stream(2000, 100.0, v=0.0, wz=0.0)
+        f = br.check_stationary_bias({"imu": imu, "odom": odom})
+        self.assertEqual([], sev(f, "WARNING"), titles(f))
+        self.assertIn("gyro was not quiet", titles(f))
+
+    def test_a_quiet_still_gyro_still_reports_its_bias(self):
+        imu = stream(2000, 100.0, wz=lambda i: 0.003 + 0.002 * ((i % 7) - 3) / 3)
+        odom = stream(2000, 100.0, v=0.0, wz=0.0)
+        f = br.check_stationary_bias({"imu": imu, "odom": odom})
+        self.assertIn("Stationary gyro-z bias +0.00300", titles(f))

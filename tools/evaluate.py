@@ -123,6 +123,24 @@ def path_length_ratio(gt: PoseTrajectory3D, est: PoseTrajectory3D) -> float:
     return est_len / gt_len if gt_len > 0 else float('nan')
 
 
+def output_rate_path_ratio(gt: PoseTrajectory3D, est: PoseTrajectory3D) -> float:
+    """Estimate path at its FULL output rate over the associated span, / gt path.
+
+    path_length_ratio above takes the estimate only at ground-truth timestamps, so
+    anything that moves the pose between them is invisible to it. On NCLT 2012-06-15
+    the fused position travels 1073 m inside one 462 s GPS gap against 544 m of wheel
+    odometry, and path_length_ratio cannot see it (tools/benchmark_regression.md,
+    2026-10-22). Near 1.0 is a smooth estimate; well above path_length_ratio is jitter.
+    """
+    gt_s, est_s = sync.associate_trajectories(gt, est, max_diff=0.1)
+    t0, t1 = est_s.timestamps[0], est_s.timestamps[-1]
+    m = (est.timestamps >= t0) & (est.timestamps <= t1)
+    full = est.positions_xyz[m]
+    gt_len = path_length(gt_s)
+    est_len = float(np.sum(np.linalg.norm(np.diff(full, axis=0), axis=1)))
+    return est_len / gt_len if gt_len > 0 else float('nan')
+
+
 def drift_rate(ate_rmse: float, gt: PoseTrajectory3D) -> float:
     km = path_length(gt) / 1000.0
     return ate_rmse / km if km > 0 else float('nan')
@@ -145,6 +163,7 @@ def evaluate_filter(label: str, gt: PoseTrajectory3D, est: PoseTrajectory3D) -> 
     ate   = compute_ate(gt, est)
     rpe10 = compute_rpe(gt, est, 10.0)
     plr   = path_length_ratio(gt, est)
+    orpr  = output_rate_path_ratio(gt, est)
     dr    = drift_rate(ate['rmse'], ate['gt_s'])
 
     print(f'\n  [{label}]')
@@ -153,10 +172,11 @@ def evaluate_filter(label: str, gt: PoseTrajectory3D, est: PoseTrajectory3D) -> 
     print(f'    Within 5 m          {ate["pct5"]:.1f}%  |  Within 10 m  {ate["pct10"]:.1f}%')
     print(f'    XY within 5 m       {ate["xy_pct5"]:.1f}%  |  XY within 10 m  {ate["xy_pct10"]:.1f}%')
     print(f'    Path length ratio   {fmt(plr, "", 4)}  (1.0 = perfect scale)')
+    print(f'    Output-rate path    {fmt(orpr, "", 4)}  (full-rate estimate path / gt path; above the line above = jitter)')
     print(f'    Drift rate          {fmt(dr, " m/km", 2)}')
     print(f'    RPE@10m             RMSE={fmt(rpe10["rmse"])}')
 
-    return {'ate': ate, 'rpe10': rpe10, 'plr': plr, 'drift': dr}
+    return {'ate': ate, 'rpe10': rpe10, 'plr': plr, 'orpr': orpr, 'drift': dr}
 
 
 # ── plots ──────────────────────────────────────────────────────────────────────
@@ -302,6 +322,7 @@ def write_json(filters, sequence: str, poses: dict, out_dir: str):
             'within_5m':   round(ate['pct5'], 1),
             'within_10m':  round(ate['pct10'], 1),
             'path_length_ratio': round(res['plr'], 4),
+            'output_rate_path_ratio': round(res['orpr'], 4),
             'drift_m_per_km':    round(res['drift'], 2),
             'rpe10_rmse':        round(res['rpe10']['rmse'], 3),
         }
