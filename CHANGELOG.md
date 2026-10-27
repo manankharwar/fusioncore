@@ -8,6 +8,79 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+---
+
+## [0.5.0]: 2026-10-26
+
+Read this before upgrading if you use `platform.profile: ground_robot` or
+`ground_robot_flat`: those profiles now turn on GNSS re-anchoring, which changes the
+published position after a GPS outage (it can jump). Set `gnss.reanchor_enabled: false` to
+keep 0.4.x behaviour. Nothing changes for `platform.profile: general`, the default. One
+parameter was removed (`vslam.frame_id`, which did nothing; see Removed). Every measured
+number below is from the public NCLT dataset; none is a hardware result, and the comparison
+against robot_localization is withheld pending a re-run.
+
+### Changed
+
+- **Behaviour change: `platform.profile: ground_robot` and `ground_robot_flat` turn on
+  `gnss.reanchor_enabled`.** The library default stays off. This is a product decision with
+  stated costs, not a pass: re-anchoring FAILED the rule a library default change has to
+  pass (`tools/ship_rule.md`, written before the test) on two secondary clauses. On the
+  seven held-out NCLT sequences it raised median error by 3.3% and 4.4% on two and
+  output-rate jitter by 0.126 on one. Measured on all twelve sequences with the corrected
+  dataset player (`tools/eval_20261025_results.md`, offline replay, full-trajectory ATE
+  RMSE) it lowers RMSE on 10, raises it on none, and is identical on the two where it never
+  fires; the median rises on 4 (0.3% to 3.0%) and jitter on 3 (up to 0.124). Through the
+  ROS node on 2012-01-08 it read 10.882 m at GPS fix times against 10.898 m in replay on the
+  same points, inside a pass band fixed before that run (9.253 to 12.403 m); one sequence,
+  one run. Each re-anchor is a deliberate position jump, reported on
+  `/fusion/debug/gnss_status` (`reanchored`, `reanchor_jump_m`, `reanchor_count`) and in
+  `/diagnostics`; a consumer that differentiates pose will see it. An explicit
+  `gnss.reanchor_enabled: false` wins over the profile, from `-p` or a params file
+  (`test_platform_profile.py` pins both, because false is also the declared default and a
+  compare-against-default check could not see it).
+
+### Added
+
+- **`gnss.reanchor_enabled`: recover after a GPS outage instead of rejecting the fixes that
+  would correct the filter.** Measured on NCLT, 74.8% to 96.8% of squared error on the five
+  development sequences sat in GPS blackouts or the re-convergence after them, and in that
+  recovery window the outlier gate rejected 81% of arriving fixes on two sequences. When the
+  gate has been refusing most of what arrives and the recent fixes agree with each other and
+  with wheel odometry, re-anchoring moves position (only position, never heading) onto them.
+  Off by default. Nine parameters: `gnss.reanchor_enabled` (false), `gnss.reanchor_window`
+  (20), `gnss.reanchor_reject_frac` (0.6), `gnss.reanchor_bias_trigger` (false: its extra
+  events were measured net harmful), `gnss.reanchor_bias_m` (8.0), `gnss.reanchor_buffer_n`
+  (5), `gnss.reanchor_odom_tol_m` (4.0), `gnss.reanchor_sigma_xy` (5.0),
+  `gnss.reanchor_cooldown_s` (20.0). `test_gnss_reanchor.cpp` pins that it is off by
+  default, never fires while the filter is healthy, shortens recovery, does not storm, and
+  does not touch heading.
+- **`tools/bag_report.py`: a diagnostic that reads any rosbag2 and reports why an estimator
+  is drifting, with no ground truth and no FusionCore build.** It flags IMU and wheel yaw
+  rates that disagree in sign or scale, sensors on different clocks, a receiver whose
+  declared accuracy does not match how far its fixes move, a log with no stop (gyro bias
+  unobservable), long GNSS gaps, and an IMU orientation that is only the accelerometer's
+  tilt declared as a confident attitude.
+- **The node warns once when it fuses IMU roll/pitch declared tighter than 1 degree.** An
+  accelerometer-referenced tilt is wrong by more than a degree at ordinary accelerations, so
+  a tighter declaration double-counts the accelerometer as a confident attitude. This is the
+  mistake our own NCLT player made (below).
+- **`messages_lost` on `/diagnostics`, from the middleware's own lost-message callback**, and
+  a once-a-minute log of consumed callbacks per sensor, so dropped sensor messages are
+  visible instead of inferred.
+- **`output_rate_path_ratio` in `tools/evaluate.py` and `hardware/ate_tum.py`**: the
+  estimate's path length at its full output rate over the ground-truth path, which measures
+  output-rate jitter that a truth-rate path ratio cannot see.
+
+### Fixed
+
+- **Our NCLT dataset player declared the IMU's accelerometer-derived tilt as a 0.57 degree
+  attitude.** The dataset's roll/pitch are the accelerometer's tilt; the 0.57 deg was our
+  choice, and it made the node fuse the accelerometer twice and lock onto a wrong position
+  for about 800 s on 2012-01-08 (178.808 m to 57.314 m full-trajectory ATE RMSE once fixed).
+  `nclt_player.py` now publishes that orientation with `orientation_covariance[0] = -1`.
+  Every NCLT number measured before 2026-10-25 used the old player.
+
 ### Added
 
 - **`platform.profile`: the deployment declares what it can observe.** One parameter,

@@ -183,6 +183,43 @@ public:
       ++applied;
     }
 
+    // Booleans need a different "did the caller set it" test. An explicit false is the
+    // same value as the declared default, so comparing against the default cannot see
+    // it, and a ground_robot user who turned re-anchoring off would have it silently
+    // turned back on. The node's resolved overrides hold every value given through a
+    // params file or -p, including one equal to the default.
+    //
+    // gnss.reanchor_enabled: on in ground_robot from 0.5.0. It failed its ship rule on
+    // two secondary clauses (median +3.3% and +4.4% on two held-out sequences, jitter
+    // +0.126 on one) while lowering RMSE on 10 of 12 NCLT sequences and raising it on
+    // none; through this node on 2012-01-08 it read 10.882 m against replay's 10.898 m.
+    // Enabling it here is a product decision with those costs, not a pass.
+    struct BoolRow { const char* name; bool profile; };
+    const std::vector<BoolRow> bool_defaults = {
+      {"gnss.reanchor_enabled", true},
+    };
+    const auto& overrides = get_node_parameters_interface()->get_parameter_overrides();
+    for (const auto& row : bool_defaults) {
+      if (!has_parameter(row.name)) {
+        RCLCPP_ERROR(get_logger(),
+          "platform.profile '%s' wants to set '%s', which this node does not declare. "
+          "The profile and the node have drifted apart; refusing to configure.",
+          profile.c_str(), row.name);
+        return false;
+      }
+      if (overrides.count(row.name)) {
+        RCLCPP_INFO(get_logger(), "  %-34s %-10s KEPT (you set it, profile wanted %s)",
+                    row.name, get_parameter(row.name).as_bool() ? "true" : "false",
+                    row.profile ? "true" : "false");
+        ++kept;
+        continue;
+      }
+      set_parameter(rclcpp::Parameter(row.name, row.profile));
+      RCLCPP_INFO(get_logger(), "  %-34s %-10s from profile", row.name,
+                  row.profile ? "true" : "false");
+      ++applied;
+    }
+
     RCLCPP_INFO(get_logger(),
       "Platform profile: %s. %d parameter(s) supplied, %d kept from your config. "
       "This stops the filter estimating states a wheeled robot cannot observe. It "
@@ -715,22 +752,25 @@ public:
     //                     and anything that leaves the ground plane. The default, so
     //                     this parameter changes nothing unless you set it.
     //   ground_robot      REQUIRES WHEEL ENCODERS. Stops estimating acceleration and
-    //                     the bias states.
+    //                     the bias states, and from 0.5.0 turns on gnss.reanchor_enabled
+    //                     (see apply_platform_profile for what that costs).
     //   ground_robot_flat ground_robot plus a Z-position constraint, for terrain that
     //                     really is flat: campus, warehouse, yard, most field work.
     //
-    // Measured on NCLT at 1x. The last column is how far the robot_localization control
-    // moved on the same run, which is what makes the change attributable: it reads the
-    // same input and runs none of this code.
-    //   2012-06-15   82.011 -> 32.149   -60.8%   ctrl -0.05%   a 44% loss becomes a 30% win
+    // Measured on NCLT at 1x, 2026-10-17, with the dataset player as it was before the
+    // 2026-10-25 tilt fix, so these are the profile's direction, not current figures. The
+    // last column is how far the robot_localization control moved on the same run, which
+    // is what makes the change attributable: it reads the same input and runs none of
+    // this code.
+    //   2012-06-15   82.011 -> 32.149   -60.8%   ctrl -0.05%
     //   2013-04-05   14.058 ->  9.193   -34.6%   ctrl +0.50%
     //   2012-08-20  155.618 -> 157.591   +1.3%   ctrl +0.04%   worse, so it is not uniform
     //   2012-09-28   18.594 ->  8.872   -52.3%   ctrl +11.2%   weak: see the note below
     //
     // That 2012-09-28 control move would normally void the row. It is kept because this
     // sequence has a measured control-side spread of 11.05% of its own, so the move is
-    // consistent with its noise rather than with a changed input, and it was a win
-    // either way. Four of twelve sequences measured, no hardware bag yet.
+    // consistent with its noise rather than with a changed input. Four of twelve
+    // sequences measured, no hardware bag yet.
     //
     // A profile only ever supplies DEFAULTS. Anything you set explicitly wins, and the
     // node logs every value it supplied and every one you overrode, because a setting

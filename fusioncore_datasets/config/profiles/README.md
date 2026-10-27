@@ -31,26 +31,34 @@ are unobservable in straight motion and under constant acceleration.
 
 ## What the profiles are worth
 
-Measured on NCLT at 1x. The control column is robot_localization on the same run: it
-consumes the same input and runs none of this code, so a control that holds still is
-what makes the FusionCore change attributable.
+Measured on NCLT at 1x through the ROS node on 2026-10-17, with the dataset player as it
+was before the 2026-10-25 tilt fix, so these show the profile's direction rather than
+current figures. The control column is robot_localization on the same run: it consumes the
+same input and runs none of this code, so a control that holds still is what makes the
+FusionCore change attributable. (The win/loss columns that used to sit here compared
+FusionCore with robot_localization through that player and are withdrawn; that comparison
+is being re-run.)
 
-| sequence | shipped | `ground_robot` | control moved | change | verdict was | verdict now |
-|---|---|---|---|---|---|---|
-| 2012-06-15 | 82.011 | **32.149** | -0.05% | **-60.80%** | RL +44% | **FC +30%** |
-| 2013-04-05 | 14.058 | **9.193** | +0.50% | **-34.61%** | FC +79% | **FC +86%** |
-| 2012-08-20 | 155.618 | 157.591 | +0.04% | +1.27% | RL +93% | RL +93% |
-| 2012-09-28 | 18.594 | **8.872** | +11.23% | **-52.29%** | FC +77% | **FC +90%** |
+| sequence | shipped | `ground_robot` | control moved | change |
+|---|---|---|---|---|
+| 2012-06-15 | 82.011 | **32.149** | -0.05% | **-60.80%** |
+| 2013-04-05 | 14.058 | **9.193** | +0.50% | **-34.61%** |
+| 2012-08-20 | 155.618 | 157.591 | +0.04% | +1.27% |
+| 2012-09-28 | 18.594 | **8.872** | +11.23% | **-52.29%** |
 
-2012-06-15 crosses from a loss to a win. 2012-08-20 is about 10x its own 0.13% spread
-worse, which is small and real; the profile is not uniformly better and this file is
-not going to pretend otherwise.
+2012-08-20 is about 10x its own 0.13% spread worse, which is small and real; the profile
+is not uniformly better and this file is not going to pretend otherwise.
 
 2012-09-28 is the weakest of the four and is listed with its control move rather than
 without it. An 11.23% control move would normally void a comparison; this sequence has
 a measured control-side spread of 11.05%, so the move is consistent with its own noise
-instead of with a changed input. It was a win before and after regardless. The other
-three rows need no such argument.
+instead of with a changed input. The other three rows need no such argument.
+
+**From 0.5.0 both ground-robot profiles also turn on `gnss.reanchor_enabled`.** None of the
+rows above include it. It was measured on its own: lower RMSE on 10 of 12 NCLT sequences
+and higher on none, but higher median on 4 and higher output-rate jitter on 3, so it failed
+its ship rule on those and is on here as a stated decision. Details in docs/configuration.md
+under "Recovering after GPS comes back". Set it false to opt out.
 
 The same bundles are reachable as one parameter, `platform.profile: ground_robot` or
 `ground_robot_flat`, documented in `docs/configuration.md`. `tools/test_profiles.py`

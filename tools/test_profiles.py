@@ -90,13 +90,19 @@ class BenchmarkMatchesTheProfile(unittest.TestCase):
     """The NCLT A/B config must set exactly what ground_robot_flat ships.
 
     The profile's entire claim is a measurement: 2012-06-15 going from 82.011 to
-    32.149 and crossing from a 44% loss to a 30% win. That claim is only honest if the
+    32.149. That claim is only honest if the
     run that produced it used the settings the profile hands to a user. If the two
     drift apart, the README is quoting numbers for a configuration nobody ships.
 
     This is cheap to check and silent to get wrong, which is the same shape as the
     README benchmark table before #174 added a checker for it.
     """
+
+    # Added to the profiles after the frozen benchmark ran, and measured on its own:
+    # all twelve NCLT sequences in tools/eval_20261025_results.md and through the node on
+    # 2012-01-08 (tools/benchmark_regression.md, 2026-10-26). The frozen config's numbers
+    # describe the profile without it, which is what they were measured as.
+    MEASURED_SEPARATELY = {"gnss.reanchor_enabled"}
 
     BENCH = pathlib.Path(__file__).resolve().parent.parent / \
         "fusioncore_datasets" / "config" / "nclt_fusioncore_frozen.yaml"
@@ -106,6 +112,8 @@ class BenchmarkMatchesTheProfile(unittest.TestCase):
         prof = params(PROFILES / "ground_robot_flat.yaml")
         bench = yaml.safe_load(self.BENCH.read_text())["fusioncore"]["ros__parameters"]
         for k, v in prof.items():
+            if k in self.MEASURED_SEPARATELY:
+                continue
             self.assertIn(k, bench,
                           f"the benchmark does not set {k}, so the measured numbers do "
                           f"not describe the shipped profile")
@@ -144,6 +152,23 @@ class TheNodeTableMatchesTheProfiles(unittest.TestCase):
         base = {n: (float(pv), float(dv)) for n, pv, dv in rows}
         return base, {flat.group(1): (float(flat.group(2)), float(flat.group(3)))}
 
+    def node_bool_table(self):
+        """The {name, profile value} rows of the boolean table. Booleans are judged by
+        whether the caller supplied them at all (an explicit false equals the default),
+        so they have no declared column."""
+        src = self.NODE.read_text()
+        body = re.search(r"std::vector<BoolRow> bool_defaults = \{(.*?)\n    \};", src, re.S)
+        self.assertIsNotNone(body, "could not find the BoolRow table; the parser is stale")
+        rows = re.findall(r'\{\s*"([^"]+)"\s*,\s*(true|false)\s*\}', body.group(1))
+        self.assertGreaterEqual(len(rows), 1, "parsed no rows out of the bool table")
+        return {n: v == "true" for n, v in rows}
+
+    @staticmethod
+    def same(yaml_value, node_value):
+        if isinstance(node_value, bool):
+            return yaml_value is node_value
+        return float(yaml_value) == node_value
+
     def declared_defaults(self):
         src = self.NODE.read_text()
         out = {}
@@ -155,23 +180,35 @@ class TheNodeTableMatchesTheProfiles(unittest.TestCase):
 
     def test_the_node_sets_the_same_values_as_ground_robot_yaml(self):
         base, _ = self.node_table()
+        node = {k: v[0] for k, v in base.items()}
+        node.update(self.node_bool_table())
         yaml_vals = params(PROFILES / "ground_robot.yaml")
-        self.assertEqual(sorted(yaml_vals), sorted(base),
+        self.assertEqual(sorted(yaml_vals), sorted(node),
                          "the node's table and ground_robot.yaml set different parameters")
         for k, v in yaml_vals.items():
-            self.assertEqual(float(v), base[k][0],
-                             f"{k}: the YAML ships {v}, platform.profile applies {base[k][0]}")
+            self.assertTrue(self.same(v, node[k]),
+                            f"{k}: the YAML ships {v}, platform.profile applies {node[k]}")
 
     def test_the_flat_row_matches_ground_robot_flat_yaml(self):
         base, extra = self.node_table()
         yaml_vals = params(PROFILES / "ground_robot_flat.yaml")
-        combined = dict(base)
-        combined.update(extra)
+        combined = {k: v[0] for k, v in base.items()}
+        combined.update({k: v[0] for k, v in extra.items()})
+        combined.update(self.node_bool_table())
         self.assertEqual(sorted(yaml_vals), sorted(combined),
                          "the node's flat table and ground_robot_flat.yaml differ")
         for k, v in yaml_vals.items():
-            self.assertEqual(float(v), combined[k][0],
-                             f"{k}: the YAML ships {v}, platform.profile applies {combined[k][0]}")
+            self.assertTrue(self.same(v, combined[k]),
+                            f"{k}: the YAML ships {v}, platform.profile applies {combined[k]}")
+
+    def test_every_bool_row_differs_from_the_declared_default(self):
+        # Same dead-weight check as the numeric rows, for the boolean table.
+        declared = dict(re.findall(r'declare_parameter\(\s*"([^"]+)"\s*,\s*(true|false)\s*\)',
+                                   self.NODE.read_text()))
+        for name, want in self.node_bool_table().items():
+            self.assertIn(name, declared, f"{name} is not declared as a bool")
+            self.assertNotEqual(want, declared[name] == "true",
+                                f"{name} sets the value the node already declares")
 
     def test_the_declared_column_is_what_the_node_declares(self):
         # The one that catches a silent no-op. See the class docstring.

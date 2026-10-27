@@ -6,9 +6,10 @@
 #
 # Do not use this on a drone, a boat, or anything without odometry.
 #
-# Measured on NCLT at 1x against the shipped config, controls inside 0.5%:
-#   2012-06-15   82.011 -> 32.149   -60.80%   crosses from a 44% loss to a 30% win
-#   2013-04-05   14.058 ->  9.193   -34.61%   win grows from 79% to 86%
+# Measured on NCLT at 1x against the shipped config, controls inside 0.5%, 2026-10-17,
+# before the dataset player's tilt fix (direction, not current figures; no re-anchoring):
+#   2012-06-15   82.011 -> 32.149   -60.80%
+#   2013-04-05   14.058 ->  9.193   -34.61%
 #   2012-08-20  155.618 -> 157.591   +1.27%   about 10x its 0.13% spread, slightly worse
 #
 # Copy this block into your config, or load this file and override individual keys
@@ -32,6 +33,19 @@ fusioncore:
     imu.gyro_bias_initial_sigma:    1.0e-6
     imu.accel_bias_initial_sigma:   1.0e-6
     encoder.wz_scale_initial_sigma: 1.0e-6
+
+    # Re-anchoring after a GPS outage, on from 0.5.0. When the outlier gate has been
+    # refusing most of what arrives and the recent fixes agree with wheel odometry, jump
+    # position onto them instead of waiting for the gate to let them in. Position only.
+    # Measured on all twelve NCLT sequences (tools/eval_20261025_results.md, replay):
+    # RMSE lower on 10, higher on none; but median higher on 4 (+0.3% to +3.0%) and
+    # output-rate jitter higher on 3 (up to +0.124), so it FAILED its ship rule on those
+    # secondary clauses. Through the ROS node on 2012-01-08 it read 10.882 m at GPS fix
+    # times against replay's 10.898 m. On here as a product decision with those costs.
+    # Each re-anchor is a deliberate position jump, published on /fusion/debug/gnss_status
+    # (reanchored, reanchor_jump_m); a consumer that cannot see it will read it as
+    # divergence. Set false to opt out.
+    gnss.reanchor_enabled: true
 
     # Why freezing the gyro bias does not wreck heading: the encoder measures yaw rate
     # with no bias term, so the constraint moves to the sensor that can carry it.

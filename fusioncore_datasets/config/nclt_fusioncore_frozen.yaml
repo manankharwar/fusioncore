@@ -28,6 +28,11 @@
 # no true bias, so it was tested against a real one, and against a bad encoder, because
 # a perfect encoder would make "trust the encoder, freeze the gyro bias" win trivially.
 #
+# WITHDRAWN 2026-10-26: the "verdict" columns and the win/loss sentences below compare
+# FusionCore with robot_localization through the dataset player as it was before the
+# 2026-10-25 tilt fix, and that comparison is withdrawn pending a re-run. The FC shipped
+# against FC frozen numbers stand as measured with that player; quote no verdict.
+#
 # MEASURED ON NCLT 2026-10-14. The synthetic was right, and on one sequence it
 # UNDERSTATED the gain. Every control held inside 0.5%, so every move is attributable:
 #

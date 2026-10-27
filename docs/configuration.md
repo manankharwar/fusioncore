@@ -834,8 +834,9 @@ Fixes with `fix_type < 3` (no 3D lock) or `gnssFixOK` flag unset are silently dr
 
 ## Recovering after GPS comes back (`gnss.reanchor_enabled`)
 
-**Recommended for any robot that loses GPS for more than a few seconds at a time. Off by
-default, for the reasons measured below.**
+**Recommended for any robot that loses GPS for more than a few seconds at a time. Off in
+the library default, for the reasons measured below; on in `platform.profile: ground_robot`
+and `ground_robot_flat` from 0.5.0 (set `gnss.reanchor_enabled: false` to opt out).**
 
 When GPS drops out, the filter dead-reckons and drifts. When fixes return, they disagree
 with the drifted estimate, so the outlier gate can reject them as outliers, and adaptive
@@ -857,16 +858,22 @@ data that says otherwise. Each re-anchor is reported on `/fusion/debug/gnss_stat
 (`reanchored`, `reanchor_jump_m`, `reanchor_count`) and in `/diagnostics`, because it is a
 deliberate jump in the published position and anything consuming the pose should know.
 
-**What it does, measured on seven NCLT sequences never used to develop it** (offline replay
-of the shipped config, fusing IMU orientation as the node does, full-trajectory ATE RMSE):
-lower RMSE on 6 of 7 and higher on none. The largest change was a sequence where the filter
-otherwise stayed locked out for about 800 seconds: 178.2 m to 17.0 m.
+**What it does, measured on all twelve NCLT sequences** (2026-10-26, corrected dataset
+player, offline replay of the shipped config with and without it, full-trajectory ATE RMSE,
+`tools/eval_20261025_results.md`): RMSE lower on 10 of 12, higher on none, identical on the two
+where it never fires. The largest change is 2012-08-20, 165.364 m to 45.669 m. Scored at GPS
+fix times it brings FusionCore below raw GPS on 2 of 12 sequences, both held out from
+development (2012-03-31 by 22.0%, 2012-10-28 by 5.6%). Through the ROS node on 2012-01-08 it
+read 10.882 m at fix times against replay's 10.898 m on the same points, checked against a
+pass band fixed before the run.
 
-**What it costs, on the same seven:** median error rose 3.3% and 4.4% on two sequences, and
-the output-rate jitter of the position rose on one. A re-anchor is a jump, and those are the
-price of it. That is why it is not the default: the rule a default change has to pass was
-written before the test, and it fails on those two costs. The full table and the rule are
-in `tools/benchmark_regression.md` and `tools/ship_rule.md`.
+**What it costs, on the same twelve:** the median error rose on 4 sequences (0.3% to 3.0%),
+and the output-rate jitter of the position rose on 3 (by up to 0.124). A re-anchor is a jump,
+and those are the price of it. On the seven held-out sequences, the rule a library default
+change has to pass was written before the test, and re-anchoring fails it on those two costs.
+That is why the library default stays off and the ground-robot profiles turn it on as a
+stated decision rather than a pass. The full tables and the rule are in
+`tools/benchmark_regression.md` and `tools/ship_rule.md`.
 
 ## Declaring the platform
 
@@ -906,7 +913,9 @@ motion and under constant acceleration.
 - **`general`** is the default and changes nothing. Estimate everything. This is the
   right answer for drones, boats, handhelds and anything that leaves the ground plane,
   and it is why no library default was changed to ship this.
-- **`ground_robot`** stops estimating acceleration and the bias states.
+- **`ground_robot`** stops estimating acceleration and the bias states, and (from 0.5.0)
+  turns on `gnss.reanchor_enabled`, with the costs stated in
+  [Recovering after GPS comes back](#recovering-after-gps-comes-back-gnssreanchor_enabled).
   **It requires wheel encoders.** Freezing the gyro bias is only safe because the
   profile also treats the encoder's yaw rate as bias-free (the model carries an encoder
   yaw-rate bias, which the profile freezes too), so the encoder carries the constraint.

@@ -33,7 +33,10 @@ A 23-state filter can estimate more than a wheeled robot can observe. The gyro m
 `WZ + B_GZ` and the accelerometer measures `AX + B_AX + gravity`, so those pairs are not
 separately observable from those sensors alone. On a robot with encoders,
 `platform.profile: ground_robot` sets the bias process noises and priors to zero and
-treats the encoder's yaw rate as bias-free, so the encoder carries the constraint. It slows
+treats the encoder's yaw rate as bias-free, so the encoder carries the constraint. From
+0.5.0 it also turns on `gnss.reanchor_enabled` (recovery after a GPS outage), which failed
+its ship rule on median and jitter and is enabled there as a stated product decision; set
+`gnss.reanchor_enabled: false` to opt out. It slows
 the biases rather than holding them: the UKF's covariance regularisation still lets them
 drift (a median sigma of 0.053 rad/s on the gyro bias on NCLT 2013-04-05). In replay on five NCLT sequences that
 lowered ATE RMSE on all five, by 0.3% to 17.7% (table in the CHANGELOG). Declaring the

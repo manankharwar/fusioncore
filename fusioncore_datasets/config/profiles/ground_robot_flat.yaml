@@ -34,6 +34,19 @@ fusioncore:
     imu.accel_bias_initial_sigma:   1.0e-6
     encoder.wz_scale_initial_sigma: 1.0e-6
 
+    # Re-anchoring after a GPS outage, on from 0.5.0. When the outlier gate has been
+    # refusing most of what arrives and the recent fixes agree with wheel odometry, jump
+    # position onto them instead of waiting for the gate to let them in. Position only.
+    # Measured on all twelve NCLT sequences (tools/eval_20261025_results.md, replay):
+    # RMSE lower on 10, higher on none; but median higher on 4 (+0.3% to +3.0%) and
+    # output-rate jitter higher on 3 (up to +0.124), so it FAILED its ship rule on those
+    # secondary clauses. Through the ROS node on 2012-01-08 it read 10.882 m at GPS fix
+    # times against replay's 10.898 m. On here as a product decision with those costs.
+    # Each re-anchor is a deliberate position jump, published on /fusion/debug/gnss_status
+    # (reanchored, reanchor_jump_m); a consumer that cannot see it will read it as
+    # divergence. Set false to opt out.
+    gnss.reanchor_enabled: true
+
     # Why freezing the gyro bias does not wreck heading: the encoder measures yaw rate
     # with no bias term, so the constraint moves to the sensor that can carry it.
     # Stress tested in simulation, 6 seeds, a 600 s loop with turns and a 300 s GNSS

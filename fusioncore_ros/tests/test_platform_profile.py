@@ -41,7 +41,7 @@ def run_node(extra_args, settle=6.0):
                                capture_output=True, text=True).stdout.strip()
         params = {}
         for p in ("ukf.q_gyro_bias", "ukf.q_accel_bias", "ukf.q_position",
-                  "ground_constraint.z_position_sigma"):
+                  "ground_constraint.z_position_sigma", "gnss.reanchor_enabled"):
             r = subprocess.run(["ros2", "param", "get", "/" + name, p],
                                capture_output=True, text=True).stdout.strip()
             params[p] = r.split(":")[-1].strip() if ":" in r else r
@@ -80,6 +80,40 @@ class PlatformProfile(unittest.TestCase):
                                msg="the profile overwrote a value the caller set explicitly")
         # and the rest of the profile still applies
         self.assertAlmostEqual(float(p["ukf.q_accel_bias"]), 0.0, places=12)
+
+    def test_ground_robot_turns_reanchoring_on(self):
+        state, p = run_node(["-p", "platform.profile:=ground_robot"])
+        self.assertIn("inactive", state)
+        self.assertEqual(p["gnss.reanchor_enabled"], "True")
+
+    def test_general_leaves_reanchoring_off(self):
+        state, p = run_node([])
+        self.assertEqual(p["gnss.reanchor_enabled"], "False",
+                         "the library default must stay off")
+
+    def test_an_explicit_false_beats_the_profile(self):
+        # false is also the declared default, so a compare-against-default test would
+        # miss it and turn re-anchoring back on behind the caller's back.
+        state, p = run_node(["-p", "platform.profile:=ground_robot",
+                             "-p", "gnss.reanchor_enabled:=false"])
+        self.assertIn("inactive", state)
+        self.assertEqual(p["gnss.reanchor_enabled"], "False",
+                         "the profile overrode an explicit gnss.reanchor_enabled: false")
+        self.assertAlmostEqual(float(p["ukf.q_gyro_bias"]), 0.0, places=12)
+
+    def test_an_explicit_false_in_a_params_file_beats_the_profile(self):
+        import tempfile
+        with tempfile.NamedTemporaryFile("w", suffix=".yaml", delete=False) as f:
+            f.write("/**:\n  ros__parameters:\n    platform.profile: ground_robot\n"
+                    "    gnss.reanchor_enabled: false\n")
+            path = f.name
+        try:
+            state, p = run_node(["--params-file", path])
+        finally:
+            os.unlink(path)
+        self.assertIn("inactive", state)
+        self.assertEqual(p["gnss.reanchor_enabled"], "False",
+                         "a params-file false must survive the profile too")
 
     def test_an_unknown_profile_refuses_to_configure(self):
         # Silently falling back to 'general' would be worse than failing: the caller
