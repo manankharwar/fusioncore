@@ -2920,3 +2920,39 @@ because nclt_fusioncore.yaml's sha256 is pinned in the evaluation manifest.
 The check for next time: `grep -rn` the withdrawn phrase across docs/, docs/llms.txt,
 benchmarks/ and mkdocs.yml, then build the site and grep the rendered HTML, which is what
 caught the nav label.
+
+## 2026-10-26  Re-anchoring through the ROS node on 2012-01-08: CONFIRMED against the pre-registered band
+
+The check registered in `tools/ship_rule.md` (addendum, 1b7653c) before it ran: one node run,
+2012-01-08, corrected player, shipped NCLT config plus `gnss.reanchor_enabled: true`, 1x.
+Confirmed if fix-time ATE RMSE 3D reads 9.253 to 12.403 m (replay re-anchoring 10.899 m times the
+default arm's node-over-replay band 0.849 to 1.138).
+
+Provenance: installed nclt_fusioncore.yaml sha256 08b4a6e26030c29b, nclt_player.py bc898e768f4153fc
+(both as in the published evaluation), the run's config is that file plus the one key (e23abf15e69e),
+scorer 803c158e99ff, code a1929b0. Filter rate 101.9 Hz over 5495 s, OK. `ros2 param get` on the
+live node read `gnss.reanchor_enabled: True`. Four re-anchor events in the node log: t+3426 s
+(141.91 m), t+4048 s (131.64 m), t+4068 s (88.66 m), t+4917 s (117.40 m); replay also fired four.
+`messages_lost` 0 throughout. The robot_localization control logged 20 update-rate misses; it is
+not scored here.
+
+score_nclt_suite, all arms on the same points (22026 of 22041 fixes in common; 10170 scored at fix
+times):
+
+    arm                pipeline  fix-time RMSE / median   full-trajectory RMSE / median   jitter
+    raw GPS            raw         9.882 / 6.768
+    re-anchoring       node       10.882 / 6.780           13.145 / 6.818                  1.449
+    re-anchoring       replay     10.898 / 6.814           18.569 / 6.932                  1.608
+    default            node       56.962 / 13.798          57.314 / 13.327                 1.448
+
+**10.882 m is inside 9.253 to 12.403 m: CONFIRMED.** Node over replay for the re-anchoring arm is
+0.9985 at fix times (0.9984 against the published 10.899) and 0.708 over the full trajectory. The
+replay figure differs from the published 10.899 by 0.001 m because this scoring uses the 22026
+fixes common to all three arms rather than 22041.
+
+What this does and does not establish: re-anchoring reaches a deployment through the ROS node and
+behaves there as it does offline on this one sequence. It is n=1 on a held-out sequence, through a
+node whose run-to-run spread reached 14.8% elsewhere. It does not change the ship-rule verdict on
+re-anchoring (failed on median and jitter); it clears the one mechanical gate on the product
+decision to enable it in `platform.profile: ground_robot`, which is Manan's to take, with the costs
+in tools/eval_20261025_results.md stated.
