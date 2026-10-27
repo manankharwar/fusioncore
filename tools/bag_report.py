@@ -416,9 +416,13 @@ def check_gnss_quality(series):
                 "WARNING", f"Longest GNSS blackout {longest:.0f} s",
                 f"{sum(1 for x in gaps if x > 5.0)} gaps over 5 s.",
                 "Through a blackout position is dead-reckoned and heading has no "
-                "absolute reference, so error grows quadratically with the outage. "
-                "This is the one case where a simpler 2D filter can beat a full 3D "
-                "one, and an absolute heading source is the only real fix."))
+                "absolute reference, so error grows with the length of the outage. "
+                "The recovery afterwards can cost more than the outage: on two NCLT "
+                "sequences the outlier gate rejected 81% of the fixes arriving after a "
+                "blackout, because the filter had drifted far enough that good fixes "
+                "looked like outliers. gnss.reanchor_enabled targets the recovery; an "
+                "absolute heading source (dual antenna, or a calibrated magnetometer) "
+                "bounds the drift during the outage."))
     return out
 
 
@@ -495,9 +499,11 @@ def check_observability(series):
             "without a stop, yaw integrates at 85% of truth; after a two-second "
             "stop, 100%. No amount of tuning or driving substitutes for it."))
     else:
-        out.append(finding("OK", "The robot stopped at least once",
-                           f"{still} still samples: the gyro bias is observable in "
-                           f"this data."))
+        out.append(finding("OK", "The wheels stopped at least once",
+                           f"{still} samples where the wheels report the platform "
+                           f"still. A stop makes the gyro bias observable if the body "
+                           f"is still too; the stationary gyro bias line says whether "
+                           f"it was."))
     return out
 
 
@@ -655,13 +661,15 @@ def render(findings, bag_name, duration=None):
     for f in findings:
         counts[f["severity"]] = counts.get(f["severity"], 0) + 1
     lines = [f"# Estimator report: `{bag_name}`", ""]
+    # "3 warnings", not "3 warning"; info and ok read fine as they are.
+    plural = {"BLOCKER": "blockers", "WARNING": "warnings"}
+    summary = ", ".join(
+        f"{v} {plural[k] if v != 1 and k in plural else k.lower()}"
+        for k, v in sorted(counts.items(), key=lambda kv: SEVERITY_ORDER.get(kv[0], 9)))
     if duration:
-        lines.append(f"{duration:.0f} s of data. "
-                     + ", ".join(f"{v} {k.lower()}" for k, v in sorted(
-                         counts.items(), key=lambda kv: SEVERITY_ORDER.get(kv[0], 9))))
+        lines.append(f"{duration:.0f} s of data. " + summary)
     else:
-        lines.append(", ".join(f"{v} {k.lower()}" for k, v in sorted(
-            counts.items(), key=lambda kv: SEVERITY_ORDER.get(kv[0], 9))))
+        lines.append(summary)
     lines.append("")
     blockers = [f for f in findings if f["severity"] == "BLOCKER"]
     if blockers:
@@ -674,7 +682,7 @@ def render(findings, bag_name, duration=None):
                 lines += [f"**What to do:** {f['fix']}", ""]
     rest = [f for f in findings if f["severity"] != "BLOCKER"]
     if rest:
-        lines += ["## Everything else", ""]
+        lines += ["## Everything else" if blockers else "## Findings", ""]
         for f in rest:
             lines.append(f"- **[{icons.get(f['severity'], '?')}] {f['title']}** "
                          f"{f['detail']}")
