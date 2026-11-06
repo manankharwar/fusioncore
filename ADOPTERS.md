@@ -12,6 +12,7 @@ Real robots, real hardware, real deployments. If you're using FusionCore, open a
 | Michał Bednarek ([@mbed92](https://github.com/mbed92)), PhD Robotics | Factory differential-drive robot | IMU + wheel odometry + Cartographer | ROS 2 Humble, Poland |
 | Russ Hall ([@Russ76](https://github.com/Russ76)) | Andino robot (Raspberry Pi 4) | OAK-D stereo + IMU, Velodyne VLP-16 | Indoor SLAM with rtabmap, ROS 2 Jazzy |
 | Pranav Shah ([@pranavpshah](https://github.com/pranavpshah)), Icarus Robotics | Space robot | ORB-SLAM3 stereo + VectorNav 9-axis IMU | GPS-denied environment |
+| [@JR-pT](https://github.com/JR-pT) | Custom differential-drive robot (VESC, Hall-sensor hub motors) and a tracked platform | BNO085 9-axis IMU + RTK GNSS (EUREF corrections, NavSatFix) + wheel odometry | ROS 2, Nav2 GPS waypoints via /fromLL, Bavaria. In his words: "After some trouble/bugs at the beginning, i get fusioncore running very well with competent help and fast reactions of Manan Kharwar. Now it works even with not optimal calibrated imu and the fusioncore results are getting better over time with and without gps data." (#73) |
 | [@Villanua](https://github.com/Villanua) | Ground mobile robot (UGV), indoor and outdoor | ~1 Hz GPS + high-noise IMU + wheel encoders | Contributed the GPS track-heading turn gate (#109) and the `gnss.enabled` master switch (#110), both found during field tests |
 
 ## Actively integrating
