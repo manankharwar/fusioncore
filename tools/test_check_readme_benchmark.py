@@ -82,10 +82,36 @@ class ReadmeBenchmarkTest(unittest.TestCase):
 
     def test_current_tree_readme_is_clean(self):
         rows = check_readme_benchmark.readme_rows(
-            check_readme_benchmark.README.read_text()
+            check_readme_benchmark.HISTORY.read_text()
         )
         baseline = check_readme_benchmark.load_baseline()
         self.assertEqual([], check_readme_benchmark.violations(rows, baseline))
+
+    RESULTS_TABLE = """\
+| Sequence | Set | Points scored | Raw GPS | robot_localization, node | FusionCore default, node |
+|---|---|---|---|---|---|
+| 2012-03-31 | held out | 10046 | 13.824 / 7.469 | 160.874 / 42.830 | 16.816 / 7.357 |
+| 2012-08-20 | dev | 9799 | 34.250 / 7.319 | 10.400 / 4.451 | 160.359 / 35.210 |
+"""
+
+    def test_quoted_copy_of_rl_table_matches(self):
+        quoted = "> intro\n>\n" + "".join("> " + l + "\n" for l in self.RESULTS_TABLE.splitlines())
+        self.assertEqual([], check_readme_benchmark.copy_violations(
+            self.RESULTS_TABLE, [("README.md", quoted)]))
+
+    def test_changed_number_in_rl_copy_is_a_violation(self):
+        edited = self.RESULTS_TABLE.replace("160.874", "16.874")
+        self.assertEqual(1, len(check_readme_benchmark.copy_violations(
+            self.RESULTS_TABLE, [("README.md", edited)])))
+
+    def test_missing_rl_copy_is_a_violation(self):
+        self.assertEqual(1, len(check_readme_benchmark.copy_violations(
+            self.RESULTS_TABLE, [("README.md", "no table here")])))
+
+    def test_repo_rl_copies_match_results(self):
+        copies = [(p, p.read_text()) for p in check_readme_benchmark.COPIES]
+        self.assertEqual([], check_readme_benchmark.copy_violations(
+            check_readme_benchmark.RESULTS.read_text(), copies))
 
 
 if __name__ == "__main__":
