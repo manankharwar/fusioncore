@@ -15,10 +15,10 @@ the node's first pose 2.2 s and 2.5 s after the log's first event). That script'
 tolerance was stricter than the committed rule, whose criterion is 99% of the GPS-fix span:
 the scorer reports 100.0% and 99.9% for those two, so under the rule neither is excluded.
 
-**The robot_localization arm is withheld.** It passed every mechanical check and still
-reached 9 to 68 km of error on nine sequences, because the corrected player changed its
-input. See the amendment in `tools/report_rule_20261025.md`. It is being re-run on all
-twelve sequences with a corrected configuration, and nothing here compares the two filters.
+**The robot_localization arm of this run is withheld** (it reached 9 to 68 km of error on nine
+sequences because the corrected player changed its input; see the amendment in
+`tools/report_rule_20261025.md`). It was re-run on all twelve sequences with the amended config,
+2026-10-27 to 11-07; those results are the last section of this file.
 
 **Pipelines.** "node" is the ROS node at 1x playback. "replay" is the deterministic offline
 replay of the same config on the same input. With the corrected player both fuse the same
@@ -102,4 +102,85 @@ Re-anchoring ran through replay only (a second node playback per sequence would 
 ### Node vs replay, same config and input (fc_node / fc_replay, full-trajectory RMSE)
 
 2012-01-08 1.099, 2012-02-04 1.140, 2012-03-31 0.845, 2012-05-11 0.999, 2012-06-15 0.866, 2012-08-20 0.916, 2012-09-28 0.835, 2012-10-28 0.916, 2012-11-04 1.017, 2012-12-01 0.981, 2013-02-23 0.827, 2013-04-05 0.699
+
+## robot_localization re-run, 2026-10-27 to 11-07
+
+Produced under the 2026-10-26 amendment in `tools/report_rule_20261025.md`, by
+`tools/gen_rl_rerun_tables.py` from the score files (`~/nclt/eval12_rl/scores/`), not typed by hand.
+
+**Provenance.** Batch 1 (2012-01-08) at 79b2cf9, batches 2 to 4 at c66a505 (the only difference is one
+line of ADOPTERS.md), clean tree every time. Identical pinned hashes on all four batches: `rl_ekf.yaml`
+1d165c52ab0ac9f0, `navsat_transform.yaml` 400d2e1921b64cd1, `nclt_fusioncore.yaml` 08b4a6e26030c29b,
+`nclt_player.py` bc898e768f4153fc, scorer 803c158e99ff25f5, `ate_tum.py` 4b4a0e7dabbeafd9. Live
+`/rl_ekf imu0_config` checked on the running node: yaw rate only (index 11). Node at 1x, one sequence
+at a time; filter rate 100.0 to 103.3 Hz, every run passing the harness's rate check.
+robot_localization update-rate misses: 9 on 2012-01-08, 0 on the other eleven.
+
+**Exclusions: none. Re-runs: none.** A first attempt at 2012-02-04 was stopped by hand on 2026-10-27
+(the operator needed the machine) and discarded unscored; the sequence was then run from the start.
+
+**Pipelines.** `rl_node` and `fc_node_repeat` come from the same playback. `fc_node`, `fc_replay` and
+`fc_reanchor` are the 2026-10-26 trajectories above, re-scored here on the timestamps common to every
+arm including `rl_node`, so they can differ from the first table in the third decimal.
+
+### At GPS fix times (ATE RMSE 3D / median, metres)
+
+| Sequence | Set | Points scored | Raw GPS | robot_localization, node | FusionCore default, node | FusionCore default, node repeat | FusionCore default, replay | FusionCore re-anchoring, replay |
+|---|---|---|---|---|---|---|---|---|
+| 2012-01-08 | held out | 10167 | 9.878 / 6.768 | 31.647 / 6.176 | 56.969 / 13.800 | 57.666 / 13.837 | 50.075 / 12.352 | 10.895 / 6.816 |
+| 2012-02-04 | dev | 8905 | 57.564 / 13.600 | 145.976 / 36.984 | 163.830 / 42.020 | 150.519 / 36.416 | 145.629 / 35.612 | 59.340 / 13.519 |
+| 2012-03-31 | held out | 10046 | 13.824 / 7.469 | 160.874 / 42.830 | 16.816 / 7.357 | 15.886 / 7.336 | 16.934 / 7.376 | 10.785 / 7.413 |
+| 2012-05-11 | held out | 10384 | 9.187 / 5.210 | 8.387 / 4.425 | 9.186 / 5.267 | 9.184 / 5.251 | 9.187 / 5.217 | 9.187 / 5.217 |
+| 2012-06-15 | dev | 6526 | 9.293 / 4.891 | 45.941 / 16.375 | 24.363 / 7.846 | 23.366 / 7.931 | 12.041 / 4.900 | 12.041 / 4.900 |
+| 2012-08-20 | dev | 9799 | 34.250 / 7.319 | 10.400 / 4.451 | 160.359 / 35.210 | 159.581 / 35.923 | 172.961 / 38.082 | 39.790 / 7.495 |
+| 2012-09-28 | dev | 8404 | 8.960 / 6.430 | 95.140 / 26.585 | 18.883 / 6.859 | 18.875 / 6.863 | 22.236 / 7.140 | 10.176 / 6.554 |
+| 2012-10-28 | held out | 8901 | 13.923 / 8.251 | 25.929 / 6.679 | 15.999 / 8.399 | 15.997 / 8.386 | 16.763 / 8.436 | 13.150 / 8.335 |
+| 2012-11-04 | held out | 8200 | 20.267 / 9.657 | 24.170 / 7.834 | 23.626 / 10.220 | 24.733 / 10.268 | 24.512 / 10.301 | 20.414 / 9.806 |
+| 2012-12-01 | held out | 7838 | 12.681 / 7.842 | 12.528 / 5.421 | 16.160 / 7.910 | 16.135 / 7.884 | 16.466 / 7.859 | 12.741 / 7.948 |
+| 2013-02-23 | held out | 8569 | 15.724 / 9.451 | 77.986 / 24.301 | 17.294 / 9.650 | 17.300 / 9.633 | 16.951 / 9.630 | 15.793 / 9.441 |
+| 2013-04-05 | dev | 7458 | 8.624 / 6.319 | 8.329 / 4.449 | 9.994 / 6.457 | 10.020 / 6.462 | 10.007 / 6.447 | 8.798 / 6.443 |
+
+### Full trajectory, node arms (ATE RMSE 3D / median in metres; path = truth-rate path ratio; jitter = output-rate path ratio)
+
+| Sequence | Arm | Pipeline | Poses scored | RMSE | Median | Path | Jitter | Coverage |
+|---|---|---|---|---|---|---|---|---|
+| 2012-01-08 | rl_node | node | 11679 | 32.571 | 6.259 | 0.986 | 1.129 | 100.0% |
+| 2012-01-08 | fc_node_repeat | node | 11679 | 58.443 | 13.287 | 1.012 | 1.458 | 100.0% |
+| 2012-02-04 | rl_node | node | 9767 | 143.646 | 38.781 | 0.852 | 0.978 | 100.0% |
+| 2012-02-04 | fc_node_repeat | node | 9767 | 146.952 | 34.883 | 0.840 | 1.267 | 100.0% |
+| 2012-03-31 | rl_node | node | 11296 | 160.484 | 40.733 | 0.774 | 0.839 | 100.0% |
+| 2012-03-31 | fc_node_repeat | node | 11296 | 18.686 | 7.381 | 0.688 | 0.934 | 100.0% |
+| 2012-05-11 | rl_node | node | 11245 | 8.940 | 4.476 | 0.669 | 0.754 | 100.0% |
+| 2012-05-11 | fc_node_repeat | node | 11245 | 9.645 | 5.242 | 0.672 | 0.924 | 100.0% |
+| 2012-06-15 | rl_node | node | 8188 | 45.452 | 9.189 | 0.749 | 0.823 | 100.0% |
+| 2012-06-15 | fc_node_repeat | node | 8190 | 63.929 | 18.875 | 0.793 | 1.072 | 100.0% |
+| 2012-08-20 | rl_node | node | 11174 | 10.376 | 4.439 | 0.858 | 0.956 | 100.0% |
+| 2012-08-20 | fc_node_repeat | node | 11174 | 150.633 | 33.231 | 1.007 | 1.413 | 100.0% |
+| 2012-09-28 | rl_node | node | 9175 | 95.038 | 25.801 | 0.981 | 1.082 | 100.0% |
+| 2012-09-28 | fc_node_repeat | node | 9175 | 19.021 | 6.895 | 0.817 | 1.187 | 100.0% |
+| 2012-10-28 | rl_node | node | 9732 | 25.499 | 6.769 | 0.750 | 0.847 | 100.0% |
+| 2012-10-28 | fc_node_repeat | node | 9732 | 17.197 | 8.327 | 0.746 | 1.102 | 100.0% |
+| 2012-11-04 | rl_node | node | 9136 | 60.397 | 9.032 | 0.961 | 1.129 | 100.0% |
+| 2012-11-04 | fc_node_repeat | node | 9136 | 58.515 | 12.136 | 0.913 | 1.374 | 100.0% |
+| 2012-12-01 | rl_node | node | 8701 | 12.243 | 5.432 | 0.774 | 0.920 | 100.0% |
+| 2012-12-01 | fc_node_repeat | node | 8698 | 16.048 | 7.912 | 0.754 | 1.184 | 100.0% |
+| 2013-02-23 | rl_node | node | 9428 | 81.743 | 25.982 | 0.667 | 0.755 | 100.0% |
+| 2013-02-23 | fc_node_repeat | node | 9426 | 18.359 | 9.722 | 0.618 | 0.880 | 100.0% |
+| 2013-04-05 | rl_node | node | 8226 | 16.521 | 5.109 | 0.877 | 1.029 | 100.0% |
+| 2013-04-05 | fc_node_repeat | node | 8228 | 11.774 | 6.759 | 0.896 | 1.368 | 100.0% |
+
+Coverage at fix times, rl_node: 2012-01-08 100.0%, 2012-02-04 100.0%, 2012-03-31 100.0%, 2012-05-11 100.0%, 2012-06-15 100.0%, 2012-08-20 100.0%, 2012-09-28 100.0%, 2012-10-28 100.0%, 2012-11-04 100.0%, 2012-12-01 100.0%, 2013-02-23 100.0%, 2013-04-05 100.0%
+
+### What was looked at afterwards (diagnostic, not part of the rule)
+
+2012-03-31 robot_localization 160.874 m: after a 262.2 s GPS blackout (t = 1973.7 to 2235.9 s) the first
+three fixes are 535 to 537 m wrong in the dataset. Read from `/rl/odometry` covariance in the run's bag:
+robot_localization's sigma is about 169 by 248 m after dead reckoning, its 3.72 gate admits the first bad
+fix, sigma collapses to 2.05 by 7.17 m by t = 2240 s, and good fixes then sit at a Mahalanobis distance of
+about 128 (diagonal approximation) until about t = 2527 s. With a scratch scorer (nearest pose within
+0.1 s, not the official scorer) that window is 7.0% of points and 99.7% of robot_localization's squared
+error. 2012-09-28 and 2013-02-23 show the same pattern in a partial check, with one episode on
+2012-09-28 (t = 4315.5 s) unexplained. FusionCore's 2012-08-20 loss was not re-diagnosed.
+2012-06-15 triage (thresholds committed beforehand: at or below 13.703 m nondeterminism, at or above
+20.684 m systematic): `fc_node_repeat` 23.366 m, so the 2x node-over-replay gap there is systematic.
 

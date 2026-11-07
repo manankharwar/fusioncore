@@ -76,7 +76,7 @@ fusioncore:
     encoder.vel_noise: 0.05
     encoder.yaw_noise: 0.02
 
-    # Novatel SPAN-CPT standard GPS: ~3m CEP in urban Michigan campus
+    # NCLT consumer-grade GPS (gps.csv, not the RTK unit): ~3 m CEP on the Michigan campus
     # position_covariance published by nclt_player: var_xy=9, var_z=25
     # base_noise_xy=1.0: FC reads cov from message and uses sqrt(var_xy) * base_noise_xy
     gnss.base_noise_xy: 1.0

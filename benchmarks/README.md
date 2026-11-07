@@ -15,13 +15,13 @@ lower than raw GPS on 2 of 12 held-out sequences (2012-03-31 by 22.0%, 2012-10-2
 Full table: the README Status 2026-10-26 note and
 [`tools/eval_20261025_results.md`](../tools/eval_20261025_results.md).
 
-**There is no current comparison against robot_localization.** The "10/12 FC wins" table and
+**robot_localization was re-run on all twelve sequences, 2026-10-27 to 11-07;** the per-sequence
+table is in the repository README Benchmark section, with no aggregate and no winner. The "10/12 FC wins" table and
 the analysis that stood here (why RL-EKF fails, performance tiers, the two losses) are
 withdrawn. They were measured through our dataset player with two input errors that fed both
 filters wrong data: a wheel-odometry yaw rate in the wrong frame (#169) and an
-accelerometer-derived tilt declared as a 0.57 degree attitude. A corrected robot_localization
-re-run on all twelve sequences is pending, and its results will replace this note. The
-withdrawn figures remain in git history and, as a labelled superseded table, in
+accelerometer-derived tilt declared as a 0.57 degree attitude. The withdrawn figures remain in
+git history, in [`nclt_history.md`](nclt_history.md) and, as a labelled superseded table, in
 [`docs/reference/benchmark.md`](../docs/reference/benchmark.md).
 
 ---

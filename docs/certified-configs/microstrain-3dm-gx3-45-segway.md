@@ -129,7 +129,8 @@ sequences (2012-03-31 by 22.0%, 2012-10-28 by 5.6%). Full table, pipelines and s
 
 The robot_localization comparison that used to be on this page ("+55% better" and similar)
 is withdrawn. It was measured through a dataset player with two input errors that fed both
-filters wrong data, and the corrected comparison is being re-run.
+filters wrong data. The corrected comparison, re-run on all twelve sequences, is per sequence
+and favours neither filter overall: [Benchmark Results](../reference/benchmark.md).
 
 Reproduce one sequence through the ROS node:
 ```bash

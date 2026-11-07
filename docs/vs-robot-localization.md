@@ -1,8 +1,8 @@
 # FusionCore vs robot_localization
 
 An architectural comparison: what each package models and how it handles GPS. The measured
-comparison on NCLT is being re-run (see [Benchmark](#benchmark) below), so this page makes no
-accuracy claim in either direction.
+comparison on NCLT is published per sequence (see [Benchmark](#benchmark) below) and does not
+favour either filter overall.
 
 Paper: [arXiv:2605.25239](https://arxiv.org/abs/2605.25239)
 
@@ -29,21 +29,18 @@ Paper: [arXiv:2605.25239](https://arxiv.org/abs/2605.25239)
 
 ## Benchmark
 
-**There is currently no FusionCore against robot_localization comparison to cite.** The
-NCLT comparison that stood here ("FusionCore wins 10 of 12") is withdrawn: it was measured
-through our dataset player with two input errors that fed both filters wrong data, a wheel
-odometry yaw rate in the wrong frame (#169) and an accelerometer-derived tilt declared as a
-0.57 degree attitude. The explanation of robot_localization's losses that came with it (a
-gate calibrated to optimistic GPS covariance) was built on those runs and is withdrawn with
-them.
+**The NCLT comparison was re-run on all twelve sequences, 2026-10-27 to 11-07,** with a
+robot_localization config that follows its own planar wheeled-robot example. The result depends
+on the sequence, in both directions and by large factors: robot_localization is lower on
+2012-08-20 (10.400 m against FusionCore's default 160.359 m, raw GPS 34.250 m), FusionCore is
+lower on 2012-03-31 (16.816 m against 160.874 m, raw GPS 13.824 m). Both of those large errors
+start in the minutes after a GPS blackout. The table is per sequence with no aggregate and no
+winner, in the [benchmark reference](reference/benchmark.md).
 
-The corrected twelve-sequence evaluation ran on 2026-10-25 and 26. Its robot_localization arm
-is withheld: the corrected player stopped supplying an attitude, and with this config
-robot_localization then removed gravity using a level attitude, so real tilt leaked into the
-fused acceleration and it diverged on nine sequences. That was our input change meeting that
-config, not a property of robot_localization. It is being re-run on all twelve sequences with
-a config that follows robot_localization's own planar wheeled-robot example, and the results
-will be published per sequence and per metric, with no aggregate and no winner.
+The older "FusionCore wins 10 of 12" comparison is withdrawn: it was measured through our
+dataset player with two input errors that fed both filters wrong data, a wheel odometry yaw
+rate in the wrong frame (#169) and an accelerometer-derived tilt declared as a 0.57 degree
+attitude.
 
 What the corrected run does show, against raw unfiltered GPS rather than robot_localization:
 the shipped default does not beat raw GPS (raw GPS lower on 11 of 12, one tie), and with

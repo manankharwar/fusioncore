@@ -135,9 +135,9 @@ is lower than raw GPS on 2 of 12 held-out sequences (2012-03-31 by 22.0%, 2012-1
 Re-anchoring lowers RMSE against the default on 10 of 12 and raises it on none, but raises the
 median on 4 and the output-rate jitter on 3, which is why it is off by default.
 
-The comparison against robot_localization is being re-run and there is no current figure to
-cite. The "10 of 12" comparison that stood here is withdrawn: it was measured through our
-dataset player with two input errors that fed both filters wrong data. Every number, its
+Against robot_localization, re-run on all twelve sequences (2026-10-27 to 11-07) with a config that follows robot_localization's own planar wheeled-robot example. The result depends on the sequence, in both directions and by large factors, and is published per sequence with no aggregate and no winner. The "10 of 12" comparison that stood here is
+withdrawn: it was measured through our dataset player with two input errors that fed both
+filters wrong data. Every number, its
 pipeline and the full history are in the [benchmark reference](reference/benchmark.md).
 
 ---

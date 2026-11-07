@@ -52,17 +52,48 @@ up to 2.0x on 2012-06-15 (24.363 m against 12.041 m). That gap is not yet explai
 ground truth covers only about 18% of the time GPS is absent, so this dataset cannot say how
 well any filter coasts through a long outage, in either direction.
 
-## robot_localization: re-run pending
+## robot_localization, re-run on all twelve sequences
 
-**There is no current FusionCore against robot_localization comparison on this page, and no
-claim in either direction should be drawn from older ones.** In the 2026-10-26 run
-robot_localization's config fused IMU acceleration. Once the corrected player stopped
-supplying an attitude, robot_localization removed gravity using a level attitude, so real tilt
-leaked into the acceleration and it diverged to kilometres on nine sequences. That was our
-input change meeting that config, not a property of robot_localization, so those numbers are
-withheld. All twelve are being re-run with the config following robot_localization's own
-planar wheeled-robot example; the amendment in the rule file states exactly what changed and
-why. This page will carry those results, per sequence and per metric, once they exist.
+Run 2026-10-27 to 11-07 under the amendment in the rule file. Config
+`fusioncore_datasets/config/rl_ekf.yaml`: wheel odometry fuses vx, vy and vyaw, the IMU fuses
+yaw rate only, GPS arrives through navsat_transform, and the GPS gate
+(`odom1_pose_rejection_threshold: 3.72`) is unchanged since April. Same harness, corrected player
+and scorer (803c158e99ff) as above, node at 1x, one sequence at a time. That playback also ran
+FusionCore a second time, reported as a repeat beside the published node run. Filter rate 100.0
+to 103.3 Hz everywhere; robot_localization logged 9 update-rate misses on 2012-01-08, none
+elsewhere. Coverage 99.9% or above. No sequence excluded, none re-run.
+
+ATE RMSE / median (metres) at GPS fix times, on the timestamps common to every arm including
+robot_localization (so raw GPS and FusionCore can differ from the table above in the third
+decimal):
+
+| Sequence | Set | Points scored | Raw GPS | robot_localization, node | FusionCore default, node | FusionCore default, node repeat | FusionCore default, replay | FusionCore re-anchoring, replay |
+|---|---|---|---|---|---|---|---|---|
+| 2012-01-08 | held out | 10167 | 9.878 / 6.768 | 31.647 / 6.176 | 56.969 / 13.800 | 57.666 / 13.837 | 50.075 / 12.352 | 10.895 / 6.816 |
+| 2012-02-04 | dev | 8905 | 57.564 / 13.600 | 145.976 / 36.984 | 163.830 / 42.020 | 150.519 / 36.416 | 145.629 / 35.612 | 59.340 / 13.519 |
+| 2012-03-31 | held out | 10046 | 13.824 / 7.469 | 160.874 / 42.830 | 16.816 / 7.357 | 15.886 / 7.336 | 16.934 / 7.376 | 10.785 / 7.413 |
+| 2012-05-11 | held out | 10384 | 9.187 / 5.210 | 8.387 / 4.425 | 9.186 / 5.267 | 9.184 / 5.251 | 9.187 / 5.217 | 9.187 / 5.217 |
+| 2012-06-15 | dev | 6526 | 9.293 / 4.891 | 45.941 / 16.375 | 24.363 / 7.846 | 23.366 / 7.931 | 12.041 / 4.900 | 12.041 / 4.900 |
+| 2012-08-20 | dev | 9799 | 34.250 / 7.319 | 10.400 / 4.451 | 160.359 / 35.210 | 159.581 / 35.923 | 172.961 / 38.082 | 39.790 / 7.495 |
+| 2012-09-28 | dev | 8404 | 8.960 / 6.430 | 95.140 / 26.585 | 18.883 / 6.859 | 18.875 / 6.863 | 22.236 / 7.140 | 10.176 / 6.554 |
+| 2012-10-28 | held out | 8901 | 13.923 / 8.251 | 25.929 / 6.679 | 15.999 / 8.399 | 15.997 / 8.386 | 16.763 / 8.436 | 13.150 / 8.335 |
+| 2012-11-04 | held out | 8200 | 20.267 / 9.657 | 24.170 / 7.834 | 23.626 / 10.220 | 24.733 / 10.268 | 24.512 / 10.301 | 20.414 / 9.806 |
+| 2012-12-01 | held out | 7838 | 12.681 / 7.842 | 12.528 / 5.421 | 16.160 / 7.910 | 16.135 / 7.884 | 16.466 / 7.859 | 12.741 / 7.948 |
+| 2013-02-23 | held out | 8569 | 15.724 / 9.451 | 77.986 / 24.301 | 17.294 / 9.650 | 17.300 / 9.633 | 16.951 / 9.630 | 15.793 / 9.441 |
+| 2013-04-05 | dev | 7458 | 8.624 / 6.319 | 8.329 / 4.449 | 9.994 / 6.457 | 10.020 / 6.462 | 10.007 / 6.447 | 8.798 / 6.443 |
+
+**No aggregate and no winner**, per the rule committed before the run. Where robot_localization
+does badly, the one case examined in full, 2012-03-31, is not the harness: after a 262 s GPS
+blackout the first three fixes are 535 to 537 m wrong in the dataset. robot_localization's
+covariance after dead reckoning is large enough that its gate admits the first one, the
+covariance collapses onto it, and every good fix then fails the gate for about 290 s while it
+drives about 600 m off. That window is 7% of the scored points and 99.7% of its squared error.
+2012-09-28 and 2013-02-23 show the same pattern in a partial check. Where FusionCore does badly,
+2012-08-20 is the clearest: robot_localization 10.400 m, below raw GPS, against FusionCore's
+default at 160.359 m.
+
+Full-trajectory RMSE, median, path ratio and jitter for both node arms:
+[`tools/eval_20261025_results.md`](https://github.com/manankharwar/fusioncore/blob/main/tools/eval_20261025_results.md).
 
 ---
 
@@ -147,7 +178,7 @@ with them. The recovery finding above replaced it.
 FusionCore two wins and three losses. 2026-10-17, nine rows, four and five, with four of the
 nine at n=1. 2026-10-18, raw GPS published as the baseline the benchmark never had, and found
 to beat FusionCore on all five development sequences. 2026-10-26, the twelve-sequence
-evaluation above, with robot_localization withheld.
+evaluation above, with robot_localization withheld. 2026-11-07, robot_localization re-run on all twelve and published above.
 
 ---
 

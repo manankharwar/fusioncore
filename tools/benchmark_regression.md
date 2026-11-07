@@ -2956,3 +2956,19 @@ node whose run-to-run spread reached 14.8% elsewhere. It does not change the shi
 re-anchoring (failed on median and jitter); it clears the one mechanical gate on the product
 decision to enable it in `platform.profile: ground_robot`, which is Manan's to take, with the costs
 in tools/eval_20261025_results.md stated.
+
+## 2026-11-07: robot_localization re-run of all twelve, published
+
+Run 2026-10-27 to 11-07 under the 2026-10-26 amendment in `tools/report_rule_20261025.md`: 12 of 12
+sequences, 0 failures, no exclusions, no re-runs (one hand-stopped 2012-02-04 attempt discarded
+unscored). Identical pinned hashes on all four batches. Per-sequence tables, provenance and the
+post-hoc diagnosis are the last section of `tools/eval_20261025_results.md`; the README Benchmark
+section and `docs/reference/benchmark.md` carry the fix-time table. No aggregate and no winner.
+
+2012-06-15 triage, thresholds committed beforehand: `fc_node_repeat` 23.366 m, at or above 20.684 m,
+so the node-over-replay gap on that sequence is systematic. Not investigated further: NCLT is closed.
+
+**Pinned hash change, comment only.** The same day the "Novatel SPAN-CPT" comment in the five NCLT
+configs was corrected (NCLT's `gps.csv` is a consumer-grade receiver). `nclt_fusioncore.yaml` moves
+from 08b4a6e26030c29b to 3d668e9ae89c44ea with no parameter changed; any run manifest after this
+date will show the new hash.
