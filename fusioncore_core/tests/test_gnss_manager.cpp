@@ -171,6 +171,143 @@ TEST(GNSSManagerTest, NonFiniteHeadingIsRejectedAndNamed) {
   }
 }
 
+// ─── Test 5c: The first dual-antenna heading establishes yaw ─────────────────
+//
+// The filter starts at yaw 0, which nobody measured. Gating the first heading
+// against it rejected a robot's own receiver whenever it started facing away
+// from east: through the node, a 120 degree start had every heading rejected
+// for 55.70 s and a 170 degree start never got one accepted. Found from a
+// user's fork that seeds yaw in the node to work around it.
+
+namespace {
+
+double wrapped_diff(double a, double b) {
+  return std::atan2(std::sin(a - b), std::cos(a - b));
+}
+
+// Same starting covariance the ROS node uses.
+State node_like_initial() {
+  State s;
+  s.P = StateMatrix::Identity() * 0.1;
+  for (int b : {B_GX, B_GY, B_GZ, B_EWZ}) s.P(b, b) = 0.175 * 0.175;
+  for (int b : {B_AX, B_AY, B_AZ})        s.P(b, b) = 0.30 * 0.30;
+  s.P(X, X) = s.P(Y, Y) = s.P(Z, Z) = 1000.0;
+  return s;
+}
+
+GnssHeading heading_at(double yaw_rad) {
+  GnssHeading h;
+  h.heading_rad  = yaw_rad;
+  h.accuracy_rad = 0.02;
+  h.valid        = true;
+  return h;
+}
+
+}  // namespace
+
+TEST(GNSSManagerTest, FirstHeadingEstablishesYawAtEveryStartAngle) {
+  for (int deg = -180; deg <= 180; deg += 10) {
+    const double yaw = deg * M_PI / 180.0;
+    FusionCore fc;
+    fc.init(node_like_initial(), 0.0);
+
+    EXPECT_TRUE(fc.update_gnss_heading(0.1, heading_at(yaw)))
+        << "first heading rejected at a start of " << deg << " deg";
+    EXPECT_NEAR(wrapped_diff(fc.get_state().yaw(), yaw), 0.0, 1e-9)
+        << "yaw not set at a start of " << deg << " deg";
+    EXPECT_EQ(fc.get_status().heading_reason, HeadingRejectionReason::ACCEPTED);
+    EXPECT_EQ(fc.get_status().heading_source, HeadingSource::DUAL_ANTENNA);
+    EXPECT_TRUE(fc.get_status().heading_validated);
+  }
+}
+
+// The scenario the defect was measured in: parked 5 s, then 1 m/s straight,
+// still IMU, perfect encoder, heading at 5 Hz. Before the fix a 170 degree start
+// rejected 100 of 100 here and ended 170 degrees out.
+TEST(GNSSManagerTest, HeadingIsNeverLockedOutByTheStartAngle) {
+  for (int deg : {45, 120, 150, 170, 180, -135}) {
+    const double yaw = deg * M_PI / 180.0;
+    FusionCoreConfig config;
+    config.motion_model = create_motion_model("DifferentialDrive");
+    FusionCore fc(config);
+    fc.init(node_like_initial(), 0.0);
+
+    int rejected = 0;
+    for (int step = 1; step <= 2000; ++step) {
+      const double t = step * 0.01;
+      const double v = t < 5.0 ? 0.0 : 1.0;
+      fc.update_imu(t, 0.0, 0.0, 0.0, 0.0, 0.0, 9.80665);
+      if (step % 2 == 0) {
+        fc.update_encoder(t, v, 0.0, 0.0);
+        fc.update_ground_constraint(t);
+        if (v < 0.05) fc.update_zupt(t, 0.01);
+      }
+      if (step % 20 == 0 && !fc.update_gnss_heading(t, heading_at(yaw))) ++rejected;
+    }
+
+    EXPECT_EQ(rejected, 0) << rejected << " of 100 headings rejected at a start of "
+                           << deg << " deg";
+    EXPECT_NEAR(wrapped_diff(fc.get_state().yaw(), yaw), 0.0, 3.0 * M_PI / 180.0)
+        << "final yaw is off at a start of " << deg << " deg";
+  }
+}
+
+// Setting yaw from a heading must not touch roll or pitch: gravity observes
+// those and a heading carries no information about either.
+TEST(GNSSManagerTest, FirstHeadingLeavesRollAndPitchAlone) {
+  const double roll = 0.10, pitch = -0.05;
+  const double cr = std::cos(roll / 2),  sr = std::sin(roll / 2);
+  const double cp = std::cos(pitch / 2), sp = std::sin(pitch / 2);
+  State initial = node_like_initial();
+  // Tight attitude covariance, as state.hpp specifies. At the node's 0.1 the
+  // predict step inside the call already shifts roll and pitch by several
+  // percent on its own, which would hide what this test is about.
+  for (int q : {QW, QX, QY, QZ}) initial.P(q, q) = 1e-8;
+  initial.x[QW] = cr * cp;
+  initial.x[QX] = sr * cp;
+  initial.x[QY] = cr * sp;
+  initial.x[QZ] = -sr * sp;
+
+  FusionCore fc;
+  fc.init(initial, 0.0);
+  ASSERT_TRUE(fc.update_gnss_heading(0.01, heading_at(2.0)));
+
+  const auto& x = fc.get_state().x;
+  const double roll_after = std::atan2(2 * (x[QW] * x[QX] + x[QY] * x[QZ]),
+                                       1 - 2 * (x[QX] * x[QX] + x[QY] * x[QY]));
+  const double pitch_after = std::asin(2 * (x[QW] * x[QY] - x[QZ] * x[QX]));
+  EXPECT_NEAR(roll_after, roll, 1e-4);
+  EXPECT_NEAR(pitch_after, pitch, 1e-4);
+  EXPECT_NEAR(wrapped_diff(fc.get_state().yaw(), 2.0), 0.0, 1e-4);
+}
+
+// Only the FIRST heading is exempt. Once a heading is established and the
+// filter has tightened around it, a reading 90 degrees away is an outlier and
+// must still be rejected, or the fix would have removed the gate altogether.
+TEST(GNSSManagerTest, GateStillRejectsAnOutlierAfterHeadingIsEstablished) {
+  const double yaw = 100.0 * M_PI / 180.0;
+  FusionCore fc;
+  fc.init(node_like_initial(), 0.0);
+
+  for (int step = 1; step <= 600; ++step) {
+    const double t = step * 0.01;
+    fc.update_imu(t, 0.0, 0.0, 0.0, 0.0, 0.0, 9.80665);
+    if (step % 20 == 0) {
+      ASSERT_TRUE(fc.update_gnss_heading(t, heading_at(yaw)))
+          << "a consistent heading was rejected at t=" << t;
+    }
+  }
+
+  const double yaw_before = fc.get_state().yaw();
+  EXPECT_FALSE(fc.update_gnss_heading(6.01, heading_at(yaw - M_PI / 2.0)));
+  EXPECT_EQ(fc.get_status().heading_reason, HeadingRejectionReason::CHI2_FAILED);
+  EXPECT_EQ(fc.get_status().heading_source, HeadingSource::DUAL_ANTENNA);
+  // Compared against the yaw just before the call, not against the truth: the
+  // only motion allowed here is the 10 ms predict inside the rejected update.
+  EXPECT_NEAR(wrapped_diff(fc.get_state().yaw(), yaw_before), 0.0, 0.5 * M_PI / 180.0)
+      << "a rejected outlier moved yaw";
+}
+
 // ─── Test 6: Stefan's full configuration ─────────────────────────────────────
 // GNSS + IMU + encoders, outdoor wheeled robot, 10 seconds
 // GNSS corrects position drift: this is what Stefan needed

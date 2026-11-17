@@ -10,6 +10,36 @@ Versioning follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ---
 
+## [0.5.1]: 2026-11-17
+
+A single fix to dual-antenna heading start-up. No parameter, default or message changes.
+If you use `gnss.heading_topic` or `gnss.azimuth_topic` and your robot does not start
+roughly facing east, read the first entry.
+
+### Fixed
+
+- **The first dual-antenna heading is no longer gated against the starting yaw of zero.**
+  `update_gnss_heading()` ran the chi-squared gate on every heading, the first included.
+  The filter initialises at yaw 0, which nobody measured, so the first innovation was the
+  robot's whole starting heading tested against a prior that never claimed to know it. A
+  robot that did not start facing roughly east had its own receiver rejected. Measured
+  through the ROS node (synthetic sensors at wall clock: still IMU at 100 Hz, wheel
+  odometry at 50 Hz, heading at 5 Hz with 0.02 rad declared, parked 5 s then 1 m/s
+  straight): a 120 degree start had every heading rejected for 55.70 s, a 170 degree start
+  never got one accepted in 75 s and drove the whole run 170 degrees out; a 0 degree start
+  was unaffected. With the fix both read within 1.15 degrees from the first heading
+  onwards. The first valid heading now sets yaw (roll and pitch are kept, since gravity
+  observes them), and the gate applies normally from the second heading on. This is what
+  the magnetometer path has done since 614c3ca, and the track-heading and rotation
+  bootstrap paths already skip their gate on first use. `gnss.heading_topic` and
+  `gnss.azimuth_topic` both go through this function. Found while reading a user's fork
+  that seeded yaw in the node to work around it. Four new tests in `test_gnss_manager.cpp`
+  (every 10 degrees from -180 to 180; the parked-then-driving scenario at six angles; roll
+  and pitch untouched; an outlier after heading is established is still rejected); all four
+  fail on 0.5.0. Probe: `tools/repro/heading_start_angle.cpp`. Not measured on hardware.
+
+---
+
 ## [0.5.0]: 2026-10-26
 
 Read this before upgrading if you use `platform.profile: ground_robot` or

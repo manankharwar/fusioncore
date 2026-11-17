@@ -2728,6 +2728,38 @@ bool FusionCore::update_gnss_heading(
   // Dimension 0 (heading) is an angle: wrap z_diff across ±π boundary
   constexpr unsigned int HDG_ANGLE_DIMS = 0b1;  // bit 0 = heading
 
+  // While nothing has established a heading, this one sets it instead of being
+  // gated. The filter's starting yaw of 0 is not a measurement, so gating the
+  // receiver against it only asks whether the robot happened to start facing
+  // east. It usually did not. Measured through the node with a 0.02 rad heading
+  // at 5 Hz: a robot starting 120 degrees from yaw 0 had every heading rejected
+  // for 55.70 s, and one starting at 170 degrees never got one accepted at all.
+  // update_magnetometer() sets yaw on its first reading for the same reason, and
+  // the track-heading and rotation-bootstrap paths skip their gate on first use.
+  //
+  // Roll and pitch stay as they are: gravity already observes them and a heading
+  // says nothing about either. From the next heading on the gate works normally.
+  if (heading_source_ == HeadingSource::NONE) {
+    const State& s = ukf_.state();
+    double roll, pitch, yaw_state;
+    quat_to_euler(s.x[QW], s.x[QX], s.x[QY], s.x[QZ], roll, pitch, yaw_state);
+    const double cy = std::cos(heading.heading_rad * 0.5);
+    const double sy = std::sin(heading.heading_rad * 0.5);
+    const double cp = std::cos(pitch * 0.5), sp = std::sin(pitch * 0.5);
+    const double cr = std::cos(roll  * 0.5), sr = std::sin(roll  * 0.5);
+    ukf_.set_orientation(cr*cp*cy + sr*sp*sy,
+                         sr*cp*cy - cr*sp*sy,
+                         cr*sp*cy + sr*cp*sy,
+                         cr*cp*sy - sr*sp*cy);
+
+    heading_reason_    = HeadingRejectionReason::ACCEPTED;
+    heading_validated_ = true;
+    heading_source_    = HeadingSource::DUAL_ANTENNA;
+    last_gnss_time_    = timestamp_seconds;
+    ++update_count_;
+    return true;
+  }
+
   // Mahalanobis outlier rejection for heading
   if (config_.outlier_rejection) {
     sensors::GnssHdgMeasurement innovation_pre;

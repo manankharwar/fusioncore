@@ -448,3 +448,19 @@ Caveat for this rover: UART-RVC does NOT expose a magnetically referenced headin
 (its yaw is relative to power-on, proven by rotating 90 deg and power cycling). A
 magnetometer here needs UART-SHTP mode or a separate compass. See
 [[project_heading_drift_blackout]].
+
+## Heading start angle (fixed in 0.5.1)
+
+`heading_start_angle.cpp` (core only) and `node_heading_probe.py` (drives the real
+`fusioncore_node` with synthetic sensors at wall clock) check whether a dual-antenna
+heading is accepted when the robot does not start facing yaw 0.
+
+```bash
+./tools/repro/build.sh && /tmp/heading_start_angle 170 5 1 120
+python3 tools/repro/node_heading_probe.py 170 75
+```
+
+On 0.5.0 the first heading was chi-squared gated against the starting yaw of 0. Through
+the node, a 120 degree start was rejected for 55.70 s and a 170 degree start was never
+accepted in 75 s. On 0.5.1 both read within 1.15 degrees from the first heading. The
+regression tests are in `fusioncore_core/tests/test_gnss_manager.cpp`.
