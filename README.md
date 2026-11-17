@@ -484,4 +484,4 @@ To cite the software release itself:
 
 Bug reports with a log and a config get answered, usually the same day. If something behaves strangely, `/fusion/debug/filter_health` and `tools/nis_from_bag.py` will often say why before I can.
 
-Need it working on your hardware with someone accountable for the result? [Commercial support and fixed-price integration](https://manankharwar.github.io/fusioncore/support/).
+Robot localization not behaving? [Send one log for a free review](https://manankharwar.github.io/fusioncore/support/), and fixed-price integration if it finds something worth fixing.

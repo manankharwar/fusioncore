@@ -34,7 +34,7 @@ Also available for ROS 2 Humble (Ubuntu 22.04).
 - Hardware configs: https://manankharwar.github.io/fusioncore/hardware/
 - Migration from robot_localization: https://manankharwar.github.io/fusioncore/migration_from_robot_localization/
 - FusionCore vs robot_localization: https://manankharwar.github.io/fusioncore/vs-robot-localization/
-- Support and integration: https://manankharwar.github.io/fusioncore/support/
+- Support: a free review of one recorded log, then fixed-price integration and production support: https://manankharwar.github.io/fusioncore/support/
 
 ## Benchmark
 
