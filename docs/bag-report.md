@@ -15,6 +15,18 @@ which is almost all of them.
 Topics are matched **by message type**, not by name, because your topics are named
 whatever they are named.
 
+It reads ROS 2 bags (mcap or sqlite3). A ROS 1 `.bag` works after a conversion with the
+pure-Python [`rosbags`](https://pypi.org/project/rosbags/) package, which needs no ROS 1
+install:
+
+```
+pip install rosbags
+rosbags-convert --src your_log.bag --dst your_log_ros2
+python3 tools/bag_report.py your_log_ros2
+```
+
+Checked on a 20-minute log converted to ROS 1 and back: all 11 findings identical.
+
 ## What it checks
 
 | | |

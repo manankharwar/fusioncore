@@ -417,10 +417,12 @@ def check_gnss_quality(series):
                 f"{sum(1 for x in gaps if x > 5.0)} gaps over 5 s.",
                 "Through a blackout position is dead-reckoned and heading has no "
                 "absolute reference, so error grows with the length of the outage. "
-                "The recovery afterwards can cost more than the outage: on two NCLT "
-                "sequences the outlier gate rejected 81% of the fixes arriving after a "
-                "blackout, because the filter had drifted far enough that good fixes "
-                "looked like outliers. gnss.reanchor_enabled targets the recovery; an "
+                "The recovery afterwards can cost more than the outage: a filter that "
+                "has drifted far enough sees good returning fixes as outliers and "
+                "rejects them, or accepts a bad first fix and then rejects the good ones "
+                "after it. On NCLT the largest errors we diagnosed, in both FusionCore "
+                "and robot_localization, began this way. gnss.reanchor_enabled targets "
+                "the recovery; an "
                 "absolute heading source (dual antenna, or a calibrated magnetometer) "
                 "bounds the drift during the outage."))
     return out

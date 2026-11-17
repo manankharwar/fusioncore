@@ -102,7 +102,11 @@ Full-trajectory RMSE, median, path ratio and jitter for both node arms:
 - **Most of the error is recovery, not the blackout itself.** On the five development
   sequences, 74.8% to 96.8% of squared error sits in GPS blackouts or in the re-convergence
   after them, and in that recovery window the outlier gate rejected 81% of arriving fixes. The
-  filter was discarding the fixes that would have corrected it. `gnss.reanchor_enabled` is the
+  filter was discarding the fixes that would have corrected it. (Both figures come from the
+  offline replay on 2026-10-18, before the dataset-player corrections described below, and were
+  not re-measured on the final run; read them as the shape of the problem, not as current
+  numbers. The final run's own evidence for it is the diagnosis of robot_localization on
+  2012-03-31 and re-anchoring lowering RMSE on 10 of 12 against the default.) `gnss.reanchor_enabled` is the
   fix for that part, and it stays opt-in for the costs stated above.
 - **Two input errors in our own dataset player** fed both filters wrong data: a wheel
   odometry yaw rate in the wrong frame (#169) and the 0.57 degree tilt
