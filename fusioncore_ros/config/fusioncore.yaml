@@ -157,9 +157,11 @@ fusioncore:
     gnss.lever_arm2_y: 0.0
     gnss.lever_arm2_z: 0.0
 
-    # Dual antenna GNSS heading topic (sensor_msgs/Imu carrying yaw).
-    # Used with receivers that output heading as a separate IMU-style message
-    # (u-blox F9H, Septentrio dual-antenna). Validates heading immediately at startup.
+    # Dual antenna GNSS heading topic (sensor_msgs/Imu carrying yaw, ENU).
+    # For example /navheading from ublox_gps. septentrio_gnss_driver has no
+    # such topic in dual-antenna GNSS mode (heading is only in /atteuler,
+    # /pose, or the dip field of /gpsfix), so it needs a small bridge.
+    # The first heading sets yaw; later ones are gated.
     # Leave empty to disable.
     gnss.heading_topic: ""
 

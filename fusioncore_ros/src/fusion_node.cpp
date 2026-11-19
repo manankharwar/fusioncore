@@ -3311,9 +3311,10 @@ private:
   // The orientation quaternion gives the robot heading in ENU frame.
   // We extract yaw from it and pass to update_gnss_heading().
   //
-  // Most dual antenna GPS receivers (u-blox, Septentrio, Trimble) publish
-  // heading as a quaternion in a sensor_msgs/Imu message. This is the
-  // de facto standard in ROS even though it is slightly awkward.
+  // ublox_gps publishes dual antenna heading this way (/navheading), and it
+  // is the de facto ROS shape even though it is slightly awkward. Not every
+  // driver does: septentrio_gnss_driver in GNSS mode only carries heading in
+  // its own AttEuler message, in /pose, or in the dip field of /gpsfix.
 
   void gnss_heading_callback(const sensor_msgs::msg::Imu::SharedPtr msg)
   {
