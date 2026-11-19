@@ -27,32 +27,44 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Attempted twice on purpose. setup-ros resolves the ros-apt-source version
-      # with a bare `curl -s`, no --fail, no --retry and no fallback, and then
-      # interpolates the result straight into a download URL:
+      # ROS is installed here directly instead of through ros-tooling/setup-ros.
+      # setup-ros looks up the latest ros-apt-source release with an
+      # unauthenticated `curl -s` to api.github.com, with no --fail and no retry,
+      # and pastes the answer into a download URL. Hosted runners share IPs, so
+      # that call regularly hits GitHub's anonymous rate limit, gets no tag_name
+      # back, and the job dies on a 404 before compiling anything. It happened on
+      # 2026-09-04, twice on 2026-10-05, and twice more on 2026-11-17/18 even with
+      # a second attempt five seconds after the first, which is what rate limiting
+      # looks like. The action has no input to pin or skip the lookup.
       #
-      #   export ROS_APT_SOURCE_VERSION=$(curl -s $repo | grep -F tag_name | awk ...)
-      #
-      # Any blip on that one call yields an empty version, the URL collapses to
-      # .../download//ros2-apt-source_.<codename>_all.deb, and the job dies in 12 s
-      # before compiling anything. The download curl immediately after it DOES carry
-      # --retry 3; only the version lookup is unprotected, and the action exposes no
-      # input to pin or skip it, while `export` overwrites anything preset in env.
-      #
-      # Three occurrences so far: 2026-09-04 on jammy, and twice on 2026-10-05, once
-      # per distro. A second attempt seconds later clears a transient blip. It will
-      # not clear a sustained upstream outage, which is what fail-fast: false above is
-      # for, so this reduces the noise rather than pretending to fix the action.
-      - uses: ros-tooling/setup-ros@v0.7
-        id: setup_ros
-        continue-on-error: true
-        with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
-
-      - uses: ros-tooling/setup-ros@v0.7
-        if: steps.setup_ros.outcome == 'failure'
-        with:
-          required-ros-distributions: ${{ matrix.ros_distro }}
+      # Here the lookup is authenticated with the workflow token (its own, much
+      # larger limit), retried with backoff, and checked before it is used.
+      - name: Install ROS 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          codename=$(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+          ver=""
+          for i in 1 2 3 4 5; do
+            ver=$(gh api repos/ros-infrastructure/ros-apt-source/releases/latest --jq .tag_name) && [ -n "$ver" ] && break
+            ver=""
+            echo "ros-apt-source lookup failed (attempt $i), retrying"
+            sleep $((i * 10))
+          done
+          if [ -z "$ver" ]; then
+            echo "could not resolve the ros-apt-source version"
+            exit 1
+          fi
+          echo "ros-apt-source $ver for $codename"
+          curl -fL --retry 5 --retry-delay 5 -o /tmp/ros2-apt-source.deb \
+            "https://github.com/ros-infrastructure/ros-apt-source/releases/download/${ver}/ros2-apt-source_${ver}.${codename}_all.deb"
+          sudo dpkg -i /tmp/ros2-apt-source.deb
+          sudo apt-get update
+          sudo apt-get install -y \
+            ros-${{ matrix.ros_distro }}-ros-base \
+            python3-colcon-common-extensions python3-rosdep python3-pip \
+            build-essential cmake git
 
       # ONE entry point, and CI calls the same script a developer does.
       #
